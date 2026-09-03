@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d13">
+  <title>Fight the Horde</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="game-shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">✦</span><span>FIGHT THE <strong>HORDE</strong></span></div>
+      <div class="status-row" aria-label="Game status">
+        <div class="stat"><span class="stat-label">SECTORS OUT</span><strong id="wave">01</strong></div>
+        <div class="stat"><span class="stat-label">SCORE</span><strong id="score">000000</strong></div>
+        <div class="stat"><span class="stat-label">HIGH</span><strong id="high-score">000000</strong></div>
+      </div>
+    </header>
+
+    <section class="arena-wrap">
+      <div class="arena-frame">
+        <canvas id="arena" aria-label="Top-down Fight the Horde game"></canvas>
+        <div class="crosshair" aria-hidden="true"></div>
+        <div class="map-panel"><span>TACTICAL MAP</span><canvas id="map" width="220" height="180" aria-label="Tactical map"></canvas></div>
+        <div class="overlay" id="start-screen">
+          <p class="eyebrow">NIGHT SHIFT // SECTOR 07</p>
+          <h1>FIGHT<br><span>THE HORDE</span></h1>
+          <p class="intro">Hold the line. Clear every wave.<br>Nothing gets past you.</p>
+          <button class="primary-button" id="start-button">ENTER THE FIGHT <span>→</span></button>
+          <p class="controls-hint"><kbd>WASD</kbd> MOVE <i></i> <kbd>MOUSE</kbd> AIM + FIRE</p>
+        </div>
+        <div class="overlay hidden" id="game-over">
+          <p class="eyebrow">SIGNAL LOST</p>
+          <h2>THE HORDE<br><span>GOT THROUGH</span></h2>
+          <p class="final-score">SCORE <strong id="final-score">000000</strong></p>
+          <button class="primary-button" id="restart-button">RUN IT BACK <span>↻</span></button>
+        </div>
+        <div class="expedition-hud">
+          <div><span>RADIUS</span><strong id="distance">000m</strong></div>
+          <div><span>SALVAGE</span><strong id="salvage">00</strong></div>
+          <div><span>RELICS</span><strong id="relics">00</strong></div>
+        </div>
+        <div class="biome-announcement" id="biome-announcement" aria-live="polite"></div>
+        <div class="admin-panel" id="admin-panel" hidden>
+          <strong>ADMIN TEST MODE</strong>
+          <button type="button" data-admin="sector" data-value="1">S1</button><button type="button" data-admin="sector" data-value="2">S2</button><button type="button" data-admin="sector" data-value="3">S3</button><button type="button" data-admin="sector" data-value="4">S4</button><button type="button" data-admin="sector" data-value="5">S5</button><button type="button" data-admin="sector" data-value="6">S6</button>
+          <button type="button" data-admin="spawn">SPAWN</button><button type="button" data-admin="refill">REFILL</button><button type="button" data-admin="reset">RESET</button>
+        </div>
+        <div class="mobile-controls" aria-label="Touch controls">
+          <div class="joystick" id="joystick"><span></span></div>
+          <div class="touch-fire" id="touch-fire">FIRE</div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="bottombar">
+      <div class="health"><span>VITALS</span><div class="health-track"><div id="health-bar"></div></div></div>
+      <div class="ammo"><span class="ammo-dot"></span><strong id="ammo">12</strong><span>/ 12 ROUNDS</span></div>
+      <div class="objective"><span id="objective-text">LEAVE THE BEACON</span> <b id="threat-count">00</b></div>
+    </footer>
+  </main>
+  <script src="game.js"></script>
+</body>
+</html>
