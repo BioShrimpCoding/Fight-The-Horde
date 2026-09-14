@@ -44,7 +44,7 @@ const weaponCatalog = {
   railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 2, cooldown: 1200, damage: 4.2, speed: 1500, life: 1, pellets: 1, spread: 0, kind: 'gun' },
   flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 45, cooldown: 70, damage: .045, speed: 390, life: .35, pellets: 2, spread: .22, kind: 'gun' },
   pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 20, cooldown: 180, damage: .22, speed: 850, life: .7, pellets: 1, spread: .02, kind: 'gun' },
-  magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 16, cooldown: 110, damage: .30, speed: 620, life: .55, pellets: 1, spread: .25, kind: 'gun', oscillating: true, coneSize: .25 },
+  magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 110, damage: .30, speed: 620, life: .60, pellets: 1, spread: .30, kind: 'gun', oscillating: true, coneSize: .20 },
   machete: { name: 'MACHETE', ammo: null, cooldown: 520, damage: .45, range: 105, arc: .9, kind: 'melee' },
   warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 900, damage: 1.2, range: 90, arc: .7, kind: 'melee' },
   spear: { name: 'SPEAR', ammo: null, cooldown: 700, damage: .8, range: 155, arc: .35, kind: 'melee' }
@@ -53,7 +53,20 @@ const ammoCatalog = {
   pistolAmmo: { name: 'PISTOL AMMO', amount: 12, cost: { rawIron: 2, fuel: 1 } }, shells: { name: 'SHOTGUN SHELLS', amount: 6, cost: { rawIron: 3, fuel: 2 } }, minigunAmmo: { name: 'MINIGUN BELT', amount: 40, cost: { steel: 4, fuel: 3 } }, rifleAmmo: { name: 'RIFLE AMMO', amount: 18, cost: { iron: 3, fuel: 2 } }, marksmanAmmo: { name: 'MARKSMAN ROUNDS', amount: 4, cost: { steel: 4, crystal: 1 } }, smgAmmo: { name: 'SMG AMMO', amount: 25, cost: { rawIron: 3, fuel: 2 } }, cells: { name: 'LASER CELLS', amount: 12, cost: { crystal: 3, steel: 2 } }, grenades: { name: 'GRENADE CASINGS', amount: 3, cost: { iron: 3, fuel: 4 } }, slugs: { name: 'RAIL SLUGS', amount: 2, cost: { steel: 5, crystal: 2 } }, fuelCells: { name: 'FLAME FUEL', amount: 30, cost: { fuel: 8, rawIron: 2 } }, pulseCells: { name: 'PULSE CELLS', amount: 15, cost: { crystal: 4, steel: 3 } }, magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 12, cost: {} }
 };
 const weaponRecipes = {
-  shotgun: { name: 'SHOTGUN', time: 9, cost: { steel: 8, wood: 3 }, weapon: 'shotgun' }, minigun: { name: 'MINIGUN', time: 14, cost: { steel: 14, fuel: 5 }, weapon: 'minigun' }, burstRifle: { name: 'BURST RIFLE', time: 10, cost: { steel: 7, wood: 2 }, weapon: 'burstRifle' }, sniper: { name: 'SNIPER', time: 12, cost: { steel: 10, crystal: 2 }, weapon: 'sniper' }, smg: { name: 'SMG', time: 8, cost: { iron: 6, fuel: 3 }, weapon: 'smg' }, laser: { name: 'LASER', time: 13, cost: { crystal: 7, steel: 4 }, weapon: 'laser' }, grenadeLauncher: { name: 'GRENADE LAUNCHER', time: 12, cost: { steel: 8, fuel: 6 }, weapon: 'grenadeLauncher' }, railgun: { name: 'RAILGUN', time: 18, cost: { steel: 16, crystal: 5 }, weapon: 'railgun' }, flamethrower: { name: 'FLAMETHROWER', time: 10, cost: { steel: 5, fuel: 10 }, weapon: 'flamethrower' }, pulseCarbine: { name: 'PULSE CARBINE', time: 15, cost: { steel: 10, crystal: 6 }, weapon: 'pulseCarbine' }, magicGauntlet: { name: 'MAGIC GAUNTLET', time: 18, cost: { crystal: 15, steel: 5, relic: 1 }, weapon: 'magicGauntlet' }, machete: { name: 'MACHETE', time: 6, cost: { steel: 5, wood: 2 }, weapon: 'machete' }, warHammer: { name: 'WAR HAMMER', time: 9, cost: { steel: 10, stone: 5 }, weapon: 'warHammer' }, spear: { name: 'SPEAR', time: 7, cost: { steel: 6, wood: 4 }, weapon: 'spear' }
+  shotgun: { name: 'SHOTGUN', time: 9, cost: { steel: 8, wood: 3 }, weapon: 'shotgun' }, 
+  minigun: { name: 'MINIGUN', time: 14, cost: { steel: 14, fuel: 5 }, weapon: 'minigun' }, 
+  burstRifle: { name: 'BURST RIFLE', time: 10, cost: { steel: 7, wood: 2 }, weapon: 'burstRifle' }, 
+  sniper: { name: 'SNIPER', time: 12, cost: { steel: 10, crystal: 2 }, weapon: 'sniper' }, 
+  smg: { name: 'SMG', time: 8, cost: { iron: 6, fuel: 3 }, weapon: 'smg' }, 
+  laser: { name: 'LASER', time: 13, cost: { crystal: 7, steel: 4 }, weapon: 'laser' }, 
+  grenadeLauncher: { name: 'GRENADE LAUNCHER', time: 12, cost: { steel: 8, fuel: 6 }, weapon: 'grenadeLauncher' }, 
+  railgun: { name: 'RAILGUN', time: 18, cost: { steel: 15, crystal: 6, relic: 1 }, weapon: 'railgun' }, 
+  flamethrower: { name: 'FLAMETHROWER', time: 10, cost: { steel: 5, fuel: 10 }, weapon: 'flamethrower' }, 
+  pulseCarbine: { name: 'PULSE CARBINE', time: 15, cost: { steel: 10, crystal: 6 }, weapon: 'pulseCarbine' }, 
+  magicGauntlet: { name: 'MAGIC GAUNTLET', time: 18, cost: { crystal: 15, steel: 6, relic: 1 }, weapon: 'magicGauntlet' }, 
+  machete: { name: 'MACHETE', time: 6, cost: { steel: 5, wood: 2 }, weapon: 'machete' }, 
+  warHammer: { name: 'WAR HAMMER', time: 9, cost: { steel: 10, stone: 5 }, weapon: 'warHammer' }, 
+  spear: { name: 'SPEAR', time: 7, cost: { steel: 6, wood: 4 }, weapon: 'spear' }
 };
 const biomeEffectProfiles = [
   { healthRegen: 4, damageMultiplier: 1.1, enemySpeedMultiplier: 1.05 },
