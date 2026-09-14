@@ -46,6 +46,10 @@
           <div class="health-track"><div id="health-bar"></div></div>
         </div>
         <div class="ammo-hud" aria-label="Ammunition">
+          <div class="medkit-slot">
+            <span>MEDKITS</span>
+            <strong id="medkits">0</strong>
+          </div>
           <div><span id="weapon-name">SIDEARM</span><strong id="ammo">12</strong><small id="ammo-type">PISTOL AMMO</small></div>
           <div><span>STORAGE</span><strong id="ammo-storage">25</strong><small>CLIPS</small></div>
         </div>
@@ -54,6 +58,7 @@
           <span class="station-title">SANCTUARY // WORKSHOPS</span>
           <div class="station-card" data-station="crafting"><strong>CRAFTING TABLE</strong><button type="button" data-craft="medkit">MEDKIT <small>4 FIBER + 2 CRYSTAL</small></button><button type="button" data-craft="ammoPack">AMMO PACK <small>3 STEEL + 2 FUEL</small></button><button type="button" data-craft="steelPlate">STEEL PLATE <small>5 STEEL + 2 STONE</small></button><div class="arsenal-list" id="arsenal-list"></div></div>
           <div class="station-card" data-station="furnace"><strong>FURNACE</strong><button type="button" data-craft="smeltIron">SMELT IRON <small>3 RAW IRON + 10 FUEL</small></button><button type="button" data-craft="makeSteel">MAKE STEEL <small>2 IRON + 3 STONE + 10 FUEL</small></button><button type="button" data-craft="refineFuel">REFINE FUEL <small>2 WOOD + 2 FIBER + 10 FUEL</small></button></div>
+          <div class="craft-details" id="craft-details" hidden></div>
           <span class="station-output" id="station-output" aria-live="polite"></span>
         </div>
         <div class="biome-effects" id="biome-effects" aria-live="polite"></div>
