@@ -40,6 +40,7 @@
           <div><span>RADIUS</span><strong id="distance">000m</strong></div>
           <div><span>SALVAGE</span><strong id="salvage">00</strong></div>
           <div><span>RELICS</span><strong id="relics">00</strong></div>
+          <div><span>ATLAS</span><strong id="atlas-crystals">00</strong></div>
         </div>
         <div class="vitals-hud" aria-label="Player health">
           <div class="vitals-heading"><span>VITALS</span><strong id="health-value">100%</strong></div>
@@ -73,6 +74,11 @@
           <div class="touch-fire" id="touch-fire">FIRE</div>
         </div>
       </div>
+    </section>
+
+    <section class="debug-console" aria-label="Game diagnostic console">
+      <div class="debug-console-header"><span>DIAGNOSTIC CONSOLE</span><button type="button" id="clear-console">CLEAR</button></div>
+      <div class="debug-console-output" id="debug-console-output" role="log" aria-live="polite"></div>
     </section>
 
     <footer class="bottombar">
