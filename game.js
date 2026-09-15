@@ -41,24 +41,38 @@ const resourceTypes = [
   { key: 'fuel', name: 'FUEL', color: '#ff865c' }
 ];
 const weaponCatalog = {
-  sidearm: { name: 'SIDEARM', ammo: 'pistolAmmo', magazine: 12, cooldown: 145, damage: .12, speed: 650, life: .7, pellets: 1, spread: 0, kind: 'gun' },
+  sidearm: { name: 'SIDEARM', ammo: 'pistolAmmo', magazine: 12, cooldown: 200, damage: .12, speed: 650, life: .7, pellets: 2, spread: .15, kind: 'gun' },
   shotgun: { name: 'SHOTGUN', ammo: 'shells', magazine: 6, cooldown: 520, damage: .07, speed: 560, life: .45, pellets: 8, spread: .34, falloff: true, kind: 'gun' },
   minigun: { name: 'MINIGUN', ammo: 'minigunAmmo', magazine: 80, cooldown: 38, damage: .035, speed: 720, life: .8, pellets: 1, spread: .06, kind: 'gun' },
   burstRifle: { name: 'BURST RIFLE', ammo: 'rifleAmmo', magazine: 24, cooldown: 260, damage: .1, speed: 760, life: .8, pellets: 3, spread: .07, kind: 'gun' },
   sniper: { name: 'SNIPER', ammo: 'marksmanAmmo', magazine: 4, cooldown: 780, damage: .7, speed: 1100, life: 1, pellets: 1, spread: 0, kind: 'gun' },
-  smg: { name: 'SMG', ammo: 'smgAmmo', magazine: 30, cooldown: 78, damage: .065, speed: 680, life: .7, pellets: 1, spread: .12, kind: 'gun' },
+  smg: { name: 'SMG', ammo: 'smgAmmo', magazine: 30, cooldown: 50, damage: .065, speed: 680, life: .7, pellets: 1, spread: .12, kind: 'gun' },
   laser: { name: 'LASER', ammo: 'cells', magazine: 18, cooldown: 125, damage: .18, speed: 1000, life: .55, pellets: 1, spread: 0, kind: 'gun' },
   grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 3, cooldown: 900, damage: .68, speed: 350, life: 1.4, pellets: 1, spread: 0, blast: 95, kind: 'gun' },
   railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 2, cooldown: 1200, damage: 4.2, speed: 1500, life: 1, pellets: 1, spread: 0, kind: 'gun' },
   flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 45, cooldown: 70, damage: .045, speed: 390, life: .35, pellets: 2, spread: .22, kind: 'gun' },
   pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 20, cooldown: 180, damage: .22, speed: 850, life: .7, pellets: 1, spread: .02, kind: 'gun' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 110, damage: .30, speed: 620, life: .60, pellets: 1, spread: .30, kind: 'gun', oscillating: true, coneSize: .20 },
+  cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 12, cooldown: 90, damage: .40, speed: 625, life: 1, pellets: 2, spread: .40, kind: 'gun', oscillating: true, coneSize: .20 },
+
   machete: { name: 'MACHETE', ammo: null, cooldown: 520, damage: .45, range: 105, arc: .9, kind: 'melee' },
   warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 900, damage: 1.2, range: 90, arc: .7, kind: 'melee' },
   spear: { name: 'SPEAR', ammo: null, cooldown: 700, damage: .8, range: 155, arc: .35, kind: 'melee' }
 };
+
 const ammoCatalog = {
-  pistolAmmo: { name: 'PISTOL AMMO', amount: 12, cost: { rawIron: 2, fuel: 1 } }, shells: { name: 'SHOTGUN SHELLS', amount: 6, cost: { rawIron: 3, fuel: 2 } }, minigunAmmo: { name: 'MINIGUN BELT', amount: 40, cost: { steel: 4, fuel: 3 } }, rifleAmmo: { name: 'RIFLE AMMO', amount: 18, cost: { iron: 3, fuel: 2 } }, marksmanAmmo: { name: 'MARKSMAN ROUNDS', amount: 4, cost: { steel: 4, crystal: 1 } }, smgAmmo: { name: 'SMG AMMO', amount: 25, cost: { rawIron: 3, fuel: 2 } }, cells: { name: 'LASER CELLS', amount: 12, cost: { crystal: 3, steel: 2 } }, grenades: { name: 'GRENADE CASINGS', amount: 3, cost: { iron: 3, fuel: 4 } }, slugs: { name: 'RAIL SLUGS', amount: 2, cost: { steel: 5, crystal: 2 } }, fuelCells: { name: 'FLAME FUEL', amount: 30, cost: { fuel: 8, rawIron: 2 } }, pulseCells: { name: 'PULSE CELLS', amount: 15, cost: { crystal: 4, steel: 3 } }, magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 12, cost: {} }
+  pistolAmmo: { name: 'PISTOL AMMO', amount: 12, cost: { rawIron: 2, fuel: 1 } }, 
+  shells: { name: 'SHOTGUN SHELLS', amount: 6, cost: { rawIron: 3, fuel: 2 } }, 
+  minigunAmmo: { name: 'MINIGUN BELT', amount: 40, cost: { steel: 4, fuel: 3 } }, 
+  rifleAmmo: { name: 'RIFLE AMMO', amount: 18, cost: { iron: 3, fuel: 2 } },
+   marksmanAmmo: { name: 'MARKSMAN ROUNDS', amount: 4, cost: { steel: 4, crystal: 1 } },
+    smgAmmo: { name: 'SMG AMMO', amount: 25, cost: { rawIron: 3, fuel: 2 } }, 
+    cells: { name: 'LASER CELLS', amount: 12, cost: { crystal: 3, steel: 2 } }, 
+    grenades: { name: 'GRENADE CASINGS', amount: 3, cost: { iron: 3, fuel: 4 } }, 
+    slugs: { name: 'RAIL SLUGS', amount: 2, cost: { steel: 5, crystal: 2 } }, 
+    fuelCells: { name: 'FLAME FUEL', amount: 30, cost: { fuel: 8, rawIron: 2 } }, 
+    pulseCells: { name: 'PULSE CELLS', amount: 15, cost: { crystal: 4, steel: 3 } }, 
+    magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 12, cost: {} }
 };
 const weaponRecipes = {
   shotgun: { name: 'SHOTGUN', time: 9, cost: { steel: 8, wood: 3 }, weapon: 'shotgun' }, 
@@ -71,8 +85,8 @@ const weaponRecipes = {
   railgun: { name: 'RAILGUN', time: 18, cost: { steel: 15, crystal: 6, relic: 1, atlasCrystal: 1 }, weapon: 'railgun' },
   flamethrower: { name: 'FLAMETHROWER', time: 10, cost: { steel: 5, fuel: 10 }, weapon: 'flamethrower' }, 
   pulseCarbine: { name: 'PULSE CARBINE', time: 15, cost: { steel: 10, crystal: 6 }, weapon: 'pulseCarbine' }, 
-  magicGauntlet: { name: 'MAGIC GAUNTLET', time: 18, cost: { crystal: 15, steel: 6, relic: 1, atlasCrystal: 1 }, weapon: 'magicGauntlet' },
-  machete: { name: 'MACHETE', time: 6, cost: { steel: 5, wood: 2 }, weapon: 'machete' }, 
+  magicGauntlet: { name: 'MAGIC GAUNTLET', time: 1, cost: { }, weapon: 'magicGauntlet' },
+cosmosGauntlet: { name: 'COSMOS GAUNTLET', time: 1, cost: { crystal: 0, steel: 0, relic: 0, atlasCrystal: 0, magicGauntlet: 1 }, weapon: 'cosmosGauntlet' },  machete: { name: 'MACHETE', time: 6, cost: { steel: 5, wood: 2 }, weapon: 'machete' }, 
   warHammer: { name: 'WAR HAMMER', time: 9, cost: { steel: 10, stone: 5 }, weapon: 'warHammer' }, 
   spear: { name: 'SPEAR', time: 7, cost: { steel: 6, wood: 4 }, weapon: 'spear' }
 };
@@ -187,8 +201,10 @@ function getNearbyStation() { return Object.entries(stationPositions).find(([, p
 function toggleStation() { const nearbyStation = getNearbyStation(); if (!nearbyStation) return; game.stationOpen = game.stationOpen === nearbyStation ? null : nearbyStation; updateStationUI(); }
 function updateStationUI() { const nearbyStation = getNearbyStation(); if (game.stationOpen && nearbyStation !== game.stationOpen) game.stationOpen = null; ui.stations.hidden = !game.stationOpen; document.querySelectorAll('[data-station]').forEach(card => { card.hidden = card.dataset.station !== game.stationOpen; }); }
 function bankInventory() { let deposited = false; resourceTypes.forEach(resource => { const amount = game.inventory[resource.key]; if (!amount) return; game.vault[resource.key] = (game.vault[resource.key] || 0) + amount; game.inventory[resource.key] = 0; deposited = true; }); if (deposited) localStorage.setItem('horde-vault', JSON.stringify(game.vault)); return deposited; }
-function getCraftResourceAmount(key) { return key === 'relic' ? game.relics : key === 'atlasCrystal' ? game.atlasCrystals : (game.vault[key] || 0); }
-function spendCraftResource(key, amount) { if (key === 'relic') { game.relics = Math.max(0, game.relics - amount); } else if (key === 'atlasCrystal') { game.atlasCrystals = Math.max(0, game.atlasCrystals - amount); } else { game.vault[key] = Math.max(0, (game.vault[key] || 0) - amount); } }
+function getCraftResourceAmount(key) { 
+  if (key === 'magicGauntlet') return game.weapon === 'magicGauntlet' ? 1 : 0;
+  return key === 'relic' ? game.relics : key === 'atlasCrystal' ? game.atlasCrystals : (game.vault[key] || 0); 
+}function spendCraftResource(key, amount) { if (key === 'relic') { game.relics = Math.max(0, game.relics - amount); } else if (key === 'atlasCrystal') { game.atlasCrystals = Math.max(0, game.atlasCrystals - amount); } else { game.vault[key] = Math.max(0, (game.vault[key] || 0) - amount); } }
 const stationRecipes = { medkit: { name: 'MEDKIT', time: 4, cost: { fiber: 4, crystal: 2 }, output: { medkit: 1 } }, ammoPack: { name: 'AMMO PACK', time: 5, cost: { steel: 3, fuel: 2 }, output: { ammoStorage: 5 } }, steelPlate: { name: 'STEEL PLATE', time: 7, cost: { steel: 5, stone: 2 }, output: { steelPlate: 1 } }, smeltIron: { name: 'SMELTED IRON', time: 6, cost: { rawIron: 3, fuel: 10 }, output: { iron: 3 } }, makeSteel: { name: 'STEEL', time: 8, cost: { iron: 2, stone: 3, fuel: 10 }, output: { steel: 2 } }, refineFuel: { name: 'REFINED FUEL', time: 5, cost: { wood: 2, fiber: 2, fuel: 10 }, output: { fuel: 12 } }, ...weaponRecipes, ...Object.fromEntries(Object.entries(ammoCatalog).map(([key, ammo]) => [`ammo_${key}`, { name: ammo.name, time: 3, cost: ammo.cost, ammo: key, amount: ammo.amount }])) };
 function openCraftDetails(recipeKey) { const recipe = stationRecipes[recipeKey]; if (!recipe) return; const costEntries = Object.entries(recipe.cost || {}); const materialRows = costEntries.map(([key, amount]) => { const resource = resourceTypes.find(item => item.key === key) || { name: key.toUpperCase() }; const owned = getCraftResourceAmount(key); const ready = owned >= amount; return `<li class="${ready ? 'ready' : 'missing'}"><span>${resource.name}</span><strong>${owned} / ${amount}</strong></li>`; }).join(''); const missing = costEntries.find(([key, amount]) => getCraftResourceAmount(key) < amount); const canCraft = !missing; ui.craftDetails.innerHTML = `
     <div class="craft-details-header">
