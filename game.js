@@ -87,7 +87,7 @@ const weaponRecipes = {
   flamethrower: { name: 'FLAMETHROWER', time: 10, cost: { steel: 5, fuel: 10 }, weapon: 'flamethrower' }, 
   pulseCarbine: { name: 'PULSE CARBINE', time: 15, cost: { steel: 10, crystal: 6 }, weapon: 'pulseCarbine' }, 
   magicGauntlet: { name: 'MAGIC GAUNTLET', time: 1, cost: { }, weapon: 'magicGauntlet' },
-cosmosGauntlet: { name: 'COSMOS GAUNTLET', time: 1, cost: { crystal: 0, steel: 0, relic: 0, atlasCrystal: 0, magicGauntlet: 1 }, weapon: 'cosmosGauntlet' },  machete: { name: 'MACHETE', time: 6, cost: { steel: 5, wood: 2 }, weapon: 'machete' }, 
+cosmosGauntlet: { name: 'COSMOS GAUNTLET', time: 1, cost: { crystal: 15, steel: 20, relic: 2, atlasCrystal: 1, magicGauntlet: 1 }, weapon: 'cosmosGauntlet' },  machete: { name: 'MACHETE', time: 6, cost: { steel: 5, wood: 2 }, weapon: 'machete' }, 
   warHammer: { name: 'WAR HAMMER', time: 9, cost: { steel: 10, stone: 5 }, weapon: 'warHammer' }, 
   spear: { name: 'SPEAR', time: 7, cost: { steel: 6, wood: 4 }, weapon: 'spear' }
 };
@@ -167,7 +167,48 @@ let game = freshGame();
 function freshGame() {
   const storedStationItems = JSON.parse(localStorage.getItem('horde-station-items') || '{}');
   const stationItems = { ...storedStationItems, medkit: Math.min(5, Math.max(0, Number(storedStationItems.medkit ?? 1))) };
-  return { active: false, seed: Math.floor(Math.random() * 4294967296), score: 0, high: Number(localStorage.getItem('horde-high') || 0), wave: 1, currentSector: 0, health: 100, ammo: clipSize, ammoStorage: startingAmmoStorage, ammoReserve: { pistolAmmo: startingAmmoStorage * clipSize, magicGauntletAmmo: 6 }, weapon: 'sidearm', unlockedWeapons: { sidearm: true }, reloadPending: false, salvage: 0, relics: 0, atlasCrystals: 0, banked: Number(localStorage.getItem('horde-salvage') || 0), vault: JSON.parse(localStorage.getItem('horde-vault') || '{}'), inventory: Object.fromEntries(resourceTypes.map(resource => [resource.key, 0])), stationItems, crafting: null, stationOpen: null, enemies: [], bullets: [], sparks: [], gems: [], drops: [], nodes: [], hazardZones: [], discovered: new Set(['sanctuary']), player: { x: 0, y: 0, angle: 0 }, spawnTimer: 0, voidSpawnTimer: 0, fireTimer: 0, pulseTimer: 0, magicGauntletRechargeTimer: 5, cosmosGauntletRechrageTimer: 6, biomeKey: null, announcementTimer: 0, camera: { x: 0, y: 0 } };
+  return { 
+    active: false, 
+    seed: Math.floor(Math.random() * 4294967296), 
+    score: 0, 
+    high: Number(localStorage.getItem('horde-high') || 0), 
+    wave: 1, 
+    currentSector: 0, 
+    health: 100, 
+    ammo: clipSize, 
+    ammoStorage: startingAmmoStorage, 
+    ammoReserve: { pistolAmmo: startingAmmoStorage * clipSize, magicGauntletAmmo: 6, cosmosGauntletAmmo: 6 }, 
+    weapon: 'sidearm', 
+    unlockedWeapons: { sidearm: true }, 
+    reloadPending: false, 
+    salvage: 0, 
+    relics: 0, 
+    atlasCrystals: 0, 
+    banked: Number(localStorage.getItem('horde-salvage') || 0), 
+    vault: JSON.parse(localStorage.getItem('horde-vault') || '{}'), 
+    inventory: Object.fromEntries(resourceTypes.map(resource => [resource.key, 0])), 
+    stationItems, 
+    crafting: null, 
+    stationOpen: null, 
+    enemies: [], 
+    bullets: [], 
+    sparks: [], 
+    gems: [], 
+    drops: [], 
+    nodes: [], 
+    hazardZones: [], 
+    discovered: new Set(['sanctuary']), 
+    player: { x: 0, y: 0, angle: 0 }, 
+    spawnTimer: 0, 
+    voidSpawnTimer: 0, 
+    fireTimer: 0, 
+    pulseTimer: 0, 
+    magicGauntletRechargeTimer: 5, 
+    cosmosGauntletRechargeTimer: 6, // Fixed typo here
+    biomeKey: null, 
+    announcementTimer: 0, 
+    camera: { x: 0, y: 0 } 
+  };
 }
 ui.high.textContent = String(game.high).padStart(6, '0');
 function resize() { const ratio = window.devicePixelRatio || 1; canvas.width = canvas.clientWidth * ratio; canvas.height = canvas.clientHeight * ratio; ctx.setTransform(ratio, 0, 0, ratio, 0, 0); if (!game.active) game.player = { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2, angle: 0 }; }
