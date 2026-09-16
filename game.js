@@ -53,7 +53,7 @@ const weaponCatalog = {
   flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 45, cooldown: 70, damage: .045, speed: 390, life: .35, pellets: 2, spread: .22, kind: 'gun' },
   pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 20, cooldown: 180, damage: .22, speed: 850, life: .7, pellets: 1, spread: .02, kind: 'gun' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 110, damage: .30, speed: 620, life: .60, pellets: 1, spread: .30, kind: 'gun', oscillating: true, coneSize: .20 },
-  cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 12, cooldown: 90, damage: .40, speed: 625, life: 1, pellets: 2, spread: .40, kind: 'gun', oscillating: true, coneSize: .20 },
+  cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 12, cooldown: 120, damage: .40, speed: 625, life: .80, pellets: 2, spread: .40, kind: 'gun', oscillating: true, coneSize: .20 },
 
   machete: { name: 'MACHETE', ammo: null, cooldown: 520, damage: .45, range: 105, arc: .9, kind: 'melee' },
   warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 900, damage: 1.2, range: 90, arc: .7, kind: 'melee' },
