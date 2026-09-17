@@ -41,7 +41,8 @@ const resourceTypes = [
   { key: 'fuel', name: 'FUEL', color: '#ff865c' }
 ];
 const weaponCatalog = {
-  sidearm: { name: 'SIDEARM', ammo: 'pistolAmmo', magazine: 12, cooldown: 200, damage: .12, speed: 650, life: .7, pellets: 2, spread: .15, kind: 'gun' },
+  sidearm: { name: 'SIDEARM', ammo: 'pistolAmmo', magazine: 12, cooldown: 200, damage: .12, speed: 650, life: .7, pellets: 1, spread: .15, kind: 'gun' },
+  duelSidearm:{name: `DUEL SIDEARM`, ammo: 'pistolAmmo', magazine: 12, cooldown: 100, damage: .12, speed: 650, life: .7, pellets: 1, spread: .15, kind: 'gun', dualWield: true },
   shotgun: { name: 'SHOTGUN', ammo: 'shells', magazine: 6, cooldown: 520, damage: .07, speed: 560, life: .45, pellets: 8, spread: .34, falloff: true, kind: 'gun' },
   minigun: { name: 'MINIGUN', ammo: 'minigunAmmo', magazine: 80, cooldown: 38, damage: .035, speed: 720, life: .8, pellets: 1, spread: .06, kind: 'gun' },
   burstRifle: { name: 'BURST RIFLE', ammo: 'rifleAmmo', magazine: 24, cooldown: 260, damage: .1, speed: 760, life: .8, pellets: 3, spread: .07, kind: 'gun' },
@@ -54,10 +55,10 @@ const weaponCatalog = {
   pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 20, cooldown: 180, damage: .22, speed: 850, life: .7, pellets: 1, spread: .02, kind: 'gun' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 110, damage: .30, speed: 620, life: .60, pellets: 1, spread: .30, kind: 'gun', oscillating: true, coneSize: .20 },
   cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 12, cooldown: 150, damage: .40, speed: 625, life: 0.8, pellets: 2, spread: .45, kind: 'gun', oscillating: true, coneSize: .25 },
-
   machete: { name: 'MACHETE', ammo: null, cooldown: 520, damage: .45, range: 105, arc: .9, kind: 'melee' },
   warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 900, damage: 1.2, range: 90, arc: .7, kind: 'melee' },
-  spear: { name: 'SPEAR', ammo: null, cooldown: 700, damage: .8, range: 155, arc: .35, kind: 'melee' }
+  spear: { name: 'SPEAR', ammo: null, cooldown: 700, damage: .8, range: 155, arc: .35, kind: 'melee' },
+  laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 450, damage: .65, range: 100, arc: .5, kind: 'melee' }
 };
 
 const ammoCatalog = {
@@ -76,6 +77,8 @@ const ammoCatalog = {
     cosmosGauntletAmmo: { name: `COSMOS GAUNTLET CLIPS`, amount: 8, cost: {} }
 };
 const weaponRecipes = {
+  sidearm: { name: 'SIDEARM', time: 4, cost: { steel: 3, wood: 1 }, weapon: 'sidearm' },
+  duelSidearm: { name: 'DUEL SIDEARM', time: 6, cost: { steel: 4, wood: 2, sidearm: 1 }, weapon: 'duelSidearm' },
   shotgun: { name: 'SHOTGUN', time: 9, cost: { steel: 8, wood: 3 }, weapon: 'shotgun' }, 
   minigun: { name: 'MINIGUN', time: 14, cost: { steel: 14, fuel: 5 }, weapon: 'minigun' }, 
   burstRifle: { name: 'BURST RIFLE', time: 10, cost: { steel: 7, wood: 2 }, weapon: 'burstRifle' }, 
@@ -90,6 +93,7 @@ const weaponRecipes = {
   cosmosGauntlet: { name: 'COSMOS GAUNTLET', time: 16, cost: { crystal: 18, steel: 7, relic: 2, atlasCrystal: 1, magicGauntlet: 1 }, weapon: 'cosmosGauntlet' },  
   machete: { name: 'MACHETE', time: 6, cost: { steel: 5, wood: 2 }, weapon: 'machete' }, 
   warHammer: { name: 'WAR HAMMER', time: 9, cost: { steel: 10, stone: 5 }, weapon: 'warHammer' }, 
+  laserBlade: { name: 'LASER BLADE', time: 8, cost: { steel: 10, crystal: 2 , fuel: 5, relic: 1}, weapon: 'laserBlade' },
   spear: { name: 'SPEAR', time: 7, cost: { steel: 6, wood: 4 }, weapon: 'spear' }
 };
 const biomeEffectProfiles = [
@@ -205,7 +209,7 @@ function freshGame() {
     fireTimer: 0, 
     pulseTimer: 0, 
     magicGauntletRechargeTimer: 5, 
-    cosmosGauntletRechargeTimer: 6, // Fixed typo here
+    cosmosGauntletRechargeTimer: 6, 
     biomeKey: null, 
     announcementTimer: 0, 
     camera: { x: 0, y: 0 } 
@@ -245,9 +249,11 @@ function toggleStation() { const nearbyStation = getNearbyStation(); if (!nearby
 function updateStationUI() { const nearbyStation = getNearbyStation(); if (game.stationOpen && nearbyStation !== game.stationOpen) game.stationOpen = null; ui.stations.hidden = !game.stationOpen; document.querySelectorAll('[data-station]').forEach(card => { card.hidden = card.dataset.station !== game.stationOpen; }); }
 function bankInventory() { let deposited = false; resourceTypes.forEach(resource => { const amount = game.inventory[resource.key]; if (!amount) return; game.vault[resource.key] = (game.vault[resource.key] || 0) + amount; game.inventory[resource.key] = 0; deposited = true; }); if (deposited) localStorage.setItem('horde-vault', JSON.stringify(game.vault)); return deposited; }
 function getCraftResourceAmount(key) { 
+  if (key === 'sidearm') return game.unlockedWeapons.sidearm ? 1 : 0;
   if (key === 'magicGauntlet') return game.weapon === 'magicGauntlet' ? 1 : 0;
   return key === 'relic' ? game.relics : key === 'atlasCrystal' ? game.atlasCrystals : (game.vault[key] || 0); 
-}function spendCraftResource(key, amount) { if (key === 'relic') { game.relics = Math.max(0, game.relics - amount); } else if (key === 'atlasCrystal') { game.atlasCrystals = Math.max(0, game.atlasCrystals - amount); } else { game.vault[key] = Math.max(0, (game.vault[key] || 0) - amount); } }
+}
+function spendCraftResource(key, amount) { if (key === 'relic') { game.relics = Math.max(0, game.relics - amount); } else if (key === 'atlasCrystal') { game.atlasCrystals = Math.max(0, game.atlasCrystals - amount); } else { game.vault[key] = Math.max(0, (game.vault[key] || 0) - amount); } }
 const stationRecipes = { medkit: { name: 'MEDKIT', time: 4, cost: { fiber: 4, crystal: 2 }, output: { medkit: 1 } }, ammoPack: { name: 'AMMO PACK', time: 5, cost: { steel: 3, fuel: 2 }, output: { ammoStorage: 5 } }, steelPlate: { name: 'STEEL PLATE', time: 7, cost: { steel: 5, stone: 2 }, output: { steelPlate: 1 } }, smeltIron: { name: 'SMELTED IRON', time: 6, cost: { rawIron: 3, fuel: 10 }, output: { iron: 3 } }, makeSteel: { name: 'STEEL', time: 8, cost: { iron: 2, stone: 3, fuel: 10 }, output: { steel: 2 } }, refineFuel: { name: 'REFINED FUEL', time: 5, cost: { wood: 2, fiber: 2, fuel: 10 }, output: { fuel: 12 } }, ...weaponRecipes, ...Object.fromEntries(Object.entries(ammoCatalog).map(([key, ammo]) => [`ammo_${key}`, { name: ammo.name, time: 3, cost: ammo.cost, ammo: key, amount: ammo.amount }])) };
 function openCraftDetails(recipeKey) { const recipe = stationRecipes[recipeKey]; if (!recipe) return; const costEntries = Object.entries(recipe.cost || {}); const materialRows = costEntries.map(([key, amount]) => { const resource = resourceTypes.find(item => item.key === key) || { name: key.toUpperCase() }; const owned = getCraftResourceAmount(key); const ready = owned >= amount; return `<li class="${ready ? 'ready' : 'missing'}"><span>${resource.name}</span><strong>${owned} / ${amount}</strong></li>`; }).join(''); const missing = costEntries.find(([key, amount]) => getCraftResourceAmount(key) < amount); const canCraft = !missing; ui.craftDetails.innerHTML = `
     <div class="craft-details-header">
@@ -265,7 +271,8 @@ function openCraftDetails(recipeKey) { const recipe = stationRecipes[recipeKey];
 function craftItem(recipeKey) { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary' || game.crafting) return; const recipe = stationRecipes[recipeKey]; const missing = Object.entries(recipe.cost).find(([key, amount]) => getCraftResourceAmount(key) < amount); if (missing) { const shortage = missing[1] - getCraftResourceAmount(missing[0]); ui.stationOutput.textContent = `NEED ${shortage} MORE ${missing[0].toUpperCase()}`; return; } Object.entries(recipe.cost).forEach(([key, amount]) => { spendCraftResource(key, amount); }); game.crafting = { recipeKey, remaining: recipe.time, total: recipe.time }; localStorage.setItem('horde-vault', JSON.stringify(game.vault)); updateInventoryUI(); updateStationButtons(); ui.stationOutput.textContent = `CRAFTING ${recipe.name} // ${recipe.time}s`; ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; }
 function updateCrafting(dt) { if (!game.crafting) return; game.crafting.remaining -= dt; const recipe = stationRecipes[game.crafting.recipeKey]; ui.stationOutput.textContent = `CRAFTING ${recipe.name} // ${Math.ceil(game.crafting.remaining)}s`; if (game.crafting.remaining > 0) return; if (recipe.weapon) { game.unlockedWeapons[recipe.weapon] = true; game.weapon = recipe.weapon; game.ammo = 0; game.reloadPending = weaponCatalog[recipe.weapon].kind !== 'melee'; } else if (recipe.ammo) { game.ammoReserve[recipe.ammo] = (game.ammoReserve[recipe.ammo] || 0) + recipe.amount; } else { Object.entries(recipe.output).forEach(([key, amount]) => { if (key === 'ammoStorage') game.ammoStorage = Math.min(maxAmmoStorage, game.ammoStorage + amount); else if (resourceTypes.some(resource => resource.key === key)) game.vault[key] = (game.vault[key] || 0) + amount; else if (key === 'medkit') game.stationItems[key] = Math.min(5, (game.stationItems[key] || 0) + amount); else game.stationItems[key] = (game.stationItems[key] || 0) + amount; }); } localStorage.setItem('horde-vault', JSON.stringify(game.vault)); localStorage.setItem('horde-station-items', JSON.stringify(game.stationItems)); game.crafting = null; updateInventoryUI(); updateStationButtons(); updateAmmoUI(); ui.stationOutput.textContent = `COMPLETE // ${recipe.name}`; }
 function updateStationButtons() { document.querySelectorAll('[data-craft]').forEach(button => { button.disabled = Boolean(game.crafting); button.classList.toggle('crafting', Boolean(game.crafting && button.dataset.craft === game.crafting.recipeKey)); }); }
-function renderArsenal() { const weapons = Object.entries(weaponRecipes).map(([key, recipe]) => `<button type="button" data-craft="${key}">${recipe.name}<small>CRAFT WEAPON</small></button>`).join(''); const ammo = Object.entries(ammoCatalog).filter(([key]) => key !== 'pistolAmmo' && key !== 'magicGauntletAmmo').map(([key, recipe]) => `<button type="button" data-craft="ammo_${key}">${recipe.name}<small>CRAFT AMMO</small></button>`).join(''); ui.arsenal.innerHTML = `<span class="station-title">ARSENAL // WEAPONS</span>${weapons}<span class="station-title">AMMO FABRICATOR</span>${ammo}`; ui.arsenal.addEventListener('click', event => { const button = event.target.closest('[data-craft]'); if (button) openCraftDetails(button.dataset.craft); }); updateStationButtons(); }
+function renderArsenal() 
+{ const weapons = Object.entries(weaponRecipes).map(([key, recipe]) => `<button type="button" data-craft="${key}">${recipe.name}<small>CRAFT WEAPON</small></button>`).join(''); const ammo = Object.entries(ammoCatalog).filter(([key]) => key !== 'pistolAmmo' && key !== 'magicGauntletAmmo' && key !== `cosmosGauntletAmmo`).map(([key, recipe]) => `<button type="button" data-craft="ammo_${key}">${recipe.name}<small>CRAFT AMMO</small></button>`).join(''); ui.arsenal.innerHTML = `<span class="station-title">ARSENAL // WEAPONS</span>${weapons}<span class="station-title">AMMO FABRICATOR</span>${ammo}`; ui.arsenal.addEventListener('click', event => { const button = event.target.closest('[data-craft]'); if (button) openCraftDetails(button.dataset.craft); }); updateStationButtons(); }
 renderArsenal();
 function drawBiomeHazard(biome, width, height) { if (biome.key === 'sanctuary') return; const hazard = biome.effects.hazard; const time = performance.now() / 1000; const name = hazard.name; ctx.save(); ctx.globalAlpha = .2; if (name.includes('MIST') || name.includes('ASH') || name.includes('SPORES') || name.includes('RAIN')) { ctx.fillStyle = biome.color; for (let i = 0; i < 28; i++) { const x = (i * 97 + time * 18) % width; const y = (i * 53 + time * 11) % height; ctx.beginPath(); ctx.arc(x, y, 3 + (i % 4), 0, Math.PI * 2); ctx.fill(); } } else if (name.includes('HEAT') || name.includes('EMBER') || name.includes('FIRE') || name.includes('BURN')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 2; for (let i = 0; i < 18; i++) { const x = (i * 131 + time * 35) % width; const y = (i * 71 + time * 24) % height; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 12, y + 28); ctx.stroke(); } } else if (name.includes('FREEZE') || name.includes('FROST') || name.includes('COLD')) { ctx.fillStyle = biome.color; for (let i = 0; i < 24; i++) { const x = (i * 83 + time * 12) % width; const y = (i * 61 + time * 30) % height; ctx.fillRect(x, y, 2, 8); } } else if (name.includes('LIGHTNING') || name.includes('THUNDER')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 3; for (let i = 0; i < 3; i++) { const x = (i * 211 + time * 7) % width; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x - 14, height * .25); ctx.lineTo(x + 8, height * .5); ctx.lineTo(x - 12, height * .78); ctx.stroke(); } } else if (name.includes('ROOT') || name.includes('BONE')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 4; for (let i = 0; i < 8; i++) { const x = i * width / 7; ctx.beginPath(); ctx.moveTo(x, height); ctx.quadraticCurveTo(x + 20, height * .7, x - 8, height * .42); ctx.stroke(); } } else if (name.includes('GRAVITY') || name.includes('PRESSURE') || name.includes('HORIZON')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 2; for (let radius = 70; radius < Math.max(width, height); radius += 100) { ctx.beginPath(); ctx.arc(width / 2, height / 2, radius + Math.sin(time * 2 + radius) * 8, 0, Math.PI * 2); ctx.stroke(); } } else { ctx.fillStyle = biome.color; for (let i = 0; i < 18; i++) { const x = (i * 113 + time * 20) % width; const y = (i * 67 + time * 14) % height; ctx.beginPath(); ctx.arc(x, y, 2 + i % 3, 0, Math.PI * 2); ctx.fill(); } } ctx.restore(); }
 function generateHazardZones() { const zones = []; const random = seededRandom(game.seed + 71); for (let i = 0; i < 110; i++) { const x = (random() - .5) * mapRadius * 2; const y = (random() - .5) * mapRadius * 1.5; const biome = getBiome(x, y); if (biome.key === 'sanctuary' || biome.key === 'void') continue; zones.push({ x, y, radius: 90 + random() * 150, biomeKey: biome.key, color: biome.color, damagePerSecond: biome.effects.hazard.zoneDamagePerSecond * 1.6, hazard: biome.effects.hazard }); } return zones; }
