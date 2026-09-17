@@ -49,11 +49,11 @@ const weaponCatalog = {
   smg: { name: 'SMG', ammo: 'smgAmmo', magazine: 30, cooldown: 50, damage: .065, speed: 680, life: .7, pellets: 1, spread: .12, kind: 'gun' },
   laser: { name: 'LASER', ammo: 'cells', magazine: 18, cooldown: 125, damage: .18, speed: 1000, life: .55, pellets: 1, spread: 0, kind: 'gun' },
   grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 3, cooldown: 900, damage: .68, speed: 350, life: 1.4, pellets: 1, spread: 0, blast: 95, kind: 'gun' },
-  railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 2, cooldown: 1200, damage: 4.2, speed: 1500, life: 1, pellets: 1, spread: 0, kind: 'gun' },
+  railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 1, cooldown: 1300, damage: 4.2, speed: 1500, life: 1, pellets: 1, spread: 0, kind: 'gun' },
   flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 45, cooldown: 70, damage: .045, speed: 390, life: .35, pellets: 2, spread: .22, kind: 'gun' },
   pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 20, cooldown: 180, damage: .22, speed: 850, life: .7, pellets: 1, spread: .02, kind: 'gun' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 110, damage: .30, speed: 620, life: .60, pellets: 1, spread: .30, kind: 'gun', oscillating: true, coneSize: .20 },
-  cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 12, cooldown: 90, damage: .40, speed: 625, life: 1, pellets: 2, spread: .40, kind: 'gun', oscillating: true, coneSize: .20 },
+  cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 12, cooldown: 150, damage: .40, speed: 625, life: 0.8, pellets: 2, spread: .45, kind: 'gun', oscillating: true, coneSize: .25 },
 
   machete: { name: 'MACHETE', ammo: null, cooldown: 520, damage: .45, range: 105, arc: .9, kind: 'melee' },
   warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 900, damage: 1.2, range: 90, arc: .7, kind: 'melee' },
@@ -69,7 +69,7 @@ const ammoCatalog = {
     smgAmmo: { name: 'SMG AMMO', amount: 25, cost: { rawIron: 3, fuel: 2 } }, 
     cells: { name: 'LASER CELLS', amount: 12, cost: { crystal: 3, steel: 2 } }, 
     grenades: { name: 'GRENADE CASINGS', amount: 3, cost: { iron: 3, fuel: 4 } }, 
-    slugs: { name: 'RAIL SLUGS', amount: 2, cost: { steel: 5, crystal: 2 } }, 
+    slugs: { name: 'RAIL SLUGS', amount: 6, cost: { steel: 5, crystal: 2 } }, 
     fuelCells: { name: 'FLAME FUEL', amount: 30, cost: { fuel: 8, rawIron: 2 } }, 
     pulseCells: { name: 'PULSE CELLS', amount: 15, cost: { crystal: 4, steel: 3 } }, 
     magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 12, cost: {} },
@@ -86,8 +86,9 @@ const weaponRecipes = {
   railgun: { name: 'RAILGUN', time: 18, cost: { steel: 15, crystal: 6, relic: 1, atlasCrystal: 1 }, weapon: 'railgun' },
   flamethrower: { name: 'FLAMETHROWER', time: 10, cost: { steel: 5, fuel: 10 }, weapon: 'flamethrower' }, 
   pulseCarbine: { name: 'PULSE CARBINE', time: 15, cost: { steel: 10, crystal: 6 }, weapon: 'pulseCarbine' }, 
-  magicGauntlet: { name: 'MAGIC GAUNTLET', time: 1, cost: { }, weapon: 'magicGauntlet' },
-cosmosGauntlet: { name: 'COSMOS GAUNTLET', time: 1, cost: { crystal: 15, steel: 20, relic: 2, atlasCrystal: 1, magicGauntlet: 1 }, weapon: 'cosmosGauntlet' },  machete: { name: 'MACHETE', time: 6, cost: { steel: 5, wood: 2 }, weapon: 'machete' }, 
+  magicGauntlet: { name: 'MAGIC GAUNTLET', time: 11, cost: { crystal: 16, steel: 5, relic: 1}, weapon: 'magicGauntlet' },
+  cosmosGauntlet: { name: 'COSMOS GAUNTLET', time: 16, cost: { crystal: 18, steel: 7, relic: 2, atlasCrystal: 1, magicGauntlet: 1 }, weapon: 'cosmosGauntlet' },  
+  machete: { name: 'MACHETE', time: 6, cost: { steel: 5, wood: 2 }, weapon: 'machete' }, 
   warHammer: { name: 'WAR HAMMER', time: 9, cost: { steel: 10, stone: 5 }, weapon: 'warHammer' }, 
   spear: { name: 'SPEAR', time: 7, cost: { steel: 6, wood: 4 }, weapon: 'spear' }
 };
@@ -155,7 +156,7 @@ const enemyFamilies = [
 const enemyVariants = [
   { name: 'SKIRMISHER', hp: .12, speed: 1.3, radius: .85, damage: .8, contactDamage: 2, score: 80, drops: 1 },
   { name: 'HUNTER', hp: .24, speed: 1.08, radius: 1, damage: 1, contactDamage: 3, score: 110, drops: 2 },
-  { name: 'TANK', hp: .6, speed: .58, radius: 1.65, damage: 1.8, contactDamage: 4, score: 240, drops: 3 },
+  { name: 'TANK', hp: 2.6, speed: .58, radius: 1.65, damage: 1.8, contactDamage: 4, score: 240, drops: 3 },
   { name: 'ELITE', hp: 2.2, speed: 1.15, radius: 1.25, damage: 1.35, contactDamage: 28, score: 300, drops: 3 },
   { name: 'MINI-BOSS', hp: 8, speed: .78, radius: 2.15, damage: 2.5, contactDamage: 35, score: 750, drops: 5, boss: true }
 ];
@@ -282,7 +283,7 @@ function update(dt) { const p = game.player; const dx = (keys.d ? 1 : 0) - (keys
   game.hazardZones.forEach(zone => { if (Math.hypot(p.x - zone.x, p.y - zone.y) < zone.radius) game.health -= zone.damagePerSecond * dt; }); const inVoid = biome.key === 'void'; if (inVoid) { game.voidSpawnTimer -= dt; if (game.voidSpawnTimer <= 0 && !game.enemies.some(enemy => enemy.voidWorm)) { spawn(); game.voidSpawnTimer = 12 + Math.random() * 12; } } else { game.voidSpawnTimer = 0; game.spawnTimer -= dt; const target = safe ? 0 : 5 + game.currentSector * 3 + Math.floor(distance / 260); if (game.spawnTimer <= 0 && game.enemies.length < Math.min(100, target)) { spawn(); game.spawnTimer = Math.max(.12, .8 - game.currentSector * .025 - distance / 4000); } } game.bullets.forEach(b => {
     if (b.oscillating) {
       const speed = Math.hypot(b.vx, b.vy) || 1;
-      b.swayPhase = (b.swayPhase || 0) + dt * 12;
+      b.swayPhase = (b.swayPhase || 0) + dt * 14;
       const swayOffset = Math.sin(b.swayPhase) * (b.swayAmplitude || 0);
       const angle = b.baseAngle + swayOffset;
       b.vx = Math.cos(angle) * speed;
