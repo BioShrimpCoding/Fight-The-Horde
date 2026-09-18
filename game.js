@@ -23,7 +23,7 @@ const beaconRegionRadius = 1200;
 const mapRadius = 18000;
 const sectorRegions = [
   [{ name: 'TOXIC MARSH', color: '#65b49a', dark: '#172d2d' }, { name: 'SCORCHED WASTES', color: '#ff865c', dark: '#3b211d' }, { name: 'FROZEN PEAKS', color: '#9fd8e3', dark: '#1b2a3c' }, { name: 'ASHEN LOWLANDS', color: '#c88968', dark: '#322522' }],
-  [{ name: 'THUNDER PLAINS', color: '#f2c96d', dark: '#302b1f' }, { name: 'IRONWOOD', color: '#8fc47e', dark: '#1d3026' }, { name: 'GLASS DESERT', color: '#e889b4', dark: '#34202d' }, { name: 'FROSTFALL TRENCH', color: '#82c5d7', dark: '#1b2e3b' }],
+  [{ name: 'THUNDER PLAINS', color: '#f2c96d', dark: '#302b1f' }, { name: 'IRONWOOD', color: '#8fc47e', dark: '#1d3026' }, { name: 'GLASS DESERT', color: '#ad7b07', dark: '#5b3603' }, { name: 'FROSTFALL TRENCH', color: '#82c5d7', dark: '#1b2e3b' }],
   [{ name: 'BONE ORCHARD', color: '#d7b07a', dark: '#352b25' }, { name: 'EMBER SEA', color: '#ff725e', dark: '#3b201d' }, { name: 'BLACKROOT WILDS', color: '#8fcf9d', dark: '#1c3026' }, { name: 'GRAVITY FIELDS', color: '#b69be8', dark: '#29233b' }],
   [{ name: 'STORM CITADEL', color: '#8db7ee', dark: '#202d45' }, { name: 'CRIMSON CHASM', color: '#ef6672', dark: '#3b2029' }, { name: 'NULL ICE', color: '#a9e3e6', dark: '#1c3338' }, { name: 'WRAITH MOOR', color: '#a88fd0', dark: '#292238' }],
   [{ name: 'SUNLESS VALE', color: '#bd9f7a', dark: '#30271f' }, { name: 'STARFIRE RIDGE', color: '#ff9b62', dark: '#3c251d' }, { name: 'DYING NEBULA', color: '#d58ee0', dark: '#34213b' }, { name: 'ABYSSAL SHELF', color: '#709ed0', dark: '#1d2c45' }],
@@ -50,7 +50,7 @@ const weaponCatalog = {
   laser: { name: 'LASER', ammo: 'cells', magazine: 18, cooldown: 125, damage: .18, speed: 1000, life: .55, pellets: 1, spread: 0, kind: 'gun' },
   grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 3, cooldown: 900, damage: .68, speed: 350, life: 1.4, pellets: 1, spread: 0, blast: 95, kind: 'gun' },
   railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 1, cooldown: 1300, damage: 4.2, speed: 1500, life: 1, pellets: 1, spread: 0, kind: 'gun' },
-  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 45, cooldown: 70, damage: .045, speed: 390, life: .35, pellets: 2, spread: .22, kind: 'gun' },
+  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 35, damage: .02, speed: 450, life: 3.0, pellets: 2, spread: .32, kind: 'gun' },
   pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 20, cooldown: 180, damage: .22, speed: 850, life: .7, pellets: 1, spread: .02, kind: 'gun' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 110, damage: .30, speed: 620, life: .60, pellets: 1, spread: .30, kind: 'gun', oscillating: true, coneSize: .20 },
   cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 12, cooldown: 150, damage: .40, speed: 625, life: 0.8, pellets: 2, spread: .45, kind: 'gun', oscillating: true, coneSize: .25 },
@@ -70,7 +70,7 @@ const ammoCatalog = {
     cells: { name: 'LASER CELLS', amount: 12, cost: { crystal: 3, steel: 2 } }, 
     grenades: { name: 'GRENADE CASINGS', amount: 3, cost: { iron: 3, fuel: 4 } }, 
     slugs: { name: 'RAIL SLUGS', amount: 6, cost: { steel: 5, crystal: 2 } }, 
-    fuelCells: { name: 'FLAME FUEL', amount: 30, cost: { fuel: 8, rawIron: 2 } }, 
+    fuelCells: { name: 'FLAME FUEL', amount: 4, cost: { fuel: 8, rawIron: 2 } }, 
     pulseCells: { name: 'PULSE CELLS', amount: 15, cost: { crystal: 4, steel: 3 } }, 
     magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 12, cost: {} },
     cosmosGauntletAmmo: { name: `COSMOS GAUNTLET CLIPS`, amount: 8, cost: {} }
