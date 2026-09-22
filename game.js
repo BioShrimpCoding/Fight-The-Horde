@@ -31,51 +31,72 @@ const sectorRegions = [
 ];
 const biomes = sectorRegions[0];
 const resourceTypes = [
-  { key: 'wood', name: 'WOOD', color: '#c88968' },
-  { key: 'rawIron', name: 'RAW IRON', color: '#8b8584' },
-  { key: 'iron', name: 'IRON', color: '#d7d0c8' },
-  { key: 'steel', name: 'STEEL', color: '#9fd8e3' },
-  { key: 'stone', name: 'STONE', color: '#b9b0a8' },
-  { key: 'fiber', name: 'FIBER', color: '#8fc47e' },
-  { key: 'crystal', name: 'CRYSTAL', color: '#d58ee0' },
-  { key: 'fuel', name: 'FUEL', color: '#ff865c' }
+  { key: 'wood', name: 'WOOD', color: '#c88968', weight: 12 },
+  { key: 'rawIron', name: 'RAW IRON', color: '#8b8584', weight: 12 },
+  { key: 'iron', name: 'IRON', color: '#d7d0c8', weight: 10 },
+  { key: 'steel', name: 'STEEL', color: '#9fd8e3', weight: 5 }, 
+  { key: 'stone', name: 'STONE', color: '#b9b0a8', weight: 10 },
+  { key: 'fiber', name: 'FIBER', color: '#8fc47e', weight: 12 },
+  { key: 'crystal', name: 'CRYSTAL', color: '#d58ee0', weight: 7 },
+  { key: 'fuel', name: 'FUEL', color: '#ff865c', weight: 9 }
 ];
 const weaponCatalog = {
-  sidearm: { name: 'SIDEARM', ammo: 'pistolAmmo', magazine: 12, cooldown: 200, damage: .12, speed: 650, life: .7, pellets: 1, spread: .15, kind: 'gun' },
-  duelSidearm:{name: `DUEL SIDEARM`, ammo: 'pistolAmmo', magazine: 12, cooldown: 100, damage: .12, speed: 650, life: .7, pellets: 1, spread: .15, kind: 'gun', dualWield: true },
-  shotgun: { name: 'SHOTGUN', ammo: 'shells', magazine: 6, cooldown: 520, damage: .07, speed: 560, life: .45, pellets: 8, spread: .34, falloff: true, kind: 'gun' },
-  minigun: { name: 'MINIGUN', ammo: 'minigunAmmo', magazine: 80, cooldown: 38, damage: .035, speed: 720, life: .8, pellets: 1, spread: .06, kind: 'gun' },
-  burstRifle: { name: 'BURST RIFLE', ammo: 'rifleAmmo', magazine: 24, cooldown: 260, damage: .1, speed: 760, life: .8, pellets: 3, spread: .07, kind: 'gun' },
-  sniper: { name: 'SNIPER', ammo: 'marksmanAmmo', magazine: 4, cooldown: 780, damage: .7, speed: 1100, life: 1, pellets: 1, spread: 0, kind: 'gun' },
-  smg: { name: 'SMG', ammo: 'smgAmmo', magazine: 30, cooldown: 50, damage: .065, speed: 680, life: .7, pellets: 1, spread: .12, kind: 'gun' },
-  laser: { name: 'LASER', ammo: 'cells', magazine: 18, cooldown: 125, damage: .18, speed: 1000, life: .55, pellets: 1, spread: 0, kind: 'gun' },
-  grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 3, cooldown: 900, damage: .68, speed: 350, life: 1.4, pellets: 1, spread: 0, blast: 95, kind: 'gun' },
-  railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 1, cooldown: 1300, damage: 4.2, speed: 1500, life: 1, pellets: 1, spread: 0, kind: 'gun' },
-  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 35, damage: .02, speed: 450, life: 3.0, pellets: 2, spread: .32, kind: 'gun' },
-  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 20, cooldown: 180, damage: .22, speed: 850, life: .7, pellets: 1, spread: .02, kind: 'gun' },
-  magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 110, damage: .30, speed: 620, life: .60, pellets: 1, spread: .30, kind: 'gun', oscillating: true, coneSize: .20 },
-  cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 12, cooldown: 150, damage: .40, speed: 625, life: 0.8, pellets: 2, spread: .45, kind: 'gun', oscillating: true, coneSize: .25 },
-  machete: { name: 'MACHETE', ammo: null, cooldown: 520, damage: .45, range: 105, arc: .9, kind: 'melee' },
-  warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 900, damage: 1.2, range: 90, arc: .7, kind: 'melee' },
-  spear: { name: 'SPEAR', ammo: null, cooldown: 700, damage: .8, range: 155, arc: .35, kind: 'melee' },
-  laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 450, damage: .65, range: 100, arc: .5, kind: 'melee' }
+  // Tier 0 (Starter)
+  sidearm: { name: 'SIDEARM', ammo: 'pistolAmmo', magazine: 12, cooldown: 200, damage: 0.30, speed: 650, life: .7, pellets: 1, spread: .15, kind: 'gun' },
+  
+  // Tier 1 (Early Game)
+  duelSidearm: { name: 'DUEL SIDEARM', ammo: 'pistolAmmo', magazine: 24, cooldown: 110, damage: 0.22, speed: 680, life: .7, pellets: 1, spread: .14, kind: 'gun', dualWield: true },
+  smg: { name: 'SMG', ammo: 'smgAmmo', magazine: 32, cooldown: 55, damage: 0.16, speed: 700, life: .7, pellets: 1, spread: .12, kind: 'gun' },
+  machete: { name: 'MACHETE', ammo: null, cooldown: 450, damage: 1.20, range: 105, arc: .9, kind: 'melee' },
+  spear: { name: 'SPEAR', ammo: null, cooldown: 600, damage: 1.80, range: 160, arc: .35, kind: 'melee' },
+
+  // Tier 2 (Mid Game)
+  shotgun: { name: 'SHOTGUN', ammo: 'shells', magazine: 6, cooldown: 480, damage: 0.30, speed: 580, life: .45, pellets: 8, spread: .34, falloff: true, kind: 'gun' },
+  burstRifle: { name: 'BURST RIFLE', ammo: 'rifleAmmo', magazine: 24, cooldown: 220, damage: 0.325, speed: 780, life: .8, pellets: 3, spread: .06, kind: 'gun' },
+  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 40, damage: 0.10, speed: 450, life: .40, pellets: 2, spread: .32, kind: 'gun' },
+  sniper: { name: 'SNIPER', ammo: 'marksmanAmmo', magazine: 5, cooldown: 750, damage: 3.60, speed: 1200, life: 1, pellets: 1, spread: 0, kind: 'gun' },
+  warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 850, damage: 4.20, range: 95, arc: .75, kind: 'melee' },
+
+  // Tier 3 (Late Mid Game)
+  minigun: { name: 'MINIGUN', ammo: 'minigunAmmo', magazine: 100, cooldown: 30, damage: 0.25, speed: 750, life: .8, pellets: 1, spread: .08, kind: 'gun' },
+  laser: { name: 'LASER', ammo: 'cells', magazine: 20, cooldown: 100, damage: 0.85, speed: 1100, life: .55, pellets: 1, spread: 0, kind: 'gun' },
+  grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 4, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 110, kind: 'gun' },
+  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 880, life: .7, pellets: 1, spread: .02, kind: 'gun' },
+  laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 2.80, range: 105, arc: .55, kind: 'melee' },
+
+  // Tier 4 (Exotic / Endgame)
+  magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 100, damage: 1.30, speed: 640, life: .60, pellets: 1, spread: .30, kind: 'gun', oscillating: true, coneSize: .20 },
+  railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 2, cooldown: 1200, damage: 18.00, speed: 1600, life: 1, pellets: 1, spread: 0, kind: 'gun' },
+  cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 16, cooldown: 120, damage: 1.10, speed: 650, life: 0.8, pellets: 2, spread: .40, kind: 'gun', oscillating: true, coneSize: .25 }
 };
 
+// ==================== AMMO CRAFTING BATCHES ====================
 const ammoCatalog = {
-  pistolAmmo: { name: 'PISTOL AMMO', amount: 12, cost: { rawIron: 2, fuel: 1 } }, 
-  shells: { name: 'SHOTGUN SHELLS', amount: 6, cost: { rawIron: 3, fuel: 2 } }, 
-  minigunAmmo: { name: 'MINIGUN BELT', amount: 40, cost: { steel: 4, fuel: 3 } }, 
-  rifleAmmo: { name: 'RIFLE AMMO', amount: 18, cost: { iron: 3, fuel: 2 } },
-   marksmanAmmo: { name: 'MARKSMAN ROUNDS', amount: 4, cost: { steel: 4, crystal: 1 } },
-    smgAmmo: { name: 'SMG AMMO', amount: 25, cost: { rawIron: 3, fuel: 2 } }, 
-    cells: { name: 'LASER CELLS', amount: 12, cost: { crystal: 3, steel: 2 } }, 
-    grenades: { name: 'GRENADE CASINGS', amount: 3, cost: { iron: 3, fuel: 4 } }, 
-    slugs: { name: 'RAIL SLUGS', amount: 6, cost: { steel: 5, crystal: 2 } }, 
-    fuelCells: { name: 'FLAME FUEL', amount: 4, cost: { fuel: 8, rawIron: 2 } }, 
-    pulseCells: { name: 'PULSE CELLS', amount: 15, cost: { crystal: 4, steel: 3 } }, 
-    magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 12, cost: {} },
-    cosmosGauntletAmmo: { name: `COSMOS GAUNTLET CLIPS`, amount: 8, cost: {} }
+  pistolAmmo: { name: 'PISTOL AMMO', amount: 24, cost: { rawIron: 2, fuel: 1 } }, 
+  shells: { name: 'SHOTGUN SHELLS', amount: 12, cost: { rawIron: 3, fuel: 2 } }, 
+  minigunAmmo: { name: 'MINIGUN BELT', amount: 100, cost: { steel: 4, fuel: 3 } }, 
+  rifleAmmo: { name: 'RIFLE AMMO', amount: 36, cost: { iron: 3, fuel: 2 } },
+  marksmanAmmo: { name: 'MARKSMAN ROUNDS', amount: 10, cost: { steel: 4, crystal: 1 } },
+  smgAmmo: { name: 'SMG AMMO', amount: 60, cost: { rawIron: 3, fuel: 2 } }, 
+  cells: { name: 'LASER CELLS', amount: 30, cost: { crystal: 3, steel: 2 } }, 
+  grenades: { name: 'GRENADE CASINGS', amount: 8, cost: { iron: 3, fuel: 4 } }, 
+  slugs: { name: 'RAIL SLUGS', amount: 4, cost: { steel: 5, crystal: 2 } }, 
+  fuelCells: { name: 'FLAME FUEL', amount: 160, cost: { fuel: 8, rawIron: 2 } }, 
+  pulseCells: { name: 'PULSE CELLS', amount: 35, cost: { crystal: 4, steel: 3 } }, 
+  magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 14, cost: {} },
+  cosmosGauntletAmmo: { name: 'COSMOS GAUNTLET CLIPS', amount: 12, cost: {} }
 };
+
+// ==================== REBALANCED ENEMIES ====================
+const enemyVariants = [
+  { name: 'SKIRMISHER', hp: 0.60, speed: 1.3, radius: .85, damage: .8, contactDamage: 2, score: 80, drops: 1 },
+  { name: 'HUNTER', hp: 1.20, speed: 1.08, radius: 1, damage: 1, contactDamage: 3, score: 110, drops: 2 },
+  { name: 'TANK', hp: 8.00, speed: .58, radius: 1.65, damage: 1.8, contactDamage: 4, score: 240, drops: 3 },
+  { name: 'ELITE', hp: 6.00, speed: 1.15, radius: 1.25, damage: 1.35, contactDamage: 28, score: 300, drops: 3 },
+  { name: 'MINI-BOSS', hp: 25.00, speed: .78, radius: 2.15, damage: 2.5, contactDamage: 35, score: 750, drops: 5, boss: true }
+];
+
+
 const weaponRecipes = {
   sidearm: { name: 'SIDEARM', time: 4, cost: { steel: 3, wood: 1 }, weapon: 'sidearm' },
   duelSidearm: { name: 'DUEL SIDEARM', time: 6, cost: { steel: 4, wood: 2, sidearm: 1 }, weapon: 'duelSidearm' },
@@ -86,7 +107,7 @@ const weaponRecipes = {
   smg: { name: 'SMG', time: 8, cost: { iron: 6, fuel: 3 }, weapon: 'smg' }, 
   laser: { name: 'LASER', time: 13, cost: { crystal: 7, steel: 4 }, weapon: 'laser' }, 
   grenadeLauncher: { name: 'GRENADE LAUNCHER', time: 12, cost: { steel: 8, fuel: 6 }, weapon: 'grenadeLauncher' }, 
-  railgun: { name: 'RAILGUN', time: 18, cost: { steel: 15, crystal: 6, relic: 1, atlasCrystal: 1 }, weapon: 'railgun' },
+  railgun: { name: 'RAILGUN', time: 18, cost: { steel: 15, crystal: 6, relic: 1}, weapon: 'railgun' },
   flamethrower: { name: 'FLAMETHROWER', time: 10, cost: { steel: 5, fuel: 10 }, weapon: 'flamethrower' }, 
   pulseCarbine: { name: 'PULSE CARBINE', time: 15, cost: { steel: 10, crystal: 6 }, weapon: 'pulseCarbine' }, 
   magicGauntlet: { name: 'MAGIC GAUNTLET', time: 11, cost: { crystal: 16, steel: 5, relic: 1}, weapon: 'magicGauntlet' },
@@ -157,13 +178,7 @@ const enemyFamilies = [
   ['DUSK STAG', 'DARKSTEP', 'evasion'], ['STARFIRE GOLEM', 'STARFIRE', 'burn'], ['NEBULA SWARM', 'RADIATION', 'drain'], ['PRESSURE TITAN', 'PRESSURE WAVE', 'pull'],
   ['VOID CRAWLER', 'REALITY TEAR', 'armor'], ['HORIZON DEVOURER', 'SINGULARITY', 'pull'], ['STAR EATER', 'SOLAR FLARE', 'shock'], ['ENDLESS SHADE', 'VOID STEP', 'evasion']
 ];
-const enemyVariants = [
-  { name: 'SKIRMISHER', hp: .12, speed: 1.3, radius: .85, damage: .8, contactDamage: 2, score: 80, drops: 1 },
-  { name: 'HUNTER', hp: .24, speed: 1.08, radius: 1, damage: 1.4, contactDamage: 3, score: 110, drops: 2 },
-  { name: 'TANK', hp: 2.6, speed: .58, radius: 1.65, damage: 1, contactDamage: 4, score: 240, drops: 3 },
-  { name: 'ELITE', hp: 2.2, speed: 1.15, radius: 1.25, damage: 1.35, contactDamage: 28, score: 300, drops: 3 },
-  { name: 'MINI-BOSS', hp: 8, speed: .78, radius: 2.15, damage: 2.5, contactDamage: 35, score: 750, drops: 5, boss: true }
-];
+
 sectorRegions.flat().forEach((biome, index) => { biome.effects = { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { ...biomeHazards[index], visual: hazardVisuals[index], zoneDamagePerSecond: biomeHazards[index].damagePerSecond }, ...biomeEffectProfiles[index] }; });
 sectorRegions.flat().forEach((biome, index) => { const family = enemyFamilies[index]; biome.enemyFamily = { name: family[0], ability: family[1], effect: family[2] }; });
 function seededRandom(seed) { let value = seed >>> 0; return () => { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; }; }
@@ -230,12 +245,94 @@ function meleeAttack(weapon) { const p = game.player; game.enemies.forEach(enemy
 function shoot() { if (!game.active || game.fireTimer > 0) return; const weapon = weaponCatalog[game.weapon]; const p = game.player; const effects = getBiome(p.x, p.y).effects; if (weapon.kind === 'melee') { game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier; meleeAttack(weapon); return; } if (game.ammo <= 0) { game.reloadPending = true; return; } game.ammo--; if (game.ammo === 0) game.reloadPending = true; game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier; for (let i = 0; i < weapon.pellets; i++) { const angle = p.angle + (Math.random() - .5) * weapon.spread; const bullet = { x: p.x + Math.cos(angle) * 20, y: p.y + Math.sin(angle) * 20, vx: Math.cos(angle) * weapon.speed, vy: Math.sin(angle) * weapon.speed, life: weapon.life, damage: weapon.damage, blast: weapon.blast || 0, falloff: weapon.falloff, baseAngle: angle, oscillating: Boolean(weapon.oscillating), swayAmplitude: weapon.coneSize || 0, swayPhase: Math.random() * Math.PI * 2 }; game.bullets.push(bullet); } for (let i = 0; i < 4; i++) game.sparks.push({ x: p.x + Math.cos(p.angle) * 25, y: p.y + Math.sin(p.angle) * 25, life: .2, vx: Math.cos(p.angle) * 100 + (Math.random() - .5) * 100, vy: Math.sin(p.angle) * 100 + (Math.random() - .5) * 100 }); }
 function useMedkit() { if (!game.active || !game.stationItems.medkit || game.health >= 100) return; game.stationItems.medkit = Math.max(0, (game.stationItems.medkit || 0) - 1); game.health = Math.min(100, game.health + 45); localStorage.setItem('horde-station-items', JSON.stringify(game.stationItems)); updateAmmoUI(); ui.stationOutput.textContent = 'MEDKIT USED // +45% VITALITY'; }
 function pulse() { if (game.pulseTimer > 0) return; game.pulseTimer = 7 * getBiome(game.player.x, game.player.y).effects.pulseCooldownMultiplier; game.enemies.forEach(e => { if (e.hp && Math.hypot(e.x - game.player.x, e.y - game.player.y) < 170) { e.hp -= 2; if (e.hp <= 0) defeatEnemy(e, 50); burst(e.x, e.y, 8, 180); } }); burst(game.player.x, game.player.y, 35, 260); }
-function createVoidWorm(x, y, canSplit = true) { const maxHp = 24; const enemy = { x, y, family: 'VOID WORM', familyIndex: 24, ability: 'VOID BURROW', effect: null, variant: 'COLOSSAL', boss: false, voidWorm: true, canSplit, color: '#0a4f44', r: 34, speed: 72, hp: maxHp, maxHp, damage: 0, contactDamage: 10, score: 500, drops: 0, abilityTimer: 1.5, shieldTimer: 0, hitTimer: 0 }; let health = maxHp; Object.defineProperty(enemy, 'hp', { configurable: true, get: () => health, set: value => { const attemptedDamage = health - value; const weapon = weaponCatalog[game.weapon]; const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y); const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12; health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value; } }); return enemy; }
-function spawn() { const angle = Math.random() * Math.PI * 2; const radius = Math.max(canvas.clientWidth, canvas.clientHeight) * .72; const x = game.player.x + Math.cos(angle) * radius; const y = game.player.y + Math.sin(angle) * radius; const biome = getBiome(x, y); if (biome.key === 'sanctuary') return; if (biome.key === 'void') { if (getBiome(game.player.x, game.player.y).key !== 'void' || game.enemies.some(enemy => enemy.voidWorm)) return; game.enemies.push(createVoidWorm(x, y)); return; } const family = biome.enemyFamily; const distance = Math.hypot(x, y); const variantIndex = Math.random() < Math.min(.22, distance / 30000 * .22) ? 4 : Math.floor(Math.random() * 4); const variant = enemyVariants[variantIndex]; const baseSpeed = 38 + game.currentSector * 10 + Math.random() * 22; const familyIndex = (biome.sector - 1) * 4 + Number(biome.key.split('-')[2]); const enemy = { x, y, family: family.name, familyIndex, ability: family.ability, effect: family.effect, variant: variant.name, boss: Boolean(variant.boss), color: biome.color, r: (10 + Math.random() * 6) * variant.radius, speed: baseSpeed * variant.speed, hp: Math.ceil(variant.hp * (1 + game.currentSector * .12)), maxHp: Math.ceil(variant.hp * (1 + game.currentSector * .12)), damage: variant.damage, contactDamage: variant.contactDamage, score: variant.score, drops: variant.drops, abilityTimer: 1 + Math.random() * 2, shieldTimer: 0, hitTimer: 0 }; let health = enemy.hp; Object.defineProperty(enemy, 'hp', { configurable: true, get: () => health, set: value => { const attemptedDamage = health - value; const weapon = weaponCatalog[game.weapon]; const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y); const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12; health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value; } }); game.enemies.push(enemy); }
+function createVoidWorm(x, y, canSplit = true) {
+  const maxHp = 80.0;
+  const enemy = { 
+    x, y, family: 'VOID WORM', familyIndex: 24, ability: 'VOID BURROW', effect: null, 
+    variant: 'COLOSSAL', boss: false, voidWorm: true, canSplit, color: '#8f7cff', r: 34, 
+    speed: 72, hp: maxHp, maxHp, damage: 0, contactDamage: 10, score: 500, drops: 0, 
+    abilityTimer: 1.5, shieldTimer: 0, hitTimer: 0 
+  };
+
+  let health = maxHp;
+  Object.defineProperty(enemy, 'hp', {
+    configurable: true,
+    get: () => health,
+    set: value => {
+      const attemptedDamage = health - value;
+      const weapon = weaponCatalog[game.weapon];
+      const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y);
+      const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12;
+      health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
+    }
+  });
+
+  return enemy;
+}
+function spawn() {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = Math.max(canvas.clientWidth, canvas.clientHeight) * .72;
+  const x = game.player.x + Math.cos(angle) * radius;
+  const y = game.player.y + Math.sin(angle) * radius;
+  const biome = getBiome(x, y);
+
+  if (biome.key === 'sanctuary') return;
+  if (biome.key === 'void') {
+    if (getBiome(game.player.x, game.player.y).key !== 'void' || game.enemies.some(enemy => enemy.voidWorm)) return;
+    game.enemies.push(createVoidWorm(x, y));
+    return;
+  }
+
+  const family = biome.enemyFamily;
+  const distance = Math.hypot(x, y);
+  const variantIndex = Math.random() < Math.min(.22, distance / 30000 * .22) ? 4 : Math.floor(Math.random() * 4);
+  const variant = enemyVariants[variantIndex];
+  const baseSpeed = 38 + game.currentSector * 10 + Math.random() * 22;
+  const familyIndex = (biome.sector - 1) * 4 + Number(biome.key.split('-')[2]);
+  const scaledHp = Math.ceil(variant.hp * (1 + game.currentSector * 0.15));
+
+  const enemy = { 
+    x, y, family: family.name, familyIndex, ability: family.ability, effect: family.effect, 
+    variant: variant.name, boss: Boolean(variant.boss), color: biome.color, 
+    r: (10 + Math.random() * 6) * variant.radius, speed: baseSpeed * variant.speed, 
+    hp: scaledHp, maxHp: scaledHp, damage: variant.damage, contactDamage: variant.contactDamage, 
+    score: variant.score, drops: variant.drops, abilityTimer: 1 + Math.random() * 2, 
+    shieldTimer: 0, hitTimer: 0 
+  };
+
+  let health = scaledHp;
+  Object.defineProperty(enemy, 'hp', {
+    configurable: true,
+    get: () => health,
+    set: value => {
+      const attemptedDamage = health - value;
+      const weapon = weaponCatalog[game.weapon];
+      const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y);
+      const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12;
+      health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
+    }
+  });
+
+  game.enemies.push(enemy);
+}
+
+
 const baseSpawn = spawn;
 spawn = function() { if (getBiome(game.player.x, game.player.y).key === 'void') { if (!game.enemies.some(enemy => enemy.voidWorm)) game.enemies.push(createVoidWorm(game.player.x, game.player.y)); return; } baseSpawn(); };
 function defeatEnemy(enemy, bonus = 0) { if (enemy.hp > 0) return; if (enemy.voidWorm) { if (Math.random() < .33) game.atlasCrystals++; if (enemy.canSplit && Math.random() < .15) { game.enemies.push(createVoidWorm(enemy.x - 26, enemy.y, false)); game.enemies.push(createVoidWorm(enemy.x + 26, enemy.y, false)); } } dropResource(enemy.x, enemy.y, enemy.drops || 1); game.score += (enemy.score || 100) + bonus; if (enemy.boss && Math.random() < .5) game.relics++; if (Math.random() > (enemy.boss ? .35 : .72)) game.gems.push({ x: enemy.x, y: enemy.y, life: 18 }); burst(enemy.x, enemy.y, enemy.boss ? 18 : 8, enemy.boss ? 260 : 170); }
-function randomResource() { return resourceTypes[Math.floor(Math.random() * resourceTypes.length)]; }
+function randomResource() {
+  const totalWeight = resourceTypes.reduce((sum, item) => sum + item.weight, 0);
+  let randomNum = Math.random() * totalWeight;
+
+  for (const resource of resourceTypes) {
+    if (randomNum < resource.weight) {
+      return resource;
+    }
+    randomNum -= resource.weight;
+  }
+  return resourceTypes[0];
+}
+
 function dropResource(x, y, amount = 1) { const resource = randomResource(); game.drops.push({ x, y, type: resource.key, amount, life: 24 }); }
 function openChest(node) { node.taken = true; for (let i = 0; i < 3; i++) dropResource(node.x, node.y, 2 + Math.floor(Math.random() * 4)); game.salvage += 2; burst(node.x, node.y, 18, 190); }
 function collectDrop(drop) { game.inventory[drop.type] += drop.amount; drop.life = 0; }
@@ -299,8 +396,80 @@ function loop(now) { const dt = Math.min((now - lastTime) / 1000, .04); lastTime
  function updateBiomeAnnouncement(dt) { const biome = getBiome(game.player.x, game.player.y); game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(Math.min(sectorRegions.length - 1, Math.floor(Math.hypot(game.player.x, game.player.y) / 3000)))); if (biome.key !== game.biomeKey) { game.biomeKey = biome.key; game.announcementTimer = 3; announceBiome(biome); updateBiomeEffects(biome); updateBiomeHazard(biome); } game.announcementTimer = Math.max(0, game.announcementTimer - dt); if (game.announcementTimer === 0) ui.announcement.classList.remove('show'); }
 function updateBiomeHazard(biome) { const hazard = biome.effects.hazard; ui.effects.insertAdjacentHTML('beforeend', `<span class="biome-effect negative" title="${hazard.description}"><b>!</b>${hazard.name}</span>`); }
 function updateBiomeEffects(biome) { const effects = biome.effects; const conditions = []; if (effects.healthRegen) conditions.push({ positive: true, text: `REGEN +${effects.healthRegen}/SEC`, detail: `Restores ${effects.healthRegen} health per second while outside the beacon.` }); if (effects.moveMultiplier !== 1) conditions.push({ positive: effects.moveMultiplier > 1, text: `MOVE ${effects.moveMultiplier > 1 ? '+' : ''}${Math.round((effects.moveMultiplier - 1) * 100)}%`, detail: `${effects.moveMultiplier > 1 ? 'Increases' : 'Reduces'} player movement speed by ${Math.abs(Math.round((effects.moveMultiplier - 1) * 100))}%.` }); if (effects.fireCooldownMultiplier !== 1) conditions.push({ positive: effects.fireCooldownMultiplier < 1, text: `FIRE ${effects.fireCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%`, detail: `${effects.fireCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the delay between shots by ${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%.` }); if (effects.pulseCooldownMultiplier !== 1) conditions.push({ positive: effects.pulseCooldownMultiplier < 1, text: `PULSE ${effects.pulseCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%`, detail: `${effects.pulseCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the pulse cooldown by ${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%.` }); if (effects.salvageMultiplier !== 1) conditions.push({ positive: effects.salvageMultiplier > 1, text: `SALVAGE +${Math.round((effects.salvageMultiplier - 1) * 100)}%`, detail: `Collected salvage is multiplied by ${effects.salvageMultiplier}x.` }); if (effects.enemySpeedMultiplier !== 1) conditions.push({ positive: effects.enemySpeedMultiplier < 1, text: `HORDE ${effects.enemySpeedMultiplier < 1 ? '-' : '+'}${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}% SPEED`, detail: `Enemies move ${effects.enemySpeedMultiplier < 1 ? 'slower' : 'faster'} by ${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}%.` }); if (effects.damageMultiplier !== 1) conditions.push({ positive: false, text: `DAMAGE +${Math.round((effects.damageMultiplier - 1) * 100)}%`, detail: `Enemy contact damage is increased by ${Math.round((effects.damageMultiplier - 1) * 100)}%.` }); ui.effects.innerHTML = `<span class="biome-effects-title">${biome.name} // CONDITIONS</span>${conditions.map(condition => `<span class="biome-effect ${condition.positive ? 'positive' : 'negative'}" title="${condition.detail}"><b>${condition.positive ? '+' : '-'}</b>${condition.text}</span>`).join('')}`; }
-function update(dt) { const p = game.player; const dx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0); const dy = (keys.s ? 1 : 0) - (keys.w ? 1 : 0); const length = Math.hypot(dx, dy) || 1; const movementEffects = getBiome(p.x, p.y).effects; p.x += dx / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * dt; p.y += dy / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * dt; p.angle = Math.atan2(pointer.y - canvas.clientHeight / 2, pointer.x - canvas.clientWidth / 2); game.camera.x += (p.x - game.camera.x) * Math.min(1, dt * 7); game.camera.y += (p.y - game.camera.y) * Math.min(1, dt * 7); const distance = Math.hypot(p.x, p.y); const safe = distance < beaconRegionRadius; game.currentSector = safe ? 0 : Math.min(sectorRegions.length, Math.floor(distance / 3000) + 1); const biome = getBiome(p.x, p.y); const effects = biome.effects; game.fireTimer = Math.max(0, game.fireTimer - dt * 1000); game.pulseTimer = Math.max(0, game.pulseTimer - dt); game.magicGauntletRechargeTimer = Math.max(0, game.magicGauntletRechargeTimer - dt); if (game.weapon === 'magicGauntlet' && game.magicGauntletRechargeTimer <= 0) { const reserve = game.ammoReserve.magicGauntletAmmo || 0; if (reserve < 6) game.ammoReserve.magicGauntletAmmo = Math.min(6, reserve + 2); game.magicGauntletRechargeTimer = 5; }; game.cosmosGauntletRechargeTimer = Math.max(0, game.cosmosGauntletRechargeTimer - dt); if (game.weapon === 'cosmosGauntlet' && game.cosmosGauntletRechargeTimer <= 0) { const reserve = game.ammoReserve.cosmosGauntletAmmo || 0; if (reserve < 6) game.ammoReserve.cosmosGauntletAmmo = Math.min(6, reserve + 2); game.cosmosGauntletRechargeTimer = 6; } if (pointer.down) shoot(); if (safe) { game.health = Math.min(100, game.health + 15 * dt); if (game.salvage) { game.banked += game.salvage; game.salvage = 0; localStorage.setItem('horde-salvage', game.banked); } } else { if (effects.healthRegen) game.health = Math.min(100, game.health + effects.healthRegen * dt); if (effects.hazard) game.health -= effects.hazard.damagePerSecond * dt; }
-  game.hazardZones.forEach(zone => { if (Math.hypot(p.x - zone.x, p.y - zone.y) < zone.radius) game.health -= zone.damagePerSecond * dt; }); const inVoid = biome.key === 'void'; if (inVoid) { game.voidSpawnTimer -= dt; if (game.voidSpawnTimer <= 0 && !game.enemies.some(enemy => enemy.voidWorm)) { spawn(); game.voidSpawnTimer = 12 + Math.random() * 12; } } else { game.voidSpawnTimer = 0; game.spawnTimer -= dt; const target = safe ? 0 : 5 + game.currentSector * 3 + Math.floor(distance / 260); if (game.spawnTimer <= 0 && game.enemies.length < Math.min(100, target)) { spawn(); game.spawnTimer = Math.max(.12, .8 - game.currentSector * .025 - distance / 4000); } } game.bullets.forEach(b => {
+function update(dt) {
+  const p = game.player;
+  const dx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
+  const dy = (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
+  const length = Math.hypot(dx, dy) || 1;
+  const movementEffects = getBiome(p.x, p.y).effects;
+
+  p.x += dx / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * dt;
+  p.y += dy / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * dt;
+  p.angle = Math.atan2(pointer.y - canvas.clientHeight / 2, pointer.x - canvas.clientWidth / 2);
+
+  game.camera.x += (p.x - game.camera.x) * Math.min(1, dt * 7);
+  game.camera.y += (p.y - game.camera.y) * Math.min(1, dt * 7);
+
+  const distance = Math.hypot(p.x, p.y);
+  const safe = distance < beaconRegionRadius;
+  game.currentSector = safe ? 0 : Math.min(sectorRegions.length, Math.floor(distance / 3000) + 1);
+
+  const biome = getBiome(p.x, p.y);
+  const effects = biome.effects;
+
+  game.fireTimer = Math.max(0, game.fireTimer - dt * 1000);
+  game.pulseTimer = Math.max(0, game.pulseTimer - dt);
+
+  game.magicGauntletRechargeTimer = Math.max(0, game.magicGauntletRechargeTimer - dt);
+  if (game.weapon === 'magicGauntlet' && game.magicGauntletRechargeTimer <= 0) {
+    const reserve = game.ammoReserve.magicGauntletAmmo || 0;
+    if (reserve < 6) game.ammoReserve.magicGauntletAmmo = Math.min(6, reserve + 2);
+    game.magicGauntletRechargeTimer = 5;
+  }
+
+  game.cosmosGauntletRechargeTimer = Math.max(0, game.cosmosGauntletRechargeTimer - dt);
+  if (game.weapon === 'cosmosGauntlet' && game.cosmosGauntletRechargeTimer <= 0) {
+    const reserve = game.ammoReserve.cosmosGauntletAmmo || 0;
+    if (reserve < 6) game.ammoReserve.cosmosGauntletAmmo = Math.min(6, reserve + 2);
+    game.cosmosGauntletRechargeTimer = 6;
+  }
+
+  if (pointer.down) shoot();
+
+  if (safe) {
+    game.health = Math.min(100, game.health + 15 * dt);
+    if (game.salvage) {
+      game.banked += game.salvage;
+      game.salvage = 0;
+      localStorage.setItem('horde-salvage', game.banked);
+    }
+  } else {
+    if (effects.healthRegen) game.health = Math.min(100, game.health + effects.healthRegen * dt);
+    if (effects.hazard) game.health -= effects.hazard.damagePerSecond * dt;
+  }
+
+  game.hazardZones.forEach(zone => {
+    if (Math.hypot(p.x - zone.x, p.y - zone.y) < zone.radius) game.health -= zone.damagePerSecond * dt;
+  });
+
+  const inVoid = biome.key === 'void';
+  if (inVoid) {
+    game.voidSpawnTimer -= dt;
+    if (game.voidSpawnTimer <= 0 && !game.enemies.some(enemy => enemy.voidWorm)) {
+      spawn();
+      game.voidSpawnTimer = 12 + Math.random() * 12;
+    }
+  } else {
+    game.voidSpawnTimer = 0;
+    game.spawnTimer -= dt;
+    const target = safe ? 0 : 5 + game.currentSector * 3 + Math.floor(distance / 260);
+    if (game.spawnTimer <= 0 && game.enemies.length < Math.min(100, target)) {
+      spawn();
+      game.spawnTimer = Math.max(.12, .8 - game.currentSector * .025 - distance / 4000);
+    }
+  }
+
+  game.bullets.forEach(b => {
     if (b.oscillating) {
       const speed = Math.hypot(b.vx, b.vy) || 1;
       b.swayPhase = (b.swayPhase || 0) + dt * 14;
@@ -312,8 +481,96 @@ function update(dt) { const p = game.player; const dx = (keys.d ? 1 : 0) - (keys
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     b.life -= dt;
-  }); game.bullets = game.bullets.filter(b => b.life > 0); game.enemies.forEach(e => { e.previousX = e.x; e.previousY = e.y; }); game.enemies.forEach(e => { const angle = Math.atan2(p.y - e.y, p.x - e.x); e.x += Math.cos(angle) * e.speed * effects.enemySpeedMultiplier * dt; e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt; if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + 12) game.health -= e.contactDamage * effects.damageMultiplier * dt; }); game.enemies.forEach(e => { const homeBiome = e.voidWorm ? 'void' : `sector-${Math.floor(e.familyIndex / 4)}-${e.familyIndex % 4}`; if (getBiome(e.x, e.y).key !== homeBiome) { e.x = e.previousX; e.y = e.previousY; } });
-  game.bullets.forEach(b => game.enemies.forEach(e => { if (e.hp && Math.hypot(b.x - e.x, b.y - e.y) < e.r + 5) { e.hp = Math.max(0, e.hp - .12); b.life = 0; if (e.hp <= 0) defeatEnemy(e); } })); game.enemies = game.enemies.filter(e => e.hp > 0); game.gems.forEach(g => { const angle = Math.atan2(p.y - g.y, p.x - g.x); if (Math.hypot(p.x - g.x, p.y - g.y) < 130) { g.x += Math.cos(angle) * 190 * dt; g.y += Math.sin(angle) * 190 * dt; } g.life -= dt; if (Math.hypot(p.x - g.x, p.y - g.y) < 18) { game.salvage += Math.round(effects.salvageMultiplier); g.life = 0; } }); game.gems = game.gems.filter(g => g.life > 0); game.nodes.forEach(n => { if (!n.taken && Math.hypot(p.x - n.x, p.y - n.y) < 22) { n.type === 'chest' ? openChest(n) : (n.taken = true, n.type === 'relic' ? game.relics++ : game.salvage += Math.round(3 * effects.salvageMultiplier)); burst(n.x, n.y, 14, 150); } }); game.drops.forEach(drop => { const angle = Math.atan2(p.y - drop.y, p.x - drop.x); if (Math.hypot(p.x - drop.x, p.y - drop.y) < 110) { drop.x += Math.cos(angle) * 200 * dt; drop.y += Math.sin(angle) * 200 * dt; } drop.life -= dt; if (Math.hypot(p.x - drop.x, p.y - drop.y) < 20) collectDrop(drop); }); game.drops = game.drops.filter(drop => drop.life > 0); game.sparks.forEach(s => { s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt; }); game.sparks = game.sparks.filter(s => s.life > 0); if (game.score >= game.wave * 1200) game.wave++; updateUI(distance, safe, biome); updateInventoryUI(); if (game.health <= 0) end(); }
+  });
+  game.bullets = game.bullets.filter(b => b.life > 0);
+
+  game.enemies.forEach(e => {
+    e.previousX = e.x;
+    e.previousY = e.y;
+  });
+
+  game.enemies.forEach(e => {
+    const angle = Math.atan2(p.y - e.y, p.x - e.x);
+    e.x += Math.cos(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+    e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+    if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + 12) game.health -= e.contactDamage * effects.damageMultiplier * dt;
+  });
+
+  game.enemies.forEach(e => {
+    const homeBiome = e.voidWorm ? 'void' : `sector-${Math.floor(e.familyIndex / 4)}-${e.familyIndex % 4}`;
+    if (getBiome(e.x, e.y).key !== homeBiome) {
+      e.x = e.previousX;
+      e.y = e.previousY;
+    }
+  });
+
+  // Bullet Collision & Explosive (AOE) Damage Loop
+  game.bullets.forEach(b => game.enemies.forEach(e => {
+    if (e.hp && Math.hypot(b.x - e.x, b.y - e.y) < e.r + 5) {
+      if (b.blast) {
+        game.enemies.forEach(target => {
+          if (Math.hypot(b.x - target.x, b.y - target.y) <= b.blast) {
+            target.hp = Math.max(0, target.hp - .12);
+            if (target.hp <= 0) defeatEnemy(target);
+          }
+        });
+        burst(b.x, b.y, 22, 220);
+      } else {
+        e.hp = Math.max(0, e.hp - .12);
+        if (e.hp <= 0) defeatEnemy(e);
+      }
+      b.life = 0;
+    }
+  }));
+
+  game.enemies = game.enemies.filter(e => e.hp > 0);
+
+  game.gems.forEach(g => {
+    const angle = Math.atan2(p.y - g.y, p.x - g.x);
+    if (Math.hypot(p.x - g.x, p.y - g.y) < 130) {
+      g.x += Math.cos(angle) * 190 * dt;
+      g.y += Math.sin(angle) * 190 * dt;
+    }
+    g.life -= dt;
+    if (Math.hypot(p.x - g.x, p.y - g.y) < 18) {
+      game.salvage += Math.round(effects.salvageMultiplier);
+      g.life = 0;
+    }
+  });
+  game.gems = game.gems.filter(g => g.life > 0);
+
+  game.nodes.forEach(n => {
+    if (!n.taken && Math.hypot(p.x - n.x, p.y - n.y) < 22) {
+      n.type === 'chest' ? openChest(n) : (n.taken = true, n.type === 'relic' ? game.relics++ : game.salvage += Math.round(3 * effects.salvageMultiplier));
+      burst(n.x, n.y, 14, 150);
+    }
+  });
+
+  game.drops.forEach(drop => {
+    const angle = Math.atan2(p.y - drop.y, p.x - drop.x);
+    if (Math.hypot(p.x - drop.x, p.y - drop.y) < 110) {
+      drop.x += Math.cos(angle) * 200 * dt;
+      drop.y += Math.sin(angle) * 200 * dt;
+    }
+    drop.life -= dt;
+    if (Math.hypot(p.x - drop.x, p.y - drop.y) < 20) collectDrop(drop);
+  });
+  game.drops = game.drops.filter(drop => drop.life > 0);
+
+  game.sparks.forEach(s => {
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.life -= dt;
+  });
+  game.sparks = game.sparks.filter(s => s.life > 0);
+
+  if (game.score >= game.wave * 1200) game.wave++;
+
+  updateUI(distance, safe, biome);
+  updateInventoryUI();
+
+  if (game.health <= 0) end();
+}
 function applyEnemyAbilities(dt) { const status = game.enemyStatus || (game.enemyStatus = { burn: 0, acid: 0, bleed: 0, freeze: 0, root: 0 }); game.enemies.forEach(enemy => { const distance = Math.hypot(game.player.x - enemy.x, game.player.y - enemy.y); const contact = distance < enemy.r + 18; enemy.abilityTimer -= dt; if (contact) { if (enemy.effect === 'burn') status.burn = Math.max(status.burn, enemy.boss ? 5 : 3); if (enemy.effect === 'acid') status.acid = Math.max(status.acid, 4); if (enemy.effect === 'bleed') status.bleed = Math.max(status.bleed, 4); if (enemy.effect === 'slow') status.freeze = Math.max(status.freeze, 2.5); if (enemy.effect === 'root') status.root = Math.max(status.root, 2); } if (enemy.abilityTimer <= 0) { if (distance < 260 && enemy.effect === 'shock') { game.health -= enemy.boss ? 8 : 5; burst(enemy.x, enemy.y, 5, 90); } if (distance < 260 && enemy.effect === 'drain') { game.health -= 3; enemy.hp = Math.min(enemy.maxHp, enemy.hp + 1); } if (distance < 260 && enemy.effect === 'pull') { const angle = Math.atan2(enemy.y - game.player.y, enemy.x - game.player.x); game.player.x += Math.cos(angle) * 35; game.player.y += Math.sin(angle) * 35; } if (distance < 260 && enemy.effect === 'armor') enemy.shieldTimer = 2; if (distance < 260 && enemy.effect === 'evasion') { const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x) + Math.PI / 2; enemy.x += Math.cos(angle) * 28; enemy.y += Math.sin(angle) * 28; } enemy.abilityTimer = enemy.boss ? 1.4 : 2.8; } status.burn = Math.max(0, status.burn - dt); status.acid = Math.max(0, status.acid - dt); status.bleed = Math.max(0, status.bleed - dt); status.freeze = Math.max(0, status.freeze - dt); status.root = Math.max(0, status.root - dt); if (status.burn) game.health -= 6 * dt; if (status.acid) game.health -= 4 * dt; if (status.bleed) game.health -= 3 * dt; if (status.freeze || status.root) game.health -= 1 * dt; }); }
 const baseUpdate = update;
 update = function(dt) { const wasEmpty = game.ammo === 0 && weaponCatalog[game.weapon].kind !== 'melee'; baseUpdate(dt); if (wasEmpty) { game.ammo = 0; game.reloadPending = true; } if (game.active) applyEnemyAbilities(dt); };
