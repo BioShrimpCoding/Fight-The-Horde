@@ -254,7 +254,20 @@ function getCraftResourceAmount(key) {
   return key === 'relic' ? game.relics : key === 'atlasCrystal' ? game.atlasCrystals : (game.vault[key] || 0); 
 }
 function spendCraftResource(key, amount) { if (key === 'relic') { game.relics = Math.max(0, game.relics - amount); } else if (key === 'atlasCrystal') { game.atlasCrystals = Math.max(0, game.atlasCrystals - amount); } else { game.vault[key] = Math.max(0, (game.vault[key] || 0) - amount); } }
-const stationRecipes = { medkit: { name: 'MEDKIT', time: 4, cost: { fiber: 4, crystal: 2 }, output: { medkit: 1 } }, ammoPack: { name: 'AMMO PACK', time: 5, cost: { steel: 3, fuel: 2 }, output: { ammoStorage: 5 } }, steelPlate: { name: 'STEEL PLATE', time: 7, cost: { steel: 5, stone: 2 }, output: { steelPlate: 1 } }, smeltIron: { name: 'SMELTED IRON', time: 6, cost: { rawIron: 3, fuel: 10 }, output: { iron: 3 } }, makeSteel: { name: 'STEEL', time: 8, cost: { iron: 2, stone: 3, fuel: 10 }, output: { steel: 2 } }, refineFuel: { name: 'REFINED FUEL', time: 5, cost: { wood: 2, fiber: 2, fuel: 10 }, output: { fuel: 12 } }, ...weaponRecipes, ...Object.fromEntries(Object.entries(ammoCatalog).map(([key, ammo]) => [`ammo_${key}`, { name: ammo.name, time: 3, cost: ammo.cost, ammo: key, amount: ammo.amount }])) };
+const stationRecipes = { 
+  medkit: { name: 'MEDKIT', 
+  time: 4, cost: { fiber: 4, crystal: 2 }, 
+  output: { medkit: 1 } }, 
+  ammoPack: { name: 'AMMO PACK', time: 5, cost: { steel: 3, fuel: 2 }, 
+  output: { ammoStorage: 5 } }, 
+  steelPlate: { name: 'STEEL PLATE', time: 7, cost: { steel: 5, stone: 2 }, 
+  output: { steelPlate: 1 } }, 
+  smeltIron: { name: 'SMELTED IRON', time: 6, cost: { rawIron: 3, fuel: 10 }, 
+  output: { iron: 3 } }, 
+  makeSteel: { name: 'STEEL', time: 8, cost: { iron: 2, stone: 3, fuel: 10 }, 
+  output: { steel: 2 } }, 
+  refineFuel: { name: 'REFINED FUEL', time: 5, cost: { wood: 2, fiber: 2, fuel: 3 }, 
+  output: { fuel: 12 } }, ...weaponRecipes, ...Object.fromEntries(Object.entries(ammoCatalog).map(([key, ammo]) => [`ammo_${key}`, { name: ammo.name, time: 3, cost: ammo.cost, ammo: key, amount: ammo.amount }])) };
 function openCraftDetails(recipeKey) { const recipe = stationRecipes[recipeKey]; if (!recipe) return; const costEntries = Object.entries(recipe.cost || {}); const materialRows = costEntries.map(([key, amount]) => { const resource = resourceTypes.find(item => item.key === key) || { name: key.toUpperCase() }; const owned = getCraftResourceAmount(key); const ready = owned >= amount; return `<li class="${ready ? 'ready' : 'missing'}"><span>${resource.name}</span><strong>${owned} / ${amount}</strong></li>`; }).join(''); const missing = costEntries.find(([key, amount]) => getCraftResourceAmount(key) < amount); const canCraft = !missing; ui.craftDetails.innerHTML = `
     <div class="craft-details-header">
       <strong>${recipe.name}</strong>
