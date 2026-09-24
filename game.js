@@ -217,6 +217,7 @@ function freshGame() {
     enemies: [], 
     bullets: [], 
     projectiles: [], 
+    explosions: [],
     sparks: [], 
     gems: [], 
     drops: [], 
@@ -246,6 +247,18 @@ function teleportToSector(sector) { teleportPlayer((sector - .5) * 3000, 0); gam
 function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camera.x = x; game.camera.y = y; }
 function start() { game = freshGame(); game.active = true; randomizeBiomeData(game.seed); game.hazardZones = generateHazardZones(); const random = seededRandom(game.seed + 17); updateInventoryUI(); updateStationButtons(); for (let i = 0; i < 140; i++) game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: random() > .5 ? 'chest' : 'scrap', taken: false }); ui.start.classList.add('hidden'); ui.over.classList.add('hidden'); lastTime = performance.now(); cancelAnimationFrame(animation); animation = requestAnimationFrame(loop); }
 function switchWeapon(index) { const weaponId = ['sidearm', 'shotgun', 'minigun', 'burstRifle', 'sniper', 'smg', 'laser', 'grenadeLauncher', 'railgun', 'flamethrower', 'pulseCarbine', 'magicGauntlet', 'machete', 'warHammer', 'spear'][index - 1]; if (!weaponId || !game.unlockedWeapons[weaponId]) return; game.weapon = weaponId; game.ammo = 0; game.reloadPending = weaponCatalog[weaponId].kind !== 'melee'; updateAmmoUI(); }
+function addExplosion(x, y, radius, color = '#ff725e') {
+  game.explosions.push({
+    x,
+    y,
+    radius,
+    maxRadius: radius,
+    life: 0.25,      // Duration of visual effect in seconds
+    maxLife: 0.25,
+    color
+  });
+  burst(x, y, 30, 250); // Optional: keep particle sparks for extra punch
+}
 function meleeAttack(weapon) { const p = game.player; game.enemies.forEach(enemy => { const distance = Math.hypot(enemy.x - p.x, enemy.y - p.y); const angle = Math.atan2(enemy.y - p.y, enemy.x - p.x); const difference = Math.atan2(Math.sin(angle - p.angle), Math.cos(angle - p.angle)); if (distance < weapon.range && Math.abs(difference) < weapon.arc) { enemy.hp = Math.max(0, enemy.hp - weapon.damage); if (enemy.hp <= 0) defeatEnemy(enemy); burst(enemy.x, enemy.y, 5, 100); } }); for (let i = 0; i < 10; i++) game.sparks.push({ x: p.x + Math.cos(p.angle) * weapon.range * .5, y: p.y + Math.sin(p.angle) * weapon.range * .5, life: .2, vx: (Math.random() - .5) * 100, vy: (Math.random() - .5) * 100 }); }
 function shoot() { 
   if (!game.active || game.fireTimer > 0) return; 
@@ -565,12 +578,15 @@ function update(dt) {
       localStorage.setItem('horde-salvage', game.banked);
     }
   } else {
-    if (effects.healthRegen) game.health = Math.min(100, game.health + effects.healthRegen * dt);
+    // Passive biome regeneration removed
     if (effects.hazard) game.health -= effects.hazard.damagePerSecond * dt;
   }
 
+  // Hazard zones now heal player up to max 100 health
   game.hazardZones.forEach(zone => {
-    if (Math.hypot(p.x - zone.x, p.y - zone.y) < zone.radius) game.health -= zone.damagePerSecond * dt;
+    if (Math.hypot(p.x - zone.x, p.y - zone.y) < zone.radius) {
+      game.health = Math.min(100, game.health + zone.damagePerSecond * dt);
+    }
   });
 
   const inVoid = biome.key === 'void';
@@ -593,6 +609,7 @@ function update(dt) {
     }
   }
 
+  // Bullet Movement, Sway, Range Expiry, and AOE Detonation
   game.bullets.forEach(b => {
     if (b.oscillating) {
       const speed = Math.hypot(b.vx, b.vy) || 1;
@@ -605,6 +622,19 @@ function update(dt) {
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     b.life -= dt;
+
+    // Trigger AOE explosion if explosive bullet reaches end of life without hitting target
+    if (b.life <= 0 && b.blast) {
+      game.enemies.forEach(target => {
+        if (Math.hypot(b.x - target.x, b.y - target.y) <= b.blast) {
+          target.hp = Math.max(0, target.hp - (b.damage || .12));
+          if (target.hp <= 0) defeatEnemy(target);
+        }
+      });
+      if (typeof addExplosion === 'function') {
+        addExplosion(b.x, b.y, b.blast);
+      }
+    }
   });
   game.bullets = game.bullets.filter(b => b.life > 0);
 
@@ -654,7 +684,7 @@ function update(dt) {
     }
   });
 
-  // Bullet Collision & Explosive (AOE) Damage Loop (Includes Piercing & Duplicate-Hit Protection)
+  // Bullet Collision & Explosive (AOE) Damage Loop
   game.bullets.forEach(b => game.enemies.forEach(e => {
     if (e.hp && Math.hypot(b.x - e.x, b.y - e.y) < e.r + 5) {
       if (b.hitEnemies && b.hitEnemies.has(e)) return;
@@ -668,6 +698,9 @@ function update(dt) {
           }
         });
         burst(b.x, b.y, 22, 220);
+        if (typeof addExplosion === 'function') {
+          addExplosion(b.x, b.y, b.blast);
+        }
       } else {
         e.hp = Math.max(0, e.hp - (b.damage || .12));
         if (e.hp <= 0) defeatEnemy(e);
@@ -678,6 +711,12 @@ function update(dt) {
       }
     }
   }));
+
+  // Update Explosions Lifetime
+  if (game.explosions) {
+    game.explosions.forEach(exp => exp.life -= dt);
+    game.explosions = game.explosions.filter(exp => exp.life > 0);
+  }
 
   // Handle Enemy Projectiles
   game.projectiles.forEach(proj => {
@@ -1022,6 +1061,32 @@ function draw() {
     ctx.fillRect(s.x, s.y, 3, 3);
   });
 
+  // AOE Explosions Visual Effects
+  if (game.explosions) {
+    game.explosions.forEach(exp => {
+      const progress = 1 - (exp.life / exp.maxLife);
+      const currentRadius = exp.maxRadius * progress;
+      const alpha = exp.life / exp.maxLife;
+
+      ctx.save();
+      // Expanding outer shockwave ring
+      ctx.strokeStyle = exp.color || '#ff725e';
+      ctx.lineWidth = 4;
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(exp.x, exp.y, currentRadius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Inner flash fill
+      ctx.fillStyle = '#ffb067';
+      ctx.globalAlpha = alpha * 0.35;
+      ctx.beginPath();
+      ctx.arc(exp.x, exp.y, currentRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+
   // Player Bullets
   game.bullets.forEach(b => {
     ctx.fillStyle = '#ffd08a';
@@ -1030,12 +1095,11 @@ function draw() {
     ctx.fill();
   });
 
-  // NEW: Enemy Projectiles (Void Walker Shockwaves)
+  // Enemy Projectiles (Void Walker Shockwaves)
   if (game.projectiles) {
     game.projectiles.forEach(p => {
       ctx.fillStyle = p.color || '#9d4edd';
       ctx.beginPath();
-      // Supports both .radius and .r just in case
       ctx.arc(p.x, p.y, p.radius || p.r || 5, 0, Math.PI * 2);
       ctx.fill();
     });
@@ -1047,7 +1111,6 @@ function draw() {
     ctx.translate(e.x, e.y);
     ctx.rotate(Math.atan2(game.player.y - e.y, game.player.x - e.x));
     
-    // UPDATED: Use e.color if available (for the Void Walker), otherwise fallback to biome color
     ctx.fillStyle = e.color || biome.color; 
     
     ctx.beginPath();
