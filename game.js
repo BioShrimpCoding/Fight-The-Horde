@@ -23,7 +23,7 @@ const beaconRegionRadius = 1200;
 const mapRadius = 18000;
 const sectorRegions = [
   [{ name: 'TOXIC MARSH', color: '#65b49a', dark: '#172d2d' }, { name: 'SCORCHED WASTES', color: '#ff865c', dark: '#3b211d' }, { name: 'FROZEN PEAKS', color: '#9fd8e3', dark: '#1b2a3c' }, { name: 'ASHEN LOWLANDS', color: '#c88968', dark: '#322522' }],
-  [{ name: 'THUNDER PLAINS', color: '#f2c96d', dark: '#302b1f' }, { name: 'IRONWOOD', color: '#8fc47e', dark: '#1d3026' }, { name: 'GLASS DESERT', color: '#ad7b07', dark: '#5b3603' }, { name: 'FROSTFALL TRENCH', color: '#82c5d7', dark: '#1b2e3b' }],
+  [{ name: 'THUNDER PLAINS', color: '#f2c96d', dark: '#302b1f' }, { name: 'IRONWOOD', color: '#8fc47e', dark: '#1d3026' }, { name: 'GLASS DESERT', color: '#ad7b07', dark: '#382203' }, { name: 'FROSTFALL TRENCH', color: '#82c5d7', dark: '#1b2e3b' }],
   [{ name: 'BONE ORCHARD', color: '#d7b07a', dark: '#352b25' }, { name: 'EMBER SEA', color: '#ff725e', dark: '#3b201d' }, { name: 'BLACKROOT WILDS', color: '#8fcf9d', dark: '#1c3026' }, { name: 'GRAVITY FIELDS', color: '#b69be8', dark: '#29233b' }],
   [{ name: 'STORM CITADEL', color: '#8db7ee', dark: '#202d45' }, { name: 'CRIMSON CHASM', color: '#ef6672', dark: '#3b2029' }, { name: 'NULL ICE', color: '#a9e3e6', dark: '#1c3338' }, { name: 'WRAITH MOOR', color: '#a88fd0', dark: '#292238' }],
   [{ name: 'SUNLESS VALE', color: '#bd9f7a', dark: '#30271f' }, { name: 'STARFIRE RIDGE', color: '#ff9b62', dark: '#3c251d' }, { name: 'DYING NEBULA', color: '#d58ee0', dark: '#34213b' }, { name: 'ABYSSAL SHELF', color: '#709ed0', dark: '#1d2c45' }],
@@ -42,10 +42,10 @@ const resourceTypes = [
 ];
 const weaponCatalog = {
   // Tier 0 (Starter)
-  sidearm: { name: 'SIDEARM', ammo: 'pistolAmmo', magazine: 12, cooldown: 200, damage: 0.30, speed: 650, life: .7, pellets: 1, spread: .15, kind: 'gun' },
+  sidearm: { name: 'SIDEARM', ammo: 'pistolAmmo', magazine: 12, cooldown: 200, damage: 0.30, speed: 650, life: .7, pellets: 1, spread: .5, kind: 'gun' },
   
   // Tier 1 (Early Game)
-  duelSidearm: { name: 'DUEL SIDEARM', ammo: 'pistolAmmo', magazine: 24, cooldown: 110, damage: 0.22, speed: 680, life: .7, pellets: 1, spread: .14, kind: 'gun', dualWield: true },
+  duelSidearm: { name: 'DUEL SIDEARM', ammo: 'pistolAmmo', magazine: 24, cooldown: 110, damage: 0.22, speed: 680, life: .7, pellets: 1, spread: .18, kind: 'gun', dualWield: true },
   smg: { name: 'SMG', ammo: 'smgAmmo', magazine: 32, cooldown: 55, damage: 0.16, speed: 700, life: .7, pellets: 1, spread: .12, kind: 'gun' },
   machete: { name: 'MACHETE', ammo: null, cooldown: 450, damage: 1.20, range: 105, arc: .9, kind: 'melee' },
   spear: { name: 'SPEAR', ammo: null, cooldown: 600, damage: 1.80, range: 160, arc: .35, kind: 'melee' },
@@ -53,7 +53,7 @@ const weaponCatalog = {
   // Tier 2 (Mid Game)
   shotgun: { name: 'SHOTGUN', ammo: 'shells', magazine: 6, cooldown: 480, damage: 0.30, speed: 580, life: .45, pellets: 8, spread: .34, falloff: true, kind: 'gun' },
   burstRifle: { name: 'BURST RIFLE', ammo: 'rifleAmmo', magazine: 24, cooldown: 220, damage: 0.325, speed: 780, life: .8, pellets: 3, spread: .06, kind: 'gun' },
-  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 40, damage: 0.10, speed: 450, life: .40, pellets: 2, spread: .32, kind: 'gun' },
+  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 40, damage: 0.02, speed: 450, life: 3.0, pellets: 2, spread: .3, kind: 'gun' },
   sniper: { name: 'SNIPER', ammo: 'marksmanAmmo', magazine: 5, cooldown: 750, damage: 3.60, speed: 1200, life: 1, pellets: 1, spread: 0, kind: 'gun' },
   warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 850, damage: 4.20, range: 95, arc: .75, kind: 'melee' },
 
@@ -61,28 +61,28 @@ const weaponCatalog = {
   minigun: { name: 'MINIGUN', ammo: 'minigunAmmo', magazine: 100, cooldown: 30, damage: 0.25, speed: 750, life: .8, pellets: 1, spread: .08, kind: 'gun' },
   laser: { name: 'LASER', ammo: 'cells', magazine: 20, cooldown: 100, damage: 0.85, speed: 1100, life: .55, pellets: 1, spread: 0, kind: 'gun' },
   grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 4, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 110, kind: 'gun' },
-  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 880, life: .7, pellets: 1, spread: .02, kind: 'gun' },
-  laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 2.80, range: 105, arc: .55, kind: 'melee' },
+  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 280, life: 1.7, pellets: 1, spread: .02, kind: 'gun' },
 
   // Tier 4 (Exotic / Endgame)
-  magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 100, damage: 1.30, speed: 640, life: .60, pellets: 1, spread: .30, kind: 'gun', oscillating: true, coneSize: .20 },
-  railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 2, cooldown: 1200, damage: 18.00, speed: 1600, life: 1, pellets: 1, spread: 0, kind: 'gun' },
-  cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 16, cooldown: 120, damage: 1.10, speed: 650, life: 0.8, pellets: 2, spread: .40, kind: 'gun', oscillating: true, coneSize: .25 }
+  laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 4.80, range: 105, arc: .55, kind: 'melee' },
+  magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 100, damage: 1.30, speed: 440, life: .50, pellets: 1, spread: .50, kind: 'gun', oscillating: true, coneSize: .20 },
+  railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 1, cooldown: 1200, damage: 18.00, speed: 1600, life: 1, pellets: 1, spread: 0, kind: 'gun' },
+  cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 16, cooldown: 200, damage: 1.60, speed: 650, life: 0.8, pellets: 2, spread: .60, kind: 'gun', oscillating: true, coneSize: .25 }
 };
 
 // ==================== AMMO CRAFTING BATCHES ====================
 const ammoCatalog = {
   pistolAmmo: { name: 'PISTOL AMMO', amount: 24, cost: { rawIron: 2, fuel: 1 } }, 
   shells: { name: 'SHOTGUN SHELLS', amount: 12, cost: { rawIron: 3, fuel: 2 } }, 
-  minigunAmmo: { name: 'MINIGUN BELT', amount: 100, cost: { steel: 4, fuel: 3 } }, 
-  rifleAmmo: { name: 'RIFLE AMMO', amount: 36, cost: { iron: 3, fuel: 2 } },
+  minigunAmmo: { name: 'MINIGUN BELT', amount: 10, cost: { steel: 4, fuel: 2 } }, 
+  rifleAmmo: { name: 'RIFLE AMMO', amount: 16, cost: { iron: 3, fuel: 2 } },
   marksmanAmmo: { name: 'MARKSMAN ROUNDS', amount: 10, cost: { steel: 4, crystal: 1 } },
-  smgAmmo: { name: 'SMG AMMO', amount: 60, cost: { rawIron: 3, fuel: 2 } }, 
-  cells: { name: 'LASER CELLS', amount: 30, cost: { crystal: 3, steel: 2 } }, 
-  grenades: { name: 'GRENADE CASINGS', amount: 8, cost: { iron: 3, fuel: 4 } }, 
-  slugs: { name: 'RAIL SLUGS', amount: 4, cost: { steel: 5, crystal: 2 } }, 
-  fuelCells: { name: 'FLAME FUEL', amount: 160, cost: { fuel: 8, rawIron: 2 } }, 
-  pulseCells: { name: 'PULSE CELLS', amount: 35, cost: { crystal: 4, steel: 3 } }, 
+  smgAmmo: { name: 'SMG AMMO', amount: 20, cost: { rawIron: 3, fuel: 2 } }, 
+  cells: { name: 'LASER CELLS', amount: 15, cost: { crystal: 3, steel: 1 } }, 
+  grenades: { name: 'GRENADE CASINGS', amount: 8, cost: { iron: 2, fuel: 4 } }, 
+  slugs: { name: 'RAIL SLUGS', amount: 8, cost: { steel: 4, crystal: 2 } }, 
+  fuelCells: { name: 'FLAME FUEL', amount: 10, cost: { fuel: 8, rawIron: 2 } }, 
+  pulseCells: { name: 'PULSE CELLS', amount: 15, cost: { crystal: 4, steel: 2 } }, 
   magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 14, cost: {} },
   cosmosGauntletAmmo: { name: 'COSMOS GAUNTLET CLIPS', amount: 12, cost: {} }
 };
