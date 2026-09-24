@@ -49,11 +49,10 @@ const weaponCatalog = {
   smg: { name: 'SMG', ammo: 'smgAmmo', magazine: 32, cooldown: 55, damage: 0.16, speed: 700, life: .7, pellets: 1, spread: .12, kind: 'gun' },
   machete: { name: 'MACHETE', ammo: null, cooldown: 450, damage: 1.20, range: 105, arc: .9, kind: 'melee' },
   spear: { name: 'SPEAR', ammo: null, cooldown: 600, damage: 1.80, range: 160, arc: .35, kind: 'melee' },
-
   // Tier 2 (Mid Game)
   shotgun: { name: 'SHOTGUN', ammo: 'shells', magazine: 6, cooldown: 480, damage: 0.30, speed: 580, life: .45, pellets: 8, spread: .34, falloff: true, kind: 'gun' },
   burstRifle: { name: 'BURST RIFLE', ammo: 'rifleAmmo', magazine: 24, cooldown: 220, damage: 0.325, speed: 780, life: .8, pellets: 3, spread: .06, kind: 'gun' },
-  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 40, damage: 0.02, speed: 450, life: 3.0, pellets: 2, spread: .3, kind: 'gun' },
+  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 40, damage: 0.02, speed: 450, life: 3.0, pellets: 2, spread: .3, kind: 'gun', pierce: true },
   sniper: { name: 'SNIPER', ammo: 'marksmanAmmo', magazine: 5, cooldown: 750, damage: 3.60, speed: 1200, life: 1, pellets: 1, spread: 0, kind: 'gun' },
   warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 850, damage: 4.20, range: 95, arc: .75, kind: 'melee' },
 
@@ -248,7 +247,57 @@ function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camer
 function start() { game = freshGame(); game.active = true; randomizeBiomeData(game.seed); game.hazardZones = generateHazardZones(); const random = seededRandom(game.seed + 17); updateInventoryUI(); updateStationButtons(); for (let i = 0; i < 140; i++) game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: random() > .5 ? 'chest' : 'scrap', taken: false }); ui.start.classList.add('hidden'); ui.over.classList.add('hidden'); lastTime = performance.now(); cancelAnimationFrame(animation); animation = requestAnimationFrame(loop); }
 function switchWeapon(index) { const weaponId = ['sidearm', 'shotgun', 'minigun', 'burstRifle', 'sniper', 'smg', 'laser', 'grenadeLauncher', 'railgun', 'flamethrower', 'pulseCarbine', 'magicGauntlet', 'machete', 'warHammer', 'spear'][index - 1]; if (!weaponId || !game.unlockedWeapons[weaponId]) return; game.weapon = weaponId; game.ammo = 0; game.reloadPending = weaponCatalog[weaponId].kind !== 'melee'; updateAmmoUI(); }
 function meleeAttack(weapon) { const p = game.player; game.enemies.forEach(enemy => { const distance = Math.hypot(enemy.x - p.x, enemy.y - p.y); const angle = Math.atan2(enemy.y - p.y, enemy.x - p.x); const difference = Math.atan2(Math.sin(angle - p.angle), Math.cos(angle - p.angle)); if (distance < weapon.range && Math.abs(difference) < weapon.arc) { enemy.hp = Math.max(0, enemy.hp - weapon.damage); if (enemy.hp <= 0) defeatEnemy(enemy); burst(enemy.x, enemy.y, 5, 100); } }); for (let i = 0; i < 10; i++) game.sparks.push({ x: p.x + Math.cos(p.angle) * weapon.range * .5, y: p.y + Math.sin(p.angle) * weapon.range * .5, life: .2, vx: (Math.random() - .5) * 100, vy: (Math.random() - .5) * 100 }); }
-function shoot() { if (!game.active || game.fireTimer > 0) return; const weapon = weaponCatalog[game.weapon]; const p = game.player; const effects = getBiome(p.x, p.y).effects; if (weapon.kind === 'melee') { game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier; meleeAttack(weapon); return; } if (game.ammo <= 0) { game.reloadPending = true; return; } game.ammo--; if (game.ammo === 0) game.reloadPending = true; game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier; for (let i = 0; i < weapon.pellets; i++) { const angle = p.angle + (Math.random() - .5) * weapon.spread; const bullet = { x: p.x + Math.cos(angle) * 20, y: p.y + Math.sin(angle) * 20, vx: Math.cos(angle) * weapon.speed, vy: Math.sin(angle) * weapon.speed, life: weapon.life, damage: weapon.damage, blast: weapon.blast || 0, falloff: weapon.falloff, baseAngle: angle, oscillating: Boolean(weapon.oscillating), swayAmplitude: weapon.coneSize || 0, swayPhase: Math.random() * Math.PI * 2 }; game.bullets.push(bullet); } for (let i = 0; i < 4; i++) game.sparks.push({ x: p.x + Math.cos(p.angle) * 25, y: p.y + Math.sin(p.angle) * 25, life: .2, vx: Math.cos(p.angle) * 100 + (Math.random() - .5) * 100, vy: Math.sin(p.angle) * 100 + (Math.random() - .5) * 100 }); }
+function shoot() { 
+  if (!game.active || game.fireTimer > 0) return; 
+  const weapon = weaponCatalog[game.weapon]; 
+  const p = game.player; 
+  const effects = getBiome(p.x, p.y).effects; 
+
+  if (weapon.kind === 'melee') { 
+    game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier; 
+    meleeAttack(weapon); 
+    return; 
+  } 
+
+  if (game.ammo <= 0) { 
+    game.reloadPending = true; 
+    return; 
+  } 
+  game.ammo--; 
+  if (game.ammo === 0) game.reloadPending = true; 
+  game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier; 
+
+  for (let i = 0; i < weapon.pellets; i++) { 
+    const angle = p.angle + (Math.random() - .5) * weapon.spread; 
+    const bullet = { 
+      x: p.x + Math.cos(angle) * 20, 
+      y: p.y + Math.sin(angle) * 20, 
+      vx: Math.cos(angle) * weapon.speed, 
+      vy: Math.sin(angle) * weapon.speed, 
+      life: weapon.life, 
+      damage: weapon.damage, 
+      blast: weapon.blast || 0, 
+      falloff: weapon.falloff, 
+      baseAngle: angle, 
+      oscillating: Boolean(weapon.oscillating), 
+      swayAmplitude: weapon.coneSize || 0, 
+      swayPhase: Math.random() * Math.PI * 2,
+      pierce: Boolean(weapon.pierce),
+      hitEnemies: new Set()
+    }; 
+    game.bullets.push(bullet); 
+  } 
+
+  for (let i = 0; i < 4; i++) {
+    game.sparks.push({ 
+      x: p.x + Math.cos(p.angle) * 25, 
+      y: p.y + Math.sin(p.angle) * 25, 
+      life: .2, 
+      vx: Math.cos(p.angle) * 100 + (Math.random() - .5) * 100, 
+      vy: Math.sin(p.angle) * 100 + (Math.random() - .5) * 100 
+    });
+  }
+}
 function useMedkit() { if (!game.active || !game.stationItems.medkit || game.health >= 100) return; game.stationItems.medkit = Math.max(0, (game.stationItems.medkit || 0) - 1); game.health = Math.min(100, game.health + 45); localStorage.setItem('horde-station-items', JSON.stringify(game.stationItems)); updateAmmoUI(); ui.stationOutput.textContent = 'MEDKIT USED // +45% VITALITY'; }
 function pulse() { if (game.pulseTimer > 0) return; game.pulseTimer = 7 * getBiome(game.player.x, game.player.y).effects.pulseCooldownMultiplier; game.enemies.forEach(e => { if (e.hp && Math.hypot(e.x - game.player.x, e.y - game.player.y) < 170) { e.hp -= 2; if (e.hp <= 0) defeatEnemy(e, 50); burst(e.x, e.y, 8, 180); } }); burst(game.player.x, game.player.y, 35, 260); }
 function createVoidWorm(x, y, canSplit = true) {
@@ -280,7 +329,7 @@ function createVoidWalker(x, y) {
   const enemy = {
     x: x,
     y: y,
-    r: 22,
+    r: 100,
     speed: 35,
     voidWalker: true,
     isAggroed: false,
@@ -560,7 +609,6 @@ function update(dt) {
   game.bullets = game.bullets.filter(b => b.life > 0);
 
   // Consolidated Enemy Update Loop (Movement, Boundary Checks, Attacks, and Player Damage)
-  // Consolidated Enemy Update Loop (Movement, Boundary Checks, Attacks, and Player Damage)
   game.enemies.forEach(e => {
     e.previousX = e.x;
     e.previousY = e.y;
@@ -605,22 +653,29 @@ function update(dt) {
       game.health -= (e.contactDamage || 0) * effects.damageMultiplier * dt;
     }
   });
-  // Bullet Collision & Explosive (AOE) Damage Loop
+
+  // Bullet Collision & Explosive (AOE) Damage Loop (Includes Piercing & Duplicate-Hit Protection)
   game.bullets.forEach(b => game.enemies.forEach(e => {
     if (e.hp && Math.hypot(b.x - e.x, b.y - e.y) < e.r + 5) {
+      if (b.hitEnemies && b.hitEnemies.has(e)) return;
+      if (b.hitEnemies) b.hitEnemies.add(e);
+
       if (b.blast) {
         game.enemies.forEach(target => {
           if (Math.hypot(b.x - target.x, b.y - target.y) <= b.blast) {
-            target.hp = Math.max(0, target.hp - .12);
+            target.hp = Math.max(0, target.hp - (b.damage || .12));
             if (target.hp <= 0) defeatEnemy(target);
           }
         });
         burst(b.x, b.y, 22, 220);
       } else {
-        e.hp = Math.max(0, e.hp - .12);
+        e.hp = Math.max(0, e.hp - (b.damage || .12));
         if (e.hp <= 0) defeatEnemy(e);
       }
-      b.life = 0;
+
+      if (!b.pierce) {
+        b.life = 0;
+      }
     }
   }));
 
@@ -689,8 +744,8 @@ function update(dt) {
 function applyEnemyAbilities(dt) { const status = game.enemyStatus || (game.enemyStatus = { burn: 0, acid: 0, bleed: 0, freeze: 0, root: 0 }); game.enemies.forEach(enemy => { const distance = Math.hypot(game.player.x - enemy.x, game.player.y - enemy.y); const contact = distance < enemy.r + 18; enemy.abilityTimer -= dt; if (contact) { if (enemy.effect === 'burn') status.burn = Math.max(status.burn, enemy.boss ? 5 : 3); if (enemy.effect === 'acid') status.acid = Math.max(status.acid, 4); if (enemy.effect === 'bleed') status.bleed = Math.max(status.bleed, 4); if (enemy.effect === 'slow') status.freeze = Math.max(status.freeze, 2.5); if (enemy.effect === 'root') status.root = Math.max(status.root, 2); } if (enemy.abilityTimer <= 0) { if (distance < 260 && enemy.effect === 'shock') { game.health -= enemy.boss ? 8 : 5; burst(enemy.x, enemy.y, 5, 90); } if (distance < 260 && enemy.effect === 'drain') { game.health -= 3; enemy.hp = Math.min(enemy.maxHp, enemy.hp + 1); } if (distance < 260 && enemy.effect === 'pull') { const angle = Math.atan2(enemy.y - game.player.y, enemy.x - game.player.x); game.player.x += Math.cos(angle) * 35; game.player.y += Math.sin(angle) * 35; } if (distance < 260 && enemy.effect === 'armor') enemy.shieldTimer = 2; if (distance < 260 && enemy.effect === 'evasion') { const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x) + Math.PI / 2; enemy.x += Math.cos(angle) * 28; enemy.y += Math.sin(angle) * 28; } enemy.abilityTimer = enemy.boss ? 1.4 : 2.8; } status.burn = Math.max(0, status.burn - dt); status.acid = Math.max(0, status.acid - dt); status.bleed = Math.max(0, status.bleed - dt); status.freeze = Math.max(0, status.freeze - dt); status.root = Math.max(0, status.root - dt); if (status.burn) game.health -= 6 * dt; if (status.acid) game.health -= 4 * dt; if (status.bleed) game.health -= 3 * dt; if (status.freeze || status.root) game.health -= 1 * dt; }); }
 function triggerVoidShockwave(enemy) {
     if (!enemy) return;
-    const projectileCount = 12;
-    const speed = 200;
+    const projectileCount = 35;
+    const speed = 350;
 
     for (let i = 0; i < projectileCount; i++) {
         const angle = (Math.PI * 2 / projectileCount) * i;
@@ -699,8 +754,8 @@ function triggerVoidShockwave(enemy) {
             y: enemy.y,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
-            life: 2.5,
-            radius: 6,
+            life: 2,
+            radius:15,
             damage: 8,
             color: '#9370DB'
         });
