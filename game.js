@@ -288,7 +288,7 @@ function createVoidWalker(x, y) {
     wanderTimer: 0,
     attackTimer: 3,
     maxHp: maxHp,
-    color: '#9d4edd',
+    color: '#0e6b5c',
     family: 'VOID WALKER',
     familyIndex: 24,
     variant: 'HEAVY',
@@ -805,8 +805,6 @@ function renderEnemySystem() {
     ctx.fillText(`${enemy.family} // ${enemy.variant}`, enemy.x, barY - 7);
   });
 
-  // 3. Void Walkers & Labels
-  // 3. Void Walkers & Labels
   // 3. Void Walkers & Labels
   game.enemies.filter(enemy => enemy.voidWalker).forEach(enemy => {
     // Body & Visuals
