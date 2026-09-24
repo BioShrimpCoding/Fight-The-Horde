@@ -336,7 +336,7 @@ function spawn() {
     const activeWalkers = game.enemies.filter(enemy => enemy.voidWalker).length;
 
     // Cap active Void bosses to 1 at a time
-    if (activeWorms >= 1 || activeWalkers >= 100) return;
+    if (activeWorms >= 8 || activeWalkers >= 10) return;
 
     // 30% chance to spawn when called
     if (Math.random() > 0.3) return;
@@ -813,7 +813,7 @@ function renderEnemySystem() {
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
 
-    const baseColor = '#9d4edd';
+    const baseColor = '#0e6b5c';
     const glowColor = 'rgba(157, 78, 221, 0.25)';
 
     const pulse = Math.sin(Date.now() * 0.006) * 3;
@@ -827,7 +827,7 @@ function renderEnemySystem() {
     ctx.fillStyle = baseColor;
     ctx.fill();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = '#e0aaff';
+    ctx.strokeStyle = '#408075';
     ctx.stroke();
 
     ctx.beginPath();
