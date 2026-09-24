@@ -287,6 +287,7 @@ function createVoidWalker(x, y) {
     wanderAngle: Math.random() * Math.PI * 2,
     wanderTimer: 0,
     attackTimer: 3,
+    maxHp: maxHp,
     color: '#9d4edd',
     family: 'VOID WALKER',
     familyIndex: 24,
@@ -806,7 +807,9 @@ function renderEnemySystem() {
 
   // 3. Void Walkers & Labels
   // 3. Void Walkers & Labels
+  // 3. Void Walkers & Labels
   game.enemies.filter(enemy => enemy.voidWalker).forEach(enemy => {
+    // Body & Visuals
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
 
@@ -833,16 +836,35 @@ function renderEnemySystem() {
     ctx.fill();
     ctx.restore();
 
-    const barWidth = enemy.r * 2;
-    const barY = enemy.y - enemy.r - 12;
+    // Health Bar & Name Tag
+    ctx.save();
+    ctx.textAlign = 'center';
+
+    const barWidth = 36;
+    const barHeight = 4;
+    const barX = enemy.x - barWidth / 2;
+    const barY = enemy.y - enemy.r - 14;
+
+    // Label
     ctx.fillStyle = '#f7e5c5';
     ctx.font = 'bold 9px Space Mono';
     ctx.fillText(`${enemy.family} // ${enemy.variant}`, enemy.x, barY - 4);
 
+    // Health Bar Background
     ctx.fillStyle = '#17131a';
-    ctx.fillRect(enemy.x - barWidth / 2, barY, barWidth, 3);
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+
+    // Health Bar Fill
+    const hpRatio = Math.max(0, Math.min(1, enemy.hp / enemy.maxHp));
     ctx.fillStyle = '#9d4edd';
-    ctx.fillRect(enemy.x - barWidth / 2, barY, barWidth * Math.max(0, enemy.hp / enemy.maxHp), 3);
+    ctx.fillRect(barX, barY, barWidth * hpRatio, barHeight);
+
+    // Health Bar Border
+    ctx.strokeStyle = '#e0aaff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX - 0.5, barY - 0.5, barWidth + 1, barHeight + 1);
+
+    ctx.restore();
   });
 
   // 4. Small Enemy Health Bars
