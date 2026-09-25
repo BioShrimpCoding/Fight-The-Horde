@@ -59,8 +59,8 @@ const weaponCatalog = {
   // Tier 3 (Late Mid Game)
   minigun: { name: 'MINIGUN', ammo: 'minigunAmmo', magazine: 100, cooldown: 30, damage: 0.25, speed: 750, life: .8, pellets: 1, spread: .08, kind: 'gun' },
   laser: { name: 'LASER', ammo: 'cells', magazine: 20, cooldown: 100, damage: 0.85, speed: 1100, life: .55, pellets: 1, spread: 0, kind: 'gun' },
-  grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 4, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 110, kind: 'gun' },
-  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 280, life: 1.7, pellets: 1, spread: .02, kind: 'gun' },
+  grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 6, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 80, kind: 'gun' },
+  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 180, life: 1.7, pellets: 1, spread: .02, kind: 'gun' },
 
   // Tier 4 (Exotic / Endgame)
   laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 4.80, range: 105, arc: .55, kind: 'melee' },
@@ -314,11 +314,11 @@ function shoot() {
 function useMedkit() { if (!game.active || !game.stationItems.medkit || game.health >= 100) return; game.stationItems.medkit = Math.max(0, (game.stationItems.medkit || 0) - 1); game.health = Math.min(100, game.health + 45); localStorage.setItem('horde-station-items', JSON.stringify(game.stationItems)); updateAmmoUI(); ui.stationOutput.textContent = 'MEDKIT USED // +45% VITALITY'; }
 function pulse() { if (game.pulseTimer > 0) return; game.pulseTimer = 7 * getBiome(game.player.x, game.player.y).effects.pulseCooldownMultiplier; game.enemies.forEach(e => { if (e.hp && Math.hypot(e.x - game.player.x, e.y - game.player.y) < 170) { e.hp -= 2; if (e.hp <= 0) defeatEnemy(e, 50); burst(e.x, e.y, 8, 180); } }); burst(game.player.x, game.player.y, 35, 260); }
 function createVoidWorm(x, y, canSplit = true) {
-  const maxHp = 80.0;
+  const maxHp = 120.0;
   const enemy = { 
     x, y, family: 'VOID WORM', familyIndex: 24, ability: 'VOID BURROW', effect: null, 
     variant: 'COLOSSAL', boss: false, voidWorm: true, canSplit, color: '#8f7cff', r: 34, 
-    speed: 72, hp: maxHp, maxHp, damage: 0, contactDamage: 10, score: 500, drops: 0, 
+    speed: 200, hp: maxHp, maxHp, damage: 0, contactDamage: 10, score: 500, drops: 0, 
     abilityTimer: 1.5, shieldTimer: 0, hitTimer: 0 
   };
 
@@ -338,7 +338,7 @@ function createVoidWorm(x, y, canSplit = true) {
   return enemy;
 }
 function createVoidWalker(x, y) {
-  const maxHp = 800;
+  const maxHp = 200;
   const enemy = {
     x: x,
     y: y,
