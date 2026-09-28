@@ -71,17 +71,17 @@ const weaponCatalog = {
 
 // ==================== AMMO CRAFTING BATCHES ====================
 const ammoCatalog = {
-  pistolAmmo: { name: 'PISTOL AMMO', amount: 24, cost: { rawIron: 2, fuel: 1 } }, 
-  shells: { name: 'SHOTGUN SHELLS', amount: 12, cost: { rawIron: 3, fuel: 2 } }, 
-  minigunAmmo: { name: 'MINIGUN BELT', amount: 10, cost: { steel: 4, fuel: 2 } }, 
-  rifleAmmo: { name: 'RIFLE AMMO', amount: 16, cost: { iron: 3, fuel: 2 } },
+  pistolAmmo: { name: 'PISTOL AMMO', amount: 12, cost: { rawIron: 2, fuel: 1 } }, 
+  shells: { name: 'SHOTGUN SHELLS', amount: 16, cost: { rawIron: 3, fuel: 2 } }, 
+  minigunAmmo: { name: 'MINIGUN BELT', amount: 4, cost: { steel: 4, fuel: 2 } }, 
+  rifleAmmo: { name: 'RIFLE AMMO', amount: 15, cost: { iron: 3, fuel: 2 } },
   marksmanAmmo: { name: 'MARKSMAN ROUNDS', amount: 10, cost: { steel: 4, crystal: 1 } },
-  smgAmmo: { name: 'SMG AMMO', amount: 20, cost: { rawIron: 3, fuel: 2 } }, 
-  cells: { name: 'LASER CELLS', amount: 15, cost: { crystal: 3, steel: 1 } }, 
+  smgAmmo: { name: 'SMG AMMO', amount: 10, cost: { rawIron: 3, fuel: 2 } }, 
+  cells: { name: 'LASER CELLS', amount: 10, cost: { crystal: 3, steel: 1 } }, 
   grenades: { name: 'GRENADE CASINGS', amount: 8, cost: { iron: 2, fuel: 4 } }, 
   slugs: { name: 'RAIL SLUGS', amount: 8, cost: { steel: 4, crystal: 2 } }, 
-  fuelCells: { name: 'FLAME FUEL', amount: 10, cost: { fuel: 8, rawIron: 2 } }, 
-  pulseCells: { name: 'PULSE CELLS', amount: 15, cost: { crystal: 4, steel: 2 } }, 
+  fuelCells: { name: 'FLAME FUEL', amount: 8, cost: { fuel: 8, rawIron: 2 } }, 
+  pulseCells: { name: 'PULSE CELLS', amount: 10, cost: { crystal: 4, steel: 2 } }, 
   magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 14, cost: {} },
   cosmosGauntletAmmo: { name: 'COSMOS GAUNTLET CLIPS', amount: 12, cost: {} }
 };
@@ -578,14 +578,26 @@ function update(dt) {
       localStorage.setItem('horde-salvage', game.banked);
     }
   } else {
-    // Passive biome regeneration removed
+    if (effects.healthRegen) game.health = Math.min(100, game.health + effects.healthRegen * dt);
     if (effects.hazard) game.health -= effects.hazard.damagePerSecond * dt;
   }
 
-  // Hazard zones now heal player up to max 100 health
+  // Visual hazard zones hurt player, except inside Glass Desert
+// Visual hazard zones hurt player, except inside Glass Desert
   game.hazardZones.forEach(zone => {
     if (Math.hypot(p.x - zone.x, p.y - zone.y) < zone.radius) {
-      game.health = Math.min(100, game.health + zone.damagePerSecond * dt);
+      const isGlassDesert = zone.hazard?.name === 'MIRAGE BURN' || getBiome(zone.x, zone.y).name === 'GLASS DESERT';
+      
+      if (isGlassDesert) {
+        // Heal the player over time (capped at 100)
+        game.health = Math.min(100, game.health + 15 * dt); 
+        
+        // Drastically increase the spawn rate by forcing the timer down faster
+        game.spawnTimer -= dt * 10; 
+      } else {
+        // Standard visual hazard damage
+        game.health -= zone.damagePerSecond * dt;
+      }
     }
   });
 
