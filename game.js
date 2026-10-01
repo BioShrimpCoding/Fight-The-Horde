@@ -493,7 +493,7 @@ function randomResource() {
 function dropResource(x, y, amount = 1) { const resource = randomResource(); game.drops.push({ x, y, type: resource.key, amount, life: 24 }); }
 function openChest(node) { node.taken = true; for (let i = 0; i < 3; i++) dropResource(node.x, node.y, 2 + Math.floor(Math.random() * 4)); game.salvage += 2; burst(node.x, node.y, 18, 190); }
 function collectDrop(drop) { game.inventory[drop.type] += drop.amount; drop.life = 0; }
-function reloadAmmo() { if (!game.reloadPending || game.fireTimer > 0) return; const weapon = weaponCatalog[game.weapon]; if (weapon.kind === 'melee') { game.reloadPending = false; return; } const reserve = game.ammoReserve[weapon.ammo] || 0; const needed = weapon.magazine - game.ammo; const loaded = Math.min(needed, reserve); if (loaded <= 0) return; game.ammo += loaded; game.ammoReserve[weapon.ammo] -= loaded; game.reloadPending = false; }
+function reloadAmmo() { if (!game.reloadPending || game.fireTimer > 0) return; const weapon = weaponCatalog[game.weapon]; if (weapon.kind === 'melee') { game.reloadPending = false; return; } const reserve = game.ammoReserve[weapon.ammo] || 0; const needed = weapon.magazine - game.ammo; if (!reserve || needed <= 0) { if (needed <= 0) game.reloadPending = false; return; } game.ammo += Math.min(needed, weapon.magazine); game.ammoReserve[weapon.ammo] = Math.max(0, reserve - 1); game.reloadPending = false; }
 function updateAmmoUI() { const weapon = weaponCatalog[game.weapon]; ui.ammo.textContent = weapon.kind === 'melee' ? 'MELEE' : game.ammo; ui.ammoStorage.textContent = weapon.kind === 'melee' ? '-' : game.ammoReserve[weapon.ammo] || 0; ui.medkits.textContent = game.stationItems.medkit || 0; ui.weaponName.textContent = weapon.name; ui.ammoType.textContent = weapon.kind === 'melee' ? 'CLOSE RANGE' : ammoCatalog[weapon.ammo].name; }
 function updateAtlasCrystalUI() { if (atlasCrystalCounter) atlasCrystalCounter.textContent = String(game.atlasCrystals || 0).padStart(2, '0'); }
 const baseUpdateAmmoUI = updateAmmoUI;
@@ -672,6 +672,7 @@ function update(dt) {
 
   // Consolidated Enemy Update Loop (Movement, Boundary Checks, Attacks, and Player Damage)
   game.enemies.forEach(e => {
+    e.attackFlashTimer = Math.max(0, (e.attackFlashTimer || 0) - dt);
     e.shieldTimer = Math.max(0, (e.shieldTimer || 0) - dt);
     e.previousX = e.x;
     e.previousY = e.y;
@@ -707,6 +708,7 @@ function update(dt) {
       e.attackTimer -= dt;
       if (e.attackTimer <= 0) {
         triggerVoidShockwave(e);
+        e.attackFlashTimer = .45;
         e.attackTimer = 3;
       }
     }
@@ -940,13 +942,14 @@ function renderEnemySystem() {
     ctx.translate(enemy.x, enemy.y);
 
     const baseColor = '#0e6b5c';
-    const glowColor = 'rgba(157, 78, 221, 0.42)';
-
-    const pulse = Math.sin(Date.now() * 0.006) * 12;
-    ctx.beginPath();
-    ctx.arc(0, 0, enemy.r + 22 + pulse, 0, Math.PI * 2);
-    ctx.fillStyle = glowColor;
-    ctx.fill();
+    if (enemy.attackFlashTimer > 0) {
+      const glowColor = 'rgba(157, 78, 221, 0.34)';
+      const pulse = Math.sin(Date.now() * 0.012) * 6;
+      ctx.beginPath();
+      ctx.arc(0, 0, enemy.r + 14 + pulse, 0, Math.PI * 2);
+      ctx.fillStyle = glowColor;
+      ctx.fill();
+    }
 
     ctx.beginPath();
     ctx.arc(0, 0, enemy.r, 0, Math.PI * 2);
