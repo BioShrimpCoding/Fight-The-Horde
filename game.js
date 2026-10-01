@@ -4,7 +4,7 @@ const mapCanvas = document.querySelector('#map');
 const mapCtx = mapCanvas.getContext('2d');
 const crosshair = document.querySelector('.crosshair');
 const adminPanel = document.querySelector('#admin-panel');
-const ui = { wave: document.querySelector('#wave'), score: document.querySelector('#score'), high: document.querySelector('#high-score'), ammo: document.querySelector('#ammo'), ammoStorage: document.querySelector('#ammo-storage'), medkits: document.querySelector('#medkits'), weaponName: document.querySelector('#weapon-name'), ammoType: document.querySelector('#ammo-type'), health: document.querySelector('#health-bar'), healthValue: document.querySelector('#health-value'), threats: document.querySelector('#threat-count'), distance: document.querySelector('#distance'), salvage: document.querySelector('#salvage'), relics: document.querySelector('#relics'), objective: document.querySelector('#objective-text'), start: document.querySelector('#start-screen'), over: document.querySelector('#game-over'), final: document.querySelector('#final-score'), announcement: document.querySelector('#biome-announcement'), effects: document.querySelector('#biome-effects'), inventory: document.querySelector('#inventory-hud'), stations: document.querySelector('#sanctuary-stations'), stationOutput: document.querySelector('#station-output'), arsenal: document.querySelector('#arsenal-list'), craftDetails: document.querySelector('#craft-details') };
+const ui = { wave: document.querySelector('#wave'), score: document.querySelector('#score'), high: document.querySelector('#high-score'), ammo: document.querySelector('#ammo'), ammoStorage: document.querySelector('#ammo-storage'), medkits: document.querySelector('#medkits'), weaponName: document.querySelector('#weapon-name'), ammoType: document.querySelector('#ammo-type'), weaponBar: document.querySelector('#weapon-bar'), health: document.querySelector('#health-bar'), healthValue: document.querySelector('#health-value'), threats: document.querySelector('#threat-count'), distance: document.querySelector('#distance'), salvage: document.querySelector('#salvage'), relics: document.querySelector('#relics'), objective: document.querySelector('#objective-text'), start: document.querySelector('#start-screen'), over: document.querySelector('#game-over'), final: document.querySelector('#final-score'), announcement: document.querySelector('#biome-announcement'), effects: document.querySelector('#biome-effects'), inventory: document.querySelector('#inventory-hud'), stations: document.querySelector('#sanctuary-stations'), stationOutput: document.querySelector('#station-output'), arsenal: document.querySelector('#arsenal-list'), craftDetails: document.querySelector('#craft-details') };
 const debugConsoleOutput = document.querySelector('#debug-console-output');
 const clearConsoleButton = document.querySelector('#clear-console');
 const atlasCrystalCounter = document.querySelector('#atlas-crystals');
@@ -13,10 +13,11 @@ window.addEventListener('error', event => gameLog('ERROR', event.message || 'Unc
 window.addEventListener('unhandledrejection', event => { const reason = event.reason; gameLog('ERROR', reason?.message || String(reason || 'Unhandled promise rejection'), reason?.stack || 'Unhandled promise rejection'); });
 clearConsoleButton?.addEventListener('click', () => { debugConsoleOutput.innerHTML = ''; gameLog('INFO', 'Diagnostic console cleared'); });
 gameLog('INFO', 'Diagnostic console online');
-const keys = {}; const pointer = { x: 0, y: 0, down: false }; let animation; let lastTime = 0; let adminMode = true;
+const keys = {}; const pointer = { x: 0, y: 0, down: false }; let animation; let lastTime = 0; let adminMode = false;
+const adminUnlockSequence = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'Enter'];
+let adminUnlockIndex = 0;
 const clipSize = 12;
-const startingAmmoStorage = 15;
-const maxAmmoStorage = 25;
+const startingAmmoReserve = 15;
 const stationInteractionRadius = 95;
 const stationPositions = { crafting: { x: -300, y: -27 }, furnace: { x: 285, y: -27 } };
 const beaconRegionRadius = 1200;
@@ -50,6 +51,7 @@ const weaponCatalog = {
   machete: { name: 'MACHETE', ammo: null, cooldown: 450, damage: 1.20, range: 105, arc: .9, kind: 'melee' },
   spear: { name: 'SPEAR', ammo: null, cooldown: 600, damage: 1.80, range: 160, arc: .35, kind: 'melee' },
   // Tier 2 (Mid Game)
+  minigun: { name: 'MINIGUN', ammo: 'minigunAmmo', magazine: 100, cooldown: 50, damage: 0.1, speed: 750, life: .8, pellets: 1, spread: .38, kind: 'gun' },
   shotgun: { name: 'SHOTGUN', ammo: 'shells', magazine: 6, cooldown: 480, damage: 0.30, speed: 580, life: .45, pellets: 8, spread: .34, falloff: true, kind: 'gun' },
   burstRifle: { name: 'BURST RIFLE', ammo: 'rifleAmmo', magazine: 24, cooldown: 220, damage: 0.325, speed: 780, life: .8, pellets: 3, spread: .06, kind: 'gun' },
   flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 40, damage: 0.02, speed: 450, life: 3.0, pellets: 2, spread: .3, kind: 'gun', pierce: true },
@@ -57,12 +59,12 @@ const weaponCatalog = {
   warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 850, damage: 4.20, range: 95, arc: .75, kind: 'melee' },
 
   // Tier 3 (Late Mid Game)
-  minigun: { name: 'MINIGUN', ammo: 'minigunAmmo', magazine: 100, cooldown: 30, damage: 0.25, speed: 750, life: .8, pellets: 1, spread: .08, kind: 'gun' },
   laser: { name: 'LASER', ammo: 'cells', magazine: 20, cooldown: 100, damage: 0.85, speed: 1100, life: .55, pellets: 1, spread: 0, kind: 'gun' },
-  grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 6, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 80, kind: 'gun' },
+  grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 6, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 80, kind: 'gun', pierce: true },
   pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 180, life: 1.7, pellets: 1, spread: .02, kind: 'gun' },
 
   // Tier 4 (Exotic / Endgame)
+  voidBatar: { name: 'VOID BATAR', ammo: 'voidChains', magazine: 200, cooldown: 30, damage: 0.45, speed: 750, life: .8, pellets: 1, spread: .15, kind: 'gun' },
   laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 4.80, range: 105, arc: .55, kind: 'melee' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 100, damage: 1.30, speed: 440, life: .50, pellets: 1, spread: .50, kind: 'gun', oscillating: true, coneSize: .20 },
   railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 1, cooldown: 1200, damage: 18.00, speed: 1600, life: 1, pellets: 1, spread: 0, kind: 'gun' },
@@ -82,6 +84,7 @@ const ammoCatalog = {
   slugs: { name: 'RAIL SLUGS', amount: 8, cost: { steel: 4, crystal: 2 } }, 
   fuelCells: { name: 'FLAME FUEL', amount: 8, cost: { fuel: 8, rawIron: 2 } }, 
   pulseCells: { name: 'PULSE CELLS', amount: 10, cost: { crystal: 4, steel: 2 } }, 
+  voidChains: {name:`VOID CHAINS`, amount:4, cost: {steel:6 , fuel:4 , crystal:3 } },
   magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 14, cost: {} },
   cosmosGauntletAmmo: { name: 'COSMOS GAUNTLET CLIPS', amount: 12, cost: {} }
 };
@@ -103,6 +106,7 @@ const weaponRecipes = {
   duelSidearm: { name: 'DUEL SIDEARM', time: 6, cost: { iron: 4, wood: 3, sidearm: 1 }, weapon: 'duelSidearm' },
 
   // Tier 2 (Mid Game - Refined Metals & Fuel)
+    minigun: { name: 'MINIGUN', time: 12, cost: { steel: 12, fuel: 6 }, weapon: 'minigun' },
   shotgun: { name: 'SHOTGUN', time: 8, cost: { steel: 5, wood: 4 }, weapon: 'shotgun' },
   burstRifle: { name: 'BURST RIFLE', time: 8, cost: { steel: 6, iron: 4 }, weapon: 'burstRifle' },
   flamethrower: { name: 'FLAMETHROWER', time: 9, cost: { steel: 4, fuel: 8 }, weapon: 'flamethrower' },
@@ -110,17 +114,31 @@ const weaponRecipes = {
   sniper: { name: 'SNIPER', time: 10, cost: { steel: 8, crystal: 2 }, weapon: 'sniper' },
 
   // Tier 3 (Late Mid Game - High Steel & Crystal Integration)
-  minigun: { name: 'MINIGUN', time: 12, cost: { steel: 12, fuel: 6 }, weapon: 'minigun' },
   laser: { name: 'LASER', time: 12, cost: { steel: 6, crystal: 6 }, weapon: 'laser' },
   grenadeLauncher: { name: 'GRENADE LAUNCHER', time: 13, cost: { steel: 8, fuel: 8 }, weapon: 'grenadeLauncher' },
   pulseCarbine: { name: 'PULSE CARBINE', time: 14, cost: { steel: 10, crystal: 5 }, weapon: 'pulseCarbine' },
   laserBlade: { name: 'LASER BLADE', time: 13, cost: { steel: 8, crystal: 4, relic: 1 }, weapon: 'laserBlade' },
 
   // Tier 4 (Endgame / Exotic - Relics & Atlas Crystals)
+  
+  voidBatar: { name: 'VOID BATAR', time: 18 , cost: { steel: 18, crystal: 20, relic: 2, atlasCrystal: 1, minigun: 1}, weapon: 'voidBatar' }, //void batar is going to have a special crafting component dropped by void rift mini bosses
   magicGauntlet: { name: 'MAGIC GAUNTLET', time: 15, cost: { crystal: 12, steel: 6, relic: 1 }, weapon: 'magicGauntlet' },
   railgun: { name: 'RAILGUN', time: 18, cost: { steel: 16, crystal: 8, relic: 2 }, weapon: 'railgun' },
   cosmosGauntlet: { name: 'COSMOS GAUNTLET', time: 20, cost: { crystal: 16, steel: 8, relic: 2, atlasCrystal: 1, magicGauntlet: 1 }, weapon: 'cosmosGauntlet' }
 };
+const armorCatalog = {
+  scoutArmor: { name: 'SCOUT ARMOR', moveMultiplier: 1.12, description: '+12% movement speed' },
+  reinforcedArmor: { name: 'REINFORCED ARMOR', contactDamageReduction: .15, description: '-15% contact damage' },
+  hazardArmor: { name: 'HAZARD ARMOR', hazardDamageReduction: .35, statusDamageReduction: .35, description: '-35% hazard and status damage' },
+  voidArmor: { name: 'VOID ARMOR', voidDamageReduction: .30, description: '-30% Void projectile damage' }
+};
+const armorRecipes = {
+  scoutArmor: { name: 'SCOUT ARMOR', time: 8, cost: { steelPlate: 2, fiber: 3 }, armor: 'scoutArmor' },
+  reinforcedArmor: { name: 'REINFORCED ARMOR', time: 10, cost: { steelPlate: 4, stone: 3 }, armor: 'reinforcedArmor' },
+  hazardArmor: { name: 'HAZARD ARMOR', time: 12, cost: { steelPlate: 6, fiber: 4, crystal: 2 }, armor: 'hazardArmor' },
+  voidArmor: { name: 'VOID ARMOR', time: 18, cost: { steelPlate: 8, relic: 1, atlasCrystal: 1 }, armor: 'voidArmor' }
+};
+function getArmorEffects() { return armorCatalog[game.armor] || {}; }
 const biomeEffectProfiles = [
   { healthRegen: 4, damageMultiplier: 1.1, enemySpeedMultiplier: 1.05 },
   { moveMultiplier: 1.25, damageMultiplier: 1.15, enemySpeedMultiplier: 1.05 },
@@ -200,9 +218,10 @@ function freshGame() {
     currentSector: 0, 
     health: 100, 
     ammo: clipSize, 
-    ammoStorage: startingAmmoStorage, 
-    ammoReserve: { pistolAmmo: startingAmmoStorage * clipSize, magicGauntletAmmo: 6, cosmosGauntletAmmo: 6 }, 
-    weapon: 'sidearm', 
+    ammoReserve: { pistolAmmo: startingAmmoReserve * clipSize, magicGauntletAmmo: 6, cosmosGauntletAmmo: 6 }, 
+    weapon: 'sidearm',
+    weaponSlots: ['sidearm', null, null, null],
+    armor: null,
     unlockedWeapons: { sidearm: true }, 
     reloadPending: false, 
     salvage: 0, 
@@ -237,16 +256,20 @@ function freshGame() {
   };
 }
 ui.high.textContent = String(game.high).padStart(6, '0');
+renderWeaponBar();
 function resize() { const ratio = window.devicePixelRatio || 1; canvas.width = canvas.clientWidth * ratio; canvas.height = canvas.clientHeight * ratio; ctx.setTransform(ratio, 0, 0, ratio, 0, 0); if (!game.active) game.player = { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2, angle: 0 }; }
 window.addEventListener('resize', resize); resize();
-window.addEventListener('keydown', event => { keys[event.key.toLowerCase()] = true; if (event.code === 'F2' || event.key === 'F2') { event.preventDefault(); adminMode = !adminMode; adminPanel.hidden = !adminMode; } if (event.key.toLowerCase() === 'e' && game.active && !event.repeat) toggleStation(); if (event.key === ' ' && game.active) shoot(); if (event.key.toLowerCase() === 'h' && game.active && !event.repeat) useMedkit(); if (event.key.toLowerCase() === 'q' && game.active) pulse(); if (game.active && !event.repeat && /^[0-9]$/.test(event.key)) switchWeapon(Number(event.key)); }); window.addEventListener('keyup', event => keys[event.key.toLowerCase()] = false);
+window.addEventListener('keydown', event => { keys[event.key.toLowerCase()] = true; if (event.key === adminUnlockSequence[adminUnlockIndex]) { adminUnlockIndex++; if (adminUnlockIndex === adminUnlockSequence.length) { adminUnlockIndex = 0; const code = window.prompt('ADMIN ACCESS CODE'); if (code === 'iAmAdmin') { adminMode = true; adminPanel.hidden = false; gameLog('INFO', 'Admin panel unlocked'); } else { gameLog('WARN', 'Admin access denied'); } } } else { adminUnlockIndex = event.key === adminUnlockSequence[0] ? 1 : 0; } if (event.key.toLowerCase() === 'e' && game.active && !event.repeat) toggleStation(); if (event.key === ' ' && game.active) shoot(); if (event.key.toLowerCase() === 'h' && game.active && !event.repeat) useMedkit(); if (event.key.toLowerCase() === 'q' && game.active) pulse(); if (game.active && !event.repeat && /^[0-9]$/.test(event.key)) switchWeapon(Number(event.key)); }); window.addEventListener('keyup', event => keys[event.key.toLowerCase()] = false);
 canvas.addEventListener('pointermove', event => { const box = canvas.getBoundingClientRect(); pointer.x = event.clientX - box.left; pointer.y = event.clientY - box.top; crosshair.style.left = `${pointer.x}px`; crosshair.style.top = `${pointer.y}px`; }); canvas.addEventListener('pointerdown', () => { pointer.down = true; if (game.active) shoot(); }); window.addEventListener('pointerup', () => pointer.down = false);
-document.querySelector('#start-button').onclick = start; document.querySelector('#restart-button').onclick = start; adminPanel.hidden = !adminMode; adminPanel.querySelectorAll('[data-admin]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); adminAction(button.dataset.admin, button.dataset.value); })); document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm); } });
-function adminAction(action, value) { if (!game.active) start(); if (action === 'sector') teleportToSector(Number(value)); if (action === 'spawn') for (let i = 0; i < 20; i++) spawn(); if (action === 'refill') { game.health = 100; game.ammo = clipSize; game.ammoStorage = startingAmmoStorage; game.ammoReserve.magicGauntletAmmo = 6; game.magicGauntletRechargeTimer = 5; game.salvage = 0; game.relics = 0; } if (action === 'reset') { teleportPlayer(0, 0); game.enemies = []; game.bullets = []; game.discovered = new Set(['sanctuary']); game.biomeKey = null; } }
+document.querySelector('#start-button').onclick = start; document.querySelector('#restart-button').onclick = start; adminPanel.hidden = !adminMode; adminPanel.querySelectorAll('[data-admin]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); adminAction(button.dataset.admin, button.dataset.value); })); document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const quantityButton = event.target.closest('[data-craft-quantity]'); if (quantityButton) { event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(quantityButton.dataset.craftQuantity), Number(ui.craftDetails.dataset.weaponSlot || 0)); return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm, Number(ui.craftDetails.dataset.quantity || 1), Number(ui.craftDetails.dataset.weaponSlot || 0)); } });
+ui.weaponBar?.addEventListener('click', event => { const slotButton = event.target.closest('[data-weapon-slot]'); if (!slotButton) return; switchWeapon(Number(slotButton.dataset.weaponSlot)); });
+ui.craftDetails.addEventListener('click', event => { const slotButton = event.target.closest('[data-craft-slot]'); if (!slotButton) return; event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(ui.craftDetails.dataset.quantity || 1), Number(slotButton.dataset.craftSlot)); });
+function adminAction(action, value) { if (!game.active) start(); if (action === 'sector') teleportToSector(Number(value)); if (action === 'spawn') for (let i = 0; i < 20; i++) spawn(); if (action === 'refill') { game.health = 100; game.ammo = clipSize; game.ammoReserve.pistolAmmo = startingAmmoReserve * clipSize; game.ammoReserve.magicGauntletAmmo = 6; game.cosmosGauntletRechargeTimer = 6; game.magicGauntletRechargeTimer = 5; game.salvage = 0; game.relics = 0; } if (action === 'reset') { teleportPlayer(0, 0); game.enemies = []; game.bullets = []; game.discovered = new Set(['sanctuary']); game.biomeKey = null; } }
 function teleportToSector(sector) { teleportPlayer((sector - .5) * 3000, 0); game.currentSector = sector; game.biomeKey = null; game.discovered.add(getSectorKey(sector - 1)); }
 function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camera.x = x; game.camera.y = y; }
-function start() { game = freshGame(); game.active = true; randomizeBiomeData(game.seed); game.hazardZones = generateHazardZones(); const random = seededRandom(game.seed + 17); updateInventoryUI(); updateStationButtons(); for (let i = 0; i < 140; i++) game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: random() > .5 ? 'chest' : 'scrap', taken: false }); ui.start.classList.add('hidden'); ui.over.classList.add('hidden'); lastTime = performance.now(); cancelAnimationFrame(animation); animation = requestAnimationFrame(loop); }
-function switchWeapon(index) { const weaponId = ['sidearm', 'shotgun', 'minigun', 'burstRifle', 'sniper', 'smg', 'laser', 'grenadeLauncher', 'railgun', 'flamethrower', 'pulseCarbine', 'magicGauntlet', 'machete', 'warHammer', 'spear'][index - 1]; if (!weaponId || !game.unlockedWeapons[weaponId]) return; game.weapon = weaponId; game.ammo = 0; game.reloadPending = weaponCatalog[weaponId].kind !== 'melee'; updateAmmoUI(); }
+function start() { game = freshGame(); game.active = true; randomizeBiomeData(game.seed); game.hazardZones = generateHazardZones(); const random = seededRandom(game.seed + 17); updateInventoryUI(); updateStationButtons(); for (let i = 0; i < 140; i++) { const roll = random(); game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: roll < .08 ? 'relic' : roll < .54 ? 'chest' : 'scrap', taken: false }); } ui.start.classList.add('hidden'); ui.over.classList.add('hidden'); lastTime = performance.now(); cancelAnimationFrame(animation); animation = requestAnimationFrame(loop); }
+function switchWeapon(index) { const weaponId = game.weaponSlots[index - 1]; if (!weaponId || !game.unlockedWeapons[weaponId]) return; game.weapon = weaponId; game.ammo = 0; game.reloadPending = weaponCatalog[weaponId].kind !== 'melee'; updateAmmoUI(); renderWeaponBar(); }
+function renderWeaponBar() { if (!ui.weaponBar) return; ui.weaponBar.innerHTML = game.weaponSlots.map((weaponId, index) => { const weapon = weaponId ? weaponCatalog[weaponId] : null; return `<button type="button" class="weapon-slot ${weaponId === game.weapon ? 'selected' : ''}" data-weapon-slot="${index + 1}" title="${weapon ? weapon.name : 'EMPTY SLOT'}"><b>${index + 1}</b><span>${weapon ? weapon.name : 'EMPTY'}</span></button>`; }).join(''); }
 function addExplosion(x, y, radius, color = '#ff725e') {
   game.explosions.push({
     x,
@@ -259,7 +282,7 @@ function addExplosion(x, y, radius, color = '#ff725e') {
   });
   burst(x, y, 30, 250); // Optional: keep particle sparks for extra punch
 }
-function meleeAttack(weapon) { const p = game.player; game.enemies.forEach(enemy => { const distance = Math.hypot(enemy.x - p.x, enemy.y - p.y); const angle = Math.atan2(enemy.y - p.y, enemy.x - p.x); const difference = Math.atan2(Math.sin(angle - p.angle), Math.cos(angle - p.angle)); if (distance < weapon.range && Math.abs(difference) < weapon.arc) { enemy.hp = Math.max(0, enemy.hp - weapon.damage); if (enemy.hp <= 0) defeatEnemy(enemy); burst(enemy.x, enemy.y, 5, 100); } }); for (let i = 0; i < 10; i++) game.sparks.push({ x: p.x + Math.cos(p.angle) * weapon.range * .5, y: p.y + Math.sin(p.angle) * weapon.range * .5, life: .2, vx: (Math.random() - .5) * 100, vy: (Math.random() - .5) * 100 }); }
+function meleeAttack(weapon) { const p = game.player; game.enemies.forEach(enemy => { const distance = Math.hypot(enemy.x - p.x, enemy.y - p.y); const angle = Math.atan2(enemy.y - p.y, enemy.x - p.x); const difference = Math.atan2(Math.sin(angle - p.angle), Math.cos(angle - p.angle)); if (!enemy.defeated && enemy.shieldTimer <= 0 && distance < weapon.range && Math.abs(difference) < weapon.arc) { enemy.hp = Math.max(0, enemy.hp - weapon.damage); if (enemy.hp <= 0) defeatEnemy(enemy); burst(enemy.x, enemy.y, 5, 100); } }); for (let i = 0; i < 10; i++) game.sparks.push({ x: p.x + Math.cos(p.angle) * weapon.range * .5, y: p.y + Math.sin(p.angle) * weapon.range * .5, life: .2, vx: (Math.random() - .5) * 100, vy: (Math.random() - .5) * 100 }); }
 function shoot() { 
   if (!game.active || game.fireTimer > 0) return; 
   const weapon = weaponCatalog[game.weapon]; 
@@ -312,7 +335,7 @@ function shoot() {
   }
 }
 function useMedkit() { if (!game.active || !game.stationItems.medkit || game.health >= 100) return; game.stationItems.medkit = Math.max(0, (game.stationItems.medkit || 0) - 1); game.health = Math.min(100, game.health + 45); localStorage.setItem('horde-station-items', JSON.stringify(game.stationItems)); updateAmmoUI(); ui.stationOutput.textContent = 'MEDKIT USED // +45% VITALITY'; }
-function pulse() { if (game.pulseTimer > 0) return; game.pulseTimer = 7 * getBiome(game.player.x, game.player.y).effects.pulseCooldownMultiplier; game.enemies.forEach(e => { if (e.hp && Math.hypot(e.x - game.player.x, e.y - game.player.y) < 170) { e.hp -= 2; if (e.hp <= 0) defeatEnemy(e, 50); burst(e.x, e.y, 8, 180); } }); burst(game.player.x, game.player.y, 35, 260); }
+function pulse() { if (game.pulseTimer > 0) return; game.pulseTimer = 7 * getBiome(game.player.x, game.player.y).effects.pulseCooldownMultiplier; game.enemies.forEach(e => { if (!e.defeated && e.shieldTimer <= 0 && e.hp && Math.hypot(e.x - game.player.x, e.y - game.player.y) < 170) { e.hp -= 2; if (e.hp <= 0) defeatEnemy(e, 50); burst(e.x, e.y, 8, 180); } }); burst(game.player.x, game.player.y, 35, 260); }
 function createVoidWorm(x, y, canSplit = true) {
   const maxHp = 120.0;
   const enemy = { 
@@ -338,7 +361,7 @@ function createVoidWorm(x, y, canSplit = true) {
   return enemy;
 }
 function createVoidWalker(x, y) {
-  const maxHp = 200;
+  const maxHp = 400;
   const enemy = {
     x: x,
     y: y,
@@ -357,7 +380,7 @@ function createVoidWalker(x, y) {
     boss: true,
     contactDamage: 20,
     score: 800,
-    drops: 3
+    drops: 10
   };
 
   let health = maxHp;
@@ -394,11 +417,11 @@ function spawn() {
     if (getBiome(game.player.x, game.player.y).key !== 'void') return;
 
     // Check current active Void entities to prevent flooding
-    const activeWorms = game.enemies.filter(enemy => enemy.voidWorm).length;
-    const activeWalkers = game.enemies.filter(enemy => enemy.voidWalker).length;
+    const activeWorms = game.enemies.filter(enemy => enemy.voidWorm && !enemy.defeated).length;
+    const activeWalkers = game.enemies.filter(enemy => enemy.voidWalker && !enemy.defeated).length;
 
     // Cap active Void bosses to 1 at a time
-    if (activeWorms >= 8 || activeWalkers >= 10) return;
+    if (activeWorms >= 8 && activeWalkers >= 10) return;
 
     // 30% chance to spawn when called
     if (Math.random() > 0.3) return;
@@ -453,7 +476,7 @@ function spawn() {
 }
 
 
-function defeatEnemy(enemy, bonus = 0) { if (enemy.hp > 0) return; if (enemy.voidWorm) { if (Math.random() < .33) game.atlasCrystals++; if (enemy.canSplit && Math.random() < .15) { game.enemies.push(createVoidWorm(enemy.x - 26, enemy.y, false)); game.enemies.push(createVoidWorm(enemy.x + 26, enemy.y, false)); } } dropResource(enemy.x, enemy.y, enemy.drops || 1); game.score += (enemy.score || 100) + bonus; if (enemy.boss && Math.random() < .5) game.relics++; if (Math.random() > (enemy.boss ? .35 : .72)) game.gems.push({ x: enemy.x, y: enemy.y, life: 18 }); burst(enemy.x, enemy.y, enemy.boss ? 18 : 8, enemy.boss ? 260 : 170); }
+function defeatEnemy(enemy, bonus = 0) { if (!enemy || enemy.defeated || enemy.hp > 0) return; enemy.defeated = true; if (enemy.voidWorm) { if (Math.random() < .33) game.atlasCrystals++; if (enemy.canSplit && Math.random() < .15) { const activeWorms = game.enemies.filter(candidate => candidate.voidWorm && !candidate.defeated).length; const splitCount = Math.min(2, Math.max(0, 8 - activeWorms)); for (let i = 0; i < splitCount; i++) game.enemies.push(createVoidWorm(enemy.x + (i ? 26 : -26), enemy.y, false)); } } dropResource(enemy.x, enemy.y, enemy.drops || 1); game.score += (enemy.score || 100) + bonus; if (enemy.boss && Math.random() < .5) game.relics++; if (Math.random() > (enemy.boss ? .35 : .72)) game.gems.push({ x: enemy.x, y: enemy.y, life: 18 }); burst(enemy.x, enemy.y, enemy.boss ? 18 : 8, enemy.boss ? 260 : 170); }
 function randomResource() {
   const totalWeight = resourceTypes.reduce((sum, item) => sum + item.weight, 0);
   let randomNum = Math.random() * totalWeight;
@@ -470,27 +493,21 @@ function randomResource() {
 function dropResource(x, y, amount = 1) { const resource = randomResource(); game.drops.push({ x, y, type: resource.key, amount, life: 24 }); }
 function openChest(node) { node.taken = true; for (let i = 0; i < 3; i++) dropResource(node.x, node.y, 2 + Math.floor(Math.random() * 4)); game.salvage += 2; burst(node.x, node.y, 18, 190); }
 function collectDrop(drop) { game.inventory[drop.type] += drop.amount; drop.life = 0; }
-function reloadAmmo() { if (!game.reloadPending || game.fireTimer > 0) return; const weapon = weaponCatalog[game.weapon]; if (weapon.kind === 'melee') { game.reloadPending = false; return; } const reserve = game.ammoReserve[weapon.ammo] || 0; if (!reserve) return; const needed = weapon.magazine - game.ammo; if (needed <= 0) { game.reloadPending = false; return; } const loaded = Math.min(needed, weapon.magazine); game.ammo += loaded; game.ammoReserve[weapon.ammo] = Math.max(0, reserve - 1); game.reloadPending = false; }
+function reloadAmmo() { if (!game.reloadPending || game.fireTimer > 0) return; const weapon = weaponCatalog[game.weapon]; if (weapon.kind === 'melee') { game.reloadPending = false; return; } const reserve = game.ammoReserve[weapon.ammo] || 0; const needed = weapon.magazine - game.ammo; const loaded = Math.min(needed, reserve); if (loaded <= 0) return; game.ammo += loaded; game.ammoReserve[weapon.ammo] -= loaded; game.reloadPending = false; }
 function updateAmmoUI() { const weapon = weaponCatalog[game.weapon]; ui.ammo.textContent = weapon.kind === 'melee' ? 'MELEE' : game.ammo; ui.ammoStorage.textContent = weapon.kind === 'melee' ? '-' : game.ammoReserve[weapon.ammo] || 0; ui.medkits.textContent = game.stationItems.medkit || 0; ui.weaponName.textContent = weapon.name; ui.ammoType.textContent = weapon.kind === 'melee' ? 'CLOSE RANGE' : ammoCatalog[weapon.ammo].name; }
 function updateAtlasCrystalUI() { if (atlasCrystalCounter) atlasCrystalCounter.textContent = String(game.atlasCrystals || 0).padStart(2, '0'); }
 const baseUpdateAmmoUI = updateAmmoUI;
 updateAmmoUI = function() { baseUpdateAmmoUI(); updateAtlasCrystalUI(); };
 function getNearbyStation() { return Object.entries(stationPositions).find(([, position]) => Math.hypot(game.player.x - position.x, game.player.y - position.y) <= stationInteractionRadius)?.[0] || null; }
 function toggleStation() { const nearbyStation = getNearbyStation(); if (!nearbyStation) return; game.stationOpen = game.stationOpen === nearbyStation ? null : nearbyStation; updateStationUI(); }
-function updateStationUI() { const nearbyStation = getNearbyStation(); if (game.stationOpen && nearbyStation !== game.stationOpen) game.stationOpen = null; ui.stations.hidden = !game.stationOpen; document.querySelectorAll('[data-station]').forEach(card => { card.hidden = card.dataset.station !== game.stationOpen; }); }
+function updateStationUI() { const nearbyStation = getNearbyStation(); if (game.stationOpen && nearbyStation !== game.stationOpen) game.stationOpen = null; ui.stations.hidden = !game.stationOpen; adminPanel.hidden = !adminMode || Boolean(game.stationOpen); document.querySelectorAll('[data-station]').forEach(card => { card.hidden = card.dataset.station !== game.stationOpen; }); }
 function bankInventory() { let deposited = false; resourceTypes.forEach(resource => { const amount = game.inventory[resource.key]; if (!amount) return; game.vault[resource.key] = (game.vault[resource.key] || 0) + amount; game.inventory[resource.key] = 0; deposited = true; }); if (deposited) localStorage.setItem('horde-vault', JSON.stringify(game.vault)); return deposited; }
-function getCraftResourceAmount(key) { 
-  if (key === 'sidearm') return game.unlockedWeapons.sidearm ? 1 : 0;
-  if (key === 'magicGauntlet') return game.weapon === 'magicGauntlet' ? 1 : 0;
-  return key === 'relic' ? game.relics : key === 'atlasCrystal' ? game.atlasCrystals : (game.vault[key] || 0); 
-}
-function spendCraftResource(key, amount) { if (key === 'relic') { game.relics = Math.max(0, game.relics - amount); } else if (key === 'atlasCrystal') { game.atlasCrystals = Math.max(0, game.atlasCrystals - amount); } else { game.vault[key] = Math.max(0, (game.vault[key] || 0) - amount); } }
+function getCraftResourceAmount(key) { if (weaponCatalog[key]) return game.unlockedWeapons[key] ? 1 : 0; if (key === 'relic') return game.relics; if (key === 'atlasCrystal') return game.atlasCrystals; if (key === 'steelPlate') return game.stationItems.steelPlate || 0; return game.vault[key] || 0; }
+function spendCraftResource(key, amount) { if (weaponCatalog[key]) return; if (key === 'relic') game.relics = Math.max(0, game.relics - amount); else if (key === 'atlasCrystal') game.atlasCrystals = Math.max(0, game.atlasCrystals - amount); else if (key === 'steelPlate') game.stationItems.steelPlate = Math.max(0, (game.stationItems.steelPlate || 0) - amount); else game.vault[key] = Math.max(0, (game.vault[key] || 0) - amount); }
 const stationRecipes = { 
   medkit: { name: 'MEDKIT', 
   time: 4, cost: { fiber: 4, crystal: 2 }, 
   output: { medkit: 1 } }, 
-  ammoPack: { name: 'AMMO PACK', time: 5, cost: { steel: 3, fuel: 2 }, 
-  output: { ammoStorage: 5 } }, 
   steelPlate: { name: 'STEEL PLATE', time: 7, cost: { steel: 5, stone: 2 }, 
   output: { steelPlate: 1 } }, 
   smeltIron: { name: 'SMELTED IRON', time: 6, cost: { rawIron: 3, fuel: 10 }, 
@@ -498,8 +515,8 @@ const stationRecipes = {
   makeSteel: { name: 'STEEL', time: 8, cost: { iron: 2, stone: 3, fuel: 10 }, 
   output: { steel: 2 } }, 
   refineFuel: { name: 'REFINED FUEL', time: 5, cost: { wood: 2, fiber: 2, fuel: 3 }, 
-  output: { fuel: 12 } }, ...weaponRecipes, ...Object.fromEntries(Object.entries(ammoCatalog).map(([key, ammo]) => [`ammo_${key}`, { name: ammo.name, time: 3, cost: ammo.cost, ammo: key, amount: ammo.amount }])) };
-function openCraftDetails(recipeKey) { const recipe = stationRecipes[recipeKey]; if (!recipe) return; const costEntries = Object.entries(recipe.cost || {}); const materialRows = costEntries.map(([key, amount]) => { const resource = resourceTypes.find(item => item.key === key) || { name: key.toUpperCase() }; const owned = getCraftResourceAmount(key); const ready = owned >= amount; return `<li class="${ready ? 'ready' : 'missing'}"><span>${resource.name}</span><strong>${owned} / ${amount}</strong></li>`; }).join(''); const missing = costEntries.find(([key, amount]) => getCraftResourceAmount(key) < amount); const canCraft = !missing; ui.craftDetails.innerHTML = `
+  output: { fuel: 12 } }, ...weaponRecipes, ...armorRecipes, ...Object.fromEntries(Object.entries(ammoCatalog).map(([key, ammo]) => [`ammo_${key}`, { name: ammo.name, time: 3, cost: ammo.cost, ammo: key, amount: ammo.amount }])) };
+function openCraftDetails(recipeKey, requestedQuantity = 1) { const recipe = stationRecipes[recipeKey]; if (!recipe) return; const repeatable = !recipe.weapon && !recipe.armor; const quantity = repeatable ? Math.max(1, Math.min(5, requestedQuantity)) : 1; const costEntries = Object.entries(recipe.cost || {}); const materialRows = costEntries.map(([key, amount]) => { const resource = resourceTypes.find(item => item.key === key) || { name: key === 'steelPlate' ? 'STEEL PLATE' : key.toUpperCase() }; const required = amount * quantity; const owned = getCraftResourceAmount(key); const ready = owned >= required; return `<li class="${ready ? 'ready' : 'missing'}"><span>${resource.name}</span><strong>${owned} / ${required}</strong></li>`; }).join(''); const missing = costEntries.find(([key, amount]) => getCraftResourceAmount(key) < amount * quantity); const capacityExceeded = recipe.output?.medkit && (game.stationItems.medkit || 0) + quantity > 5; const canCraft = !missing && !capacityExceeded && !game.crafting; const quantityControls = repeatable ? `<div class="craft-quantity-controls"><span>QUANTITY</span>${[1, 2, 3, 4, 5].map(value => `<button type="button" data-craft-quantity="${value}" class="${value === quantity ? 'selected' : ''}" ${game.crafting ? 'disabled' : ''}>${value}</button>`).join('')}</div>` : ''; const actionLabel = game.crafting ? 'CRAFTING' : capacityExceeded ? 'STORAGE FULL' : canCraft ? `CRAFT x${quantity}` : 'NEED MATERIALS'; ui.craftDetails.dataset.recipeKey = recipeKey; ui.craftDetails.dataset.quantity = quantity; ui.craftDetails.innerHTML = `
     <div class="craft-details-header">
       <strong>${recipe.name}</strong>
       <button type="button" class="detail-close" data-close-details>✕</button>
@@ -508,15 +525,20 @@ function openCraftDetails(recipeKey) { const recipe = stationRecipes[recipeKey];
       <div class="craft-detail-title">REQUIRED MATERIALS</div>
       <ul class="craft-detail-list">${materialRows}</ul>
       <div class="craft-detail-actions">
-        <button type="button" data-craft-confirm="${recipeKey}" ${canCraft ? '' : 'disabled'}>${canCraft ? 'CRAFT ITEM' : 'NEED MATERIALS'}</button>
+        ${quantityControls}
+        <button type="button" data-craft-confirm="${recipeKey}" ${canCraft ? '' : 'disabled'}>${actionLabel}</button>
       </div>
     </div>
   `; ui.craftDetails.hidden = false; }
-function craftItem(recipeKey) { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary' || game.crafting) return; const recipe = stationRecipes[recipeKey]; const missing = Object.entries(recipe.cost).find(([key, amount]) => getCraftResourceAmount(key) < amount); if (missing) { const shortage = missing[1] - getCraftResourceAmount(missing[0]); ui.stationOutput.textContent = `NEED ${shortage} MORE ${missing[0].toUpperCase()}`; return; } Object.entries(recipe.cost).forEach(([key, amount]) => { spendCraftResource(key, amount); }); game.crafting = { recipeKey, remaining: recipe.time, total: recipe.time }; localStorage.setItem('horde-vault', JSON.stringify(game.vault)); updateInventoryUI(); updateStationButtons(); ui.stationOutput.textContent = `CRAFTING ${recipe.name} // ${recipe.time}s`; ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; }
-function updateCrafting(dt) { if (!game.crafting) return; game.crafting.remaining -= dt; const recipe = stationRecipes[game.crafting.recipeKey]; ui.stationOutput.textContent = `CRAFTING ${recipe.name} // ${Math.ceil(game.crafting.remaining)}s`; if (game.crafting.remaining > 0) return; if (recipe.weapon) { game.unlockedWeapons[recipe.weapon] = true; game.weapon = recipe.weapon; game.ammo = 0; game.reloadPending = weaponCatalog[recipe.weapon].kind !== 'melee'; } else if (recipe.ammo) { game.ammoReserve[recipe.ammo] = (game.ammoReserve[recipe.ammo] || 0) + recipe.amount; } else { Object.entries(recipe.output).forEach(([key, amount]) => { if (key === 'ammoStorage') game.ammoStorage = Math.min(maxAmmoStorage, game.ammoStorage + amount); else if (resourceTypes.some(resource => resource.key === key)) game.vault[key] = (game.vault[key] || 0) + amount; else if (key === 'medkit') game.stationItems[key] = Math.min(5, (game.stationItems[key] || 0) + amount); else game.stationItems[key] = (game.stationItems[key] || 0) + amount; }); } localStorage.setItem('horde-vault', JSON.stringify(game.vault)); localStorage.setItem('horde-station-items', JSON.stringify(game.stationItems)); game.crafting = null; updateInventoryUI(); updateStationButtons(); updateAmmoUI(); ui.stationOutput.textContent = `COMPLETE // ${recipe.name}`; }
+function craftItem(recipeKey, requestedQuantity = 1) { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary' || game.crafting) return; const recipe = stationRecipes[recipeKey]; const repeatable = !recipe.weapon && !recipe.armor; const quantity = repeatable ? Math.max(1, Math.min(5, requestedQuantity)) : 1; if (recipe.output?.medkit && (game.stationItems.medkit || 0) + quantity > 5) { ui.stationOutput.textContent = 'MEDKIT STORAGE FULL'; return; } const missing = Object.entries(recipe.cost).find(([key, amount]) => getCraftResourceAmount(key) < amount * quantity); if (missing) { const shortage = missing[1] * quantity - getCraftResourceAmount(missing[0]); ui.stationOutput.textContent = `NEED ${shortage} MORE ${missing[0].toUpperCase()}`; return; } Object.entries(recipe.cost).forEach(([key, amount]) => { spendCraftResource(key, amount * quantity); }); game.crafting = { recipeKey, quantity, remaining: recipe.time * quantity, total: recipe.time * quantity }; localStorage.setItem('horde-vault', JSON.stringify(game.vault)); updateInventoryUI(); updateStationButtons(); ui.stationOutput.textContent = `CRAFTING ${recipe.name} x${quantity} // ${recipe.time * quantity}s`; openCraftDetails(recipeKey, quantity); }
+function updateCrafting(dt) { if (!game.crafting) return; game.crafting.remaining -= dt; const recipe = stationRecipes[game.crafting.recipeKey]; const quantity = game.crafting.quantity || 1; ui.stationOutput.textContent = `CRAFTING ${recipe.name} x${quantity} // ${Math.ceil(game.crafting.remaining)}s`; if (game.crafting.remaining > 0) return; if (recipe.weapon) { game.unlockedWeapons[recipe.weapon] = true; game.weaponSlots[game.crafting.weaponSlot] = recipe.weapon; game.weapon = recipe.weapon; game.ammo = 0; game.reloadPending = weaponCatalog[recipe.weapon].kind !== 'melee'; } else if (recipe.armor) { game.armor = recipe.armor; } else if (recipe.ammo) { game.ammoReserve[recipe.ammo] = (game.ammoReserve[recipe.ammo] || 0) + recipe.amount * quantity; } else { Object.entries(recipe.output).forEach(([key, amount]) => { const outputAmount = amount * quantity; if (resourceTypes.some(resource => resource.key === key)) game.vault[key] = (game.vault[key] || 0) + outputAmount; else if (key === 'medkit') game.stationItems[key] = Math.min(5, (game.stationItems[key] || 0) + outputAmount); else game.stationItems[key] = (game.stationItems[key] || 0) + outputAmount; }); } localStorage.setItem('horde-vault', JSON.stringify(game.vault)); localStorage.setItem('horde-station-items', JSON.stringify(game.stationItems)); const completedRecipeKey = game.crafting.recipeKey; game.crafting = null; updateInventoryUI(); updateStationButtons(); updateAmmoUI(); renderWeaponBar(); ui.stationOutput.textContent = `COMPLETE // ${recipe.name} x${quantity}`; openCraftDetails(completedRecipeKey, 1); }
+function getWeaponPrerequisite(recipe) { return recipe.weapon ? Object.keys(recipe.cost || {}).find(key => weaponCatalog[key]) || null : null; }
+function getWeaponTargetSlot(recipe, requestedSlot = 0) { const prerequisite = getWeaponPrerequisite(recipe); if (prerequisite) return game.weaponSlots.indexOf(prerequisite); if (requestedSlot >= 0 && !game.weaponSlots[requestedSlot]) return requestedSlot; return game.weaponSlots.findIndex(slot => !slot); }
+function openCraftDetails(recipeKey, requestedQuantity = 1, requestedSlot = 0) { const recipe = stationRecipes[recipeKey]; if (!recipe) return; const repeatable = !recipe.weapon && !recipe.armor; const quantity = repeatable ? Math.max(1, Math.min(5, requestedQuantity)) : 1; const targetSlot = getWeaponTargetSlot(recipe, requestedSlot); const costEntries = Object.entries(recipe.cost || {}); const materialRows = costEntries.map(([key, amount]) => { const resource = resourceTypes.find(item => item.key === key) || { name: key === 'steelPlate' ? 'STEEL PLATE' : key.toUpperCase() }; const required = amount * quantity; const owned = getCraftResourceAmount(key); return `<li class="${owned >= required ? 'ready' : 'missing'}"><span>${resource.name}</span><strong>${owned} / ${required}</strong></li>`; }).join(''); const missing = costEntries.find(([key, amount]) => getCraftResourceAmount(key) < amount * quantity); const capacityExceeded = recipe.output?.medkit && (game.stationItems.medkit || 0) + quantity > 5; const canCraft = !missing && !capacityExceeded && !game.crafting && (!recipe.weapon || targetSlot >= 0); const quantityControls = repeatable ? `<div class="craft-quantity-controls"><span>QUANTITY</span>${[1, 2, 3, 4, 5].map(value => `<button type="button" data-craft-quantity="${value}" class="${value === quantity ? 'selected' : ''}" ${game.crafting ? 'disabled' : ''}>${value}</button>`).join('')}</div>` : ''; const slotControls = recipe.weapon ? `<div class="craft-slot-controls"><span>SLOT</span>${game.weaponSlots.map((slot, index) => { const prerequisite = getWeaponPrerequisite(recipe); const locked = Boolean(slot) && slot !== prerequisite; const selected = targetSlot === index; return `<button type="button" data-craft-slot="${index}" class="${selected ? 'selected' : ''}" ${locked || game.crafting ? 'disabled' : ''}>${index + 1}${slot ? ` ${weaponCatalog[slot].name}` : ' EMPTY'}</button>`; }).join('')}</div>` : ''; const actionLabel = game.crafting ? 'CRAFTING' : capacityExceeded ? 'STORAGE FULL' : !recipe.weapon || targetSlot >= 0 ? (canCraft ? `CRAFT x${quantity}` : 'NEED MATERIALS') : 'NO EMPTY SLOT'; ui.craftDetails.dataset.recipeKey = recipeKey; ui.craftDetails.dataset.quantity = quantity; ui.craftDetails.dataset.weaponSlot = targetSlot; ui.craftDetails.innerHTML = `<div class="craft-details-header"><strong>${recipe.name}</strong><button type="button" class="detail-close" data-close-details>✕</button></div><div class="craft-details-body"><div class="craft-detail-title">REQUIRED MATERIALS</div><ul class="craft-detail-list">${materialRows}</ul><div class="craft-detail-actions">${slotControls}${quantityControls}<button type="button" data-craft-confirm="${recipeKey}" ${canCraft ? '' : 'disabled'}>${actionLabel}</button></div></div>`; ui.craftDetails.hidden = false; }
+function craftItem(recipeKey, requestedQuantity = 1, requestedSlot = Number(ui.craftDetails.dataset.weaponSlot || 0)) { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary' || game.crafting) return; const recipe = stationRecipes[recipeKey]; const repeatable = !recipe.weapon && !recipe.armor; const quantity = repeatable ? Math.max(1, Math.min(5, requestedQuantity)) : 1; const weaponSlot = recipe.weapon ? getWeaponTargetSlot(recipe, requestedSlot) : -1; if (recipe.weapon && weaponSlot < 0) { ui.stationOutput.textContent = 'NO EMPTY WEAPON SLOT'; return; } if (recipe.output?.medkit && (game.stationItems.medkit || 0) + quantity > 5) { ui.stationOutput.textContent = 'MEDKIT STORAGE FULL'; return; } const missing = Object.entries(recipe.cost).find(([key, amount]) => getCraftResourceAmount(key) < amount * quantity); if (missing) { const shortage = missing[1] * quantity - getCraftResourceAmount(missing[0]); ui.stationOutput.textContent = `NEED ${shortage} MORE ${missing[0].toUpperCase()}`; return; } Object.entries(recipe.cost).forEach(([key, amount]) => spendCraftResource(key, amount * quantity)); game.crafting = { recipeKey, quantity, weaponSlot, remaining: recipe.time * quantity, total: recipe.time * quantity }; localStorage.setItem('horde-vault', JSON.stringify(game.vault)); updateInventoryUI(); updateStationButtons(); ui.stationOutput.textContent = `CRAFTING ${recipe.name} x${quantity} // ${recipe.time * quantity}s`; openCraftDetails(recipeKey, quantity, weaponSlot); }
 function updateStationButtons() { document.querySelectorAll('[data-craft]').forEach(button => { button.disabled = Boolean(game.crafting); button.classList.toggle('crafting', Boolean(game.crafting && button.dataset.craft === game.crafting.recipeKey)); }); }
 function renderArsenal() 
-{ const weapons = Object.entries(weaponRecipes).map(([key, recipe]) => `<button type="button" data-craft="${key}">${recipe.name}<small>CRAFT WEAPON</small></button>`).join(''); const ammo = Object.entries(ammoCatalog).filter(([key]) => key !== 'magicGauntletAmmo' && key !== `cosmosGauntletAmmo`).map(([key, recipe]) => `<button type="button" data-craft="ammo_${key}">${recipe.name}<small>CRAFT AMMO</small></button>`).join(''); ui.arsenal.innerHTML = `<span class="station-title">ARSENAL // WEAPONS</span>${weapons}<span class="station-title">AMMO FABRICATOR</span>${ammo}`; ui.arsenal.addEventListener('click', event => { const button = event.target.closest('[data-craft]'); if (button) openCraftDetails(button.dataset.craft); }); updateStationButtons(); }
+{ const weapons = Object.entries(weaponRecipes).map(([key, recipe]) => `<button type="button" data-craft="${key}">${recipe.name}<small>CRAFT WEAPON</small></button>`).join(''); const armor = Object.entries(armorRecipes).map(([key, recipe]) => `<button type="button" data-craft="${key}">${recipe.name}<small>${armorCatalog[recipe.armor].description}</small></button>`).join(''); const ammo = Object.entries(ammoCatalog).filter(([key]) => key !== 'magicGauntletAmmo' && key !== `cosmosGauntletAmmo`).map(([key, recipe]) => `<button type="button" data-craft="ammo_${key}">${recipe.name}<small>CRAFT AMMO</small></button>`).join(''); ui.arsenal.innerHTML = `<span class="station-title">ARSENAL // WEAPONS</span>${weapons}<span class="station-title">ARMOR // EQUIP ONE</span>${armor}<span class="station-title">AMMO FABRICATOR</span>${ammo}`; ui.arsenal.addEventListener('click', event => { const button = event.target.closest('[data-craft]'); if (button) openCraftDetails(button.dataset.craft); }); updateStationButtons(); }
 renderArsenal();
 function drawBiomeHazard(biome, width, height) { if (biome.key === 'sanctuary') return; const hazard = biome.effects.hazard; const time = performance.now() / 1000; const name = hazard.name; ctx.save(); ctx.globalAlpha = .2; if (name.includes('MIST') || name.includes('ASH') || name.includes('SPORES') || name.includes('RAIN')) { ctx.fillStyle = biome.color; for (let i = 0; i < 28; i++) { const x = (i * 97 + time * 18) % width; const y = (i * 53 + time * 11) % height; ctx.beginPath(); ctx.arc(x, y, 3 + (i % 4), 0, Math.PI * 2); ctx.fill(); } } else if (name.includes('HEAT') || name.includes('EMBER') || name.includes('FIRE') || name.includes('BURN')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 2; for (let i = 0; i < 18; i++) { const x = (i * 131 + time * 35) % width; const y = (i * 71 + time * 24) % height; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 12, y + 28); ctx.stroke(); } } else if (name.includes('FREEZE') || name.includes('FROST') || name.includes('COLD')) { ctx.fillStyle = biome.color; for (let i = 0; i < 24; i++) { const x = (i * 83 + time * 12) % width; const y = (i * 61 + time * 30) % height; ctx.fillRect(x, y, 2, 8); } } else if (name.includes('LIGHTNING') || name.includes('THUNDER')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 3; for (let i = 0; i < 3; i++) { const x = (i * 211 + time * 7) % width; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x - 14, height * .25); ctx.lineTo(x + 8, height * .5); ctx.lineTo(x - 12, height * .78); ctx.stroke(); } } else if (name.includes('ROOT') || name.includes('BONE')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 4; for (let i = 0; i < 8; i++) { const x = i * width / 7; ctx.beginPath(); ctx.moveTo(x, height); ctx.quadraticCurveTo(x + 20, height * .7, x - 8, height * .42); ctx.stroke(); } } else if (name.includes('GRAVITY') || name.includes('PRESSURE') || name.includes('HORIZON')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 2; for (let radius = 70; radius < Math.max(width, height); radius += 100) { ctx.beginPath(); ctx.arc(width / 2, height / 2, radius + Math.sin(time * 2 + radius) * 8, 0, Math.PI * 2); ctx.stroke(); } } else { ctx.fillStyle = biome.color; for (let i = 0; i < 18; i++) { const x = (i * 113 + time * 20) % width; const y = (i * 67 + time * 14) % height; ctx.beginPath(); ctx.arc(x, y, 2 + i % 3, 0, Math.PI * 2); ctx.fill(); } } ctx.restore(); }
 function generateHazardZones() { const zones = []; const random = seededRandom(game.seed + 71); for (let i = 0; i < 110; i++) { const x = (random() - .5) * mapRadius * 2; const y = (random() - .5) * mapRadius * 1.5; const biome = getBiome(x, y); if (biome.key === 'sanctuary' || biome.key === 'void') continue; zones.push({ x, y, radius: 90 + random() * 150, biomeKey: biome.key, color: biome.color, damagePerSecond: biome.effects.hazard.zoneDamagePerSecond * 1.6, hazard: biome.effects.hazard }); } return zones; }
@@ -528,7 +550,7 @@ function drawPickups() { const camX = game.camera.x - canvas.clientWidth / 2; co
 function drawSanctuaryStations() { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary') return; const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); ctx.textAlign = 'center'; ctx.font = 'bold 9px Space Mono'; ctx.fillStyle = '#f9c779'; ctx.fillText('CRAFTING TABLE', -300, -82); ctx.fillText('FURNACE', 285, -82); ctx.fillStyle = '#8b5a3c'; ctx.strokeStyle = '#f9c779'; ctx.lineWidth = 3; ctx.fillRect(-360, -55, 120, 70); ctx.strokeRect(-360, -55, 120, 70); ctx.fillStyle = '#c88968'; ctx.fillRect(-350, -68, 100, 16); ctx.fillStyle = '#17131a'; ctx.fillRect(-320, -42, 40, 20); ctx.fillStyle = '#493a36'; ctx.fillRect(230, -55, 110, 70); ctx.strokeStyle = '#ff865c'; ctx.strokeRect(230, -55, 110, 70); ctx.fillStyle = '#ff865c'; ctx.beginPath(); ctx.arc(285, -20, 28, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(285, -20, 16, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#b9b0a8'; ctx.fillRect(245, -70, 80, 15); ctx.restore(); }
 function loop(now) { const dt = Math.min((now - lastTime) / 1000, .04); lastTime = now; updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt); draw(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawMap(); drawHazardMap(); if (game.active) animation = requestAnimationFrame(loop); }
  function updateBiomeAnnouncement(dt) { const biome = getBiome(game.player.x, game.player.y); game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(Math.min(sectorRegions.length - 1, Math.floor(Math.hypot(game.player.x, game.player.y) / 3000)))); if (biome.key !== game.biomeKey) { game.biomeKey = biome.key; game.announcementTimer = 3; announceBiome(biome); updateBiomeEffects(biome); updateBiomeHazard(biome); } game.announcementTimer = Math.max(0, game.announcementTimer - dt); if (game.announcementTimer === 0) ui.announcement.classList.remove('show'); }
-function updateBiomeHazard(biome) { const hazard = biome.effects.hazard; ui.effects.insertAdjacentHTML('beforeend', `<span class="biome-effect negative" title="${hazard.description}"><b>!</b>${hazard.name}</span>`); }
+function updateBiomeHazard(biome) { const hazard = biome.effects.hazard; ui.effects.querySelector('.biome-hazard-effect')?.remove(); ui.effects.insertAdjacentHTML('beforeend', `<span class="biome-effect negative biome-hazard-effect" title="${hazard.description}"><b>!</b>${hazard.name}</span>`); }
 function updateBiomeEffects(biome) { const effects = biome.effects; const conditions = []; if (effects.healthRegen) conditions.push({ positive: true, text: `REGEN +${effects.healthRegen}/SEC`, detail: `Restores ${effects.healthRegen} health per second while outside the beacon.` }); if (effects.moveMultiplier !== 1) conditions.push({ positive: effects.moveMultiplier > 1, text: `MOVE ${effects.moveMultiplier > 1 ? '+' : ''}${Math.round((effects.moveMultiplier - 1) * 100)}%`, detail: `${effects.moveMultiplier > 1 ? 'Increases' : 'Reduces'} player movement speed by ${Math.abs(Math.round((effects.moveMultiplier - 1) * 100))}%.` }); if (effects.fireCooldownMultiplier !== 1) conditions.push({ positive: effects.fireCooldownMultiplier < 1, text: `FIRE ${effects.fireCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%`, detail: `${effects.fireCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the delay between shots by ${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%.` }); if (effects.pulseCooldownMultiplier !== 1) conditions.push({ positive: effects.pulseCooldownMultiplier < 1, text: `PULSE ${effects.pulseCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%`, detail: `${effects.pulseCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the pulse cooldown by ${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%.` }); if (effects.salvageMultiplier !== 1) conditions.push({ positive: effects.salvageMultiplier > 1, text: `SALVAGE +${Math.round((effects.salvageMultiplier - 1) * 100)}%`, detail: `Collected salvage is multiplied by ${effects.salvageMultiplier}x.` }); if (effects.enemySpeedMultiplier !== 1) conditions.push({ positive: effects.enemySpeedMultiplier < 1, text: `HORDE ${effects.enemySpeedMultiplier < 1 ? '-' : '+'}${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}% SPEED`, detail: `Enemies move ${effects.enemySpeedMultiplier < 1 ? 'slower' : 'faster'} by ${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}%.` }); if (effects.damageMultiplier !== 1) conditions.push({ positive: false, text: `DAMAGE +${Math.round((effects.damageMultiplier - 1) * 100)}%`, detail: `Enemy contact damage is increased by ${Math.round((effects.damageMultiplier - 1) * 100)}%.` }); ui.effects.innerHTML = `<span class="biome-effects-title">${biome.name} // CONDITIONS</span>${conditions.map(condition => `<span class="biome-effect ${condition.positive ? 'positive' : 'negative'}" title="${condition.detail}"><b>${condition.positive ? '+' : '-'}</b>${condition.text}</span>`).join('')}`; }
 function update(dt) {
   const p = game.player;
@@ -536,9 +558,10 @@ function update(dt) {
   const dy = (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
   const length = Math.hypot(dx, dy) || 1;
   const movementEffects = getBiome(p.x, p.y).effects;
+  const armor = getArmorEffects();
 
-  p.x += dx / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * dt;
-  p.y += dy / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * dt;
+  p.x += dx / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * dt;
+  p.y += dy / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * dt;
   p.angle = Math.atan2(pointer.y - canvas.clientHeight / 2, pointer.x - canvas.clientWidth / 2);
 
   game.camera.x += (p.x - game.camera.x) * Math.min(1, dt * 7);
@@ -570,6 +593,8 @@ function update(dt) {
 
   if (pointer.down) shoot();
 
+  const insideGlassDesertHazard = game.hazardZones.some(zone => (zone.hazard?.name === 'MIRAGE BURN' || getBiome(zone.x, zone.y).name === 'GLASS DESERT') && Math.hypot(p.x - zone.x, p.y - zone.y) < zone.radius);
+
   if (safe) {
     game.health = Math.min(100, game.health + 15 * dt);
     if (game.salvage) {
@@ -579,24 +604,17 @@ function update(dt) {
     }
   } else {
     if (effects.healthRegen) game.health = Math.min(100, game.health + effects.healthRegen * dt);
-    if (effects.hazard) game.health -= effects.hazard.damagePerSecond * dt;
+    if (effects.hazard && !insideGlassDesertHazard) game.health -= effects.hazard.damagePerSecond * (1 - (armor.hazardDamageReduction || 0)) * dt;
   }
 
-  // Visual hazard zones hurt player, except inside Glass Desert
-// Visual hazard zones hurt player, except inside Glass Desert
   game.hazardZones.forEach(zone => {
     if (Math.hypot(p.x - zone.x, p.y - zone.y) < zone.radius) {
       const isGlassDesert = zone.hazard?.name === 'MIRAGE BURN' || getBiome(zone.x, zone.y).name === 'GLASS DESERT';
       
       if (isGlassDesert) {
-        // Heal the player over time (capped at 100)
         game.health = Math.min(100, game.health + 15 * dt); 
-        
-        // Drastically increase the spawn rate by forcing the timer down faster
-        game.spawnTimer -= dt * 10; 
       } else {
-        // Standard visual hazard damage
-        game.health -= zone.damagePerSecond * dt;
+        game.health -= zone.damagePerSecond * (1 - (armor.hazardDamageReduction || 0)) * dt;
       }
     }
   });
@@ -604,16 +622,17 @@ function update(dt) {
   const inVoid = biome.key === 'void';
   if (inVoid) {
     game.voidSpawnTimer -= dt;
-    const activeWorms = game.enemies.filter(enemy => enemy.voidWorm).length;
+    const activeWorms = game.enemies.filter(enemy => enemy.voidWorm && !enemy.defeated).length;
+    const activeWalkers = game.enemies.filter(enemy => enemy.voidWalker && !enemy.defeated).length;
     
-    if (game.voidSpawnTimer <= 0 && activeWorms < 1) {
+    if (game.voidSpawnTimer <= 0 && (activeWorms < 8 || activeWalkers < 10)) {
       spawn();
       // Increase timer to 45–90 seconds between spawn checks
       game.voidSpawnTimer = 45 + Math.random() * 45;
     }
   } else {
     game.voidSpawnTimer = 0;
-    game.spawnTimer -= dt;
+    game.spawnTimer -= dt * (insideGlassDesertHazard ? 2 : 1);
     const target = safe ? 0 : 5 + game.currentSector * 3 + Math.floor(distance / 260);
     if (game.spawnTimer <= 0 && game.enemies.length < Math.min(100, target)) {
       spawn();
@@ -636,9 +655,10 @@ function update(dt) {
     b.life -= dt;
 
     // Trigger AOE explosion if explosive bullet reaches end of life without hitting target
-    if (b.life <= 0 && b.blast) {
+    if (b.life <= 0 && b.blast && !b.exploded) {
+      b.exploded = true;
       game.enemies.forEach(target => {
-        if (Math.hypot(b.x - target.x, b.y - target.y) <= b.blast) {
+        if (!target.defeated && target.shieldTimer <= 0 && Math.hypot(b.x - target.x, b.y - target.y) <= b.blast) {
           target.hp = Math.max(0, target.hp - (b.damage || .12));
           if (target.hp <= 0) defeatEnemy(target);
         }
@@ -652,6 +672,7 @@ function update(dt) {
 
   // Consolidated Enemy Update Loop (Movement, Boundary Checks, Attacks, and Player Damage)
   game.enemies.forEach(e => {
+    e.shieldTimer = Math.max(0, (e.shieldTimer || 0) - dt);
     e.previousX = e.x;
     e.previousY = e.y;
 
@@ -692,19 +713,20 @@ function update(dt) {
 
     // Contact damage to player
     if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + 12) {
-      game.health -= (e.contactDamage || 0) * effects.damageMultiplier * dt;
+      game.health -= (e.contactDamage || 0) * effects.damageMultiplier * (1 - (armor.contactDamageReduction || 0)) * dt;
     }
   });
 
   // Bullet Collision & Explosive (AOE) Damage Loop
   game.bullets.forEach(b => game.enemies.forEach(e => {
-    if (e.hp && Math.hypot(b.x - e.x, b.y - e.y) < e.r + 5) {
+    if (b.life <= 0 || e.defeated || e.shieldTimer > 0 || !e.hp || Math.hypot(b.x - e.x, b.y - e.y) >= e.r + 5) return;
+    {
       if (b.hitEnemies && b.hitEnemies.has(e)) return;
       if (b.hitEnemies) b.hitEnemies.add(e);
 
       if (b.blast) {
         game.enemies.forEach(target => {
-          if (Math.hypot(b.x - target.x, b.y - target.y) <= b.blast) {
+          if (!target.defeated && target.shieldTimer <= 0 && Math.hypot(b.x - target.x, b.y - target.y) <= b.blast) {
             target.hp = Math.max(0, target.hp - (b.damage || .12));
             if (target.hp <= 0) defeatEnemy(target);
           }
@@ -738,7 +760,7 @@ function update(dt) {
     
     // Player collision
     if (Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
-      game.health -= proj.damage;
+      game.health -= proj.damage * (1 - (getArmorEffects().voidDamageReduction || 0));
       proj.life = 0; // Destroy on impact
     }
   });
@@ -792,7 +814,7 @@ function update(dt) {
 
   if (game.health <= 0) end();
 }
-function applyEnemyAbilities(dt) { const status = game.enemyStatus || (game.enemyStatus = { burn: 0, acid: 0, bleed: 0, freeze: 0, root: 0 }); game.enemies.forEach(enemy => { const distance = Math.hypot(game.player.x - enemy.x, game.player.y - enemy.y); const contact = distance < enemy.r + 18; enemy.abilityTimer -= dt; if (contact) { if (enemy.effect === 'burn') status.burn = Math.max(status.burn, enemy.boss ? 5 : 3); if (enemy.effect === 'acid') status.acid = Math.max(status.acid, 4); if (enemy.effect === 'bleed') status.bleed = Math.max(status.bleed, 4); if (enemy.effect === 'slow') status.freeze = Math.max(status.freeze, 2.5); if (enemy.effect === 'root') status.root = Math.max(status.root, 2); } if (enemy.abilityTimer <= 0) { if (distance < 260 && enemy.effect === 'shock') { game.health -= enemy.boss ? 8 : 5; burst(enemy.x, enemy.y, 5, 90); } if (distance < 260 && enemy.effect === 'drain') { game.health -= 3; enemy.hp = Math.min(enemy.maxHp, enemy.hp + 1); } if (distance < 260 && enemy.effect === 'pull') { const angle = Math.atan2(enemy.y - game.player.y, enemy.x - game.player.x); game.player.x += Math.cos(angle) * 35; game.player.y += Math.sin(angle) * 35; } if (distance < 260 && enemy.effect === 'armor') enemy.shieldTimer = 2; if (distance < 260 && enemy.effect === 'evasion') { const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x) + Math.PI / 2; enemy.x += Math.cos(angle) * 28; enemy.y += Math.sin(angle) * 28; } enemy.abilityTimer = enemy.boss ? 1.4 : 2.8; } status.burn = Math.max(0, status.burn - dt); status.acid = Math.max(0, status.acid - dt); status.bleed = Math.max(0, status.bleed - dt); status.freeze = Math.max(0, status.freeze - dt); status.root = Math.max(0, status.root - dt); if (status.burn) game.health -= 6 * dt; if (status.acid) game.health -= 4 * dt; if (status.bleed) game.health -= 3 * dt; if (status.freeze || status.root) game.health -= 1 * dt; }); }
+function applyEnemyAbilities(dt) { const status = game.enemyStatus || (game.enemyStatus = { burn: 0, acid: 0, bleed: 0, freeze: 0, root: 0 }); game.enemies.forEach(enemy => { const distance = Math.hypot(game.player.x - enemy.x, game.player.y - enemy.y); const contact = distance < enemy.r + 18; enemy.abilityTimer -= dt; if (contact) { if (enemy.effect === 'burn') status.burn = Math.max(status.burn, enemy.boss ? 5 : 3); if (enemy.effect === 'acid') status.acid = Math.max(status.acid, 4); if (enemy.effect === 'bleed') status.bleed = Math.max(status.bleed, 4); if (enemy.effect === 'slow') status.freeze = Math.max(status.freeze, 2.5); if (enemy.effect === 'root') status.root = Math.max(status.root, 2); } if (enemy.abilityTimer <= 0) { if (distance < 260 && enemy.effect === 'shock') { game.health -= enemy.boss ? 8 : 5; burst(enemy.x, enemy.y, 5, 90); } if (distance < 260 && enemy.effect === 'drain') { game.health -= 3; enemy.hp = Math.min(enemy.maxHp, enemy.hp + 1); } if (distance < 260 && enemy.effect === 'pull') { const angle = Math.atan2(enemy.y - game.player.y, enemy.x - game.player.x); game.player.x += Math.cos(angle) * 35; game.player.y += Math.sin(angle) * 35; } if (distance < 260 && enemy.effect === 'armor') enemy.shieldTimer = 2; if (distance < 260 && enemy.effect === 'evasion') { const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x) + Math.PI / 2; enemy.x += Math.cos(angle) * 28; enemy.y += Math.sin(angle) * 28; } enemy.abilityTimer = enemy.boss ? 1.4 : 2.8; } }); status.burn = Math.max(0, status.burn - dt); status.acid = Math.max(0, status.acid - dt); status.bleed = Math.max(0, status.bleed - dt); status.freeze = Math.max(0, status.freeze - dt); status.root = Math.max(0, status.root - dt); if (status.burn) game.health -= 6 * dt; if (status.acid) game.health -= 4 * dt; if (status.bleed) game.health -= 3 * dt; if (status.freeze || status.root) game.health -= 1 * dt; }
 function triggerVoidShockwave(enemy) {
     if (!enemy) return;
     const projectileCount = 35;
@@ -814,7 +836,7 @@ function triggerVoidShockwave(enemy) {
 }
 
 const baseUpdate = update;
-update = function(dt) { const wasEmpty = game.ammo === 0 && weaponCatalog[game.weapon].kind !== 'melee'; baseUpdate(dt); if (wasEmpty) { game.ammo = 0; game.reloadPending = true; } if (game.active) applyEnemyAbilities(dt); };
+update = function(dt) { const wasEmpty = game.ammo === 0 && weaponCatalog[game.weapon].kind !== 'melee'; baseUpdate(dt); if (wasEmpty) { game.ammo = 0; game.reloadPending = true; } if (game.active) { applyEnemyAbilities(dt); const status = game.enemyStatus; const reduction = getArmorEffects().statusDamageReduction || 0; if (status && reduction) game.health += (status.burn * 6 + status.acid * 4 + status.bleed * 3 + (status.freeze || status.root)) * reduction * dt; } };
 function renderEnemySystem() {
   const camX = game.camera.x - canvas.clientWidth / 2;
   const camY = game.camera.y - canvas.clientHeight / 2;
@@ -918,11 +940,11 @@ function renderEnemySystem() {
     ctx.translate(enemy.x, enemy.y);
 
     const baseColor = '#0e6b5c';
-    const glowColor = 'rgba(157, 78, 221, 0.25)';
+    const glowColor = 'rgba(157, 78, 221, 0.42)';
 
-    const pulse = Math.sin(Date.now() * 0.006) * 3;
+    const pulse = Math.sin(Date.now() * 0.006) * 12;
     ctx.beginPath();
-    ctx.arc(0, 0, enemy.r + 6 + pulse, 0, Math.PI * 2);
+    ctx.arc(0, 0, enemy.r + 22 + pulse, 0, Math.PI * 2);
     ctx.fillStyle = glowColor;
     ctx.fill();
 
@@ -991,7 +1013,7 @@ function getDiscoveryKey(x, y) { const biome = getBiome(x, y); return biome.key 
 function announceBiome(biome) { ui.announcement.textContent = biome.name; ui.announcement.style.color = biome.color; ui.announcement.className = `biome-announcement show ${biome.animationKey}`; }
 function burst(x, y, amount, force) { for (let i = 0; i < amount; i++) game.sparks.push({ x, y, life: .45, vx: (Math.random() - .5) * force, vy: (Math.random() - .5) * force }); }
 function updateUI(distance, safe, biome) { const sector = safe ? 0 : Math.floor(distance / 3000) + 1; const health = Math.max(0, Math.round(game.health)); if (safe && bankInventory()) updateInventoryUI(); updateStationUI(); ui.wave.textContent = String(sector).padStart(2, '0'); ui.score.textContent = String(game.score).padStart(6, '0'); ui.ammo.textContent = game.ammo; ui.health.style.width = `${health}%`; ui.healthValue.textContent = `${health}%`; ui.threats.textContent = String(game.enemies.length).padStart(2, '0'); ui.distance.textContent = `${String(Math.floor(distance / 10)).padStart(3, '0')}m`; ui.salvage.textContent = String(game.salvage).padStart(2, '0'); ui.relics.textContent = String(game.relics).padStart(2, '0'); ui.objective.textContent = safe ? 'SANCTUARY // SALVAGE BANKED' : 'RETURN TO BEACON // SALVAGE'; }
-function updateInventoryUI() { ui.inventory.innerHTML = `<span class="inventory-title">CARRIED // VAULT</span>${resourceTypes.map(resource => `<span class="inventory-item" title="${resource.name}: carried / stored in sanctuary vault"><span>${resource.name}</span><strong>${game.inventory[resource.key]} / ${game.vault[resource.key] || 0}</strong></span>`).join('')}`; }
+function updateInventoryUI() { const armor = getArmorEffects(); ui.inventory.innerHTML = `<span class="inventory-title">ARMOR // ${armor.name || 'NONE'}</span><span class="inventory-title">CARRIED // VAULT</span>${resourceTypes.map(resource => `<span class="inventory-item" title="${resource.name}: carried / stored in sanctuary vault"><span>${resource.name}</span><strong>${game.inventory[resource.key]} / ${game.vault[resource.key] || 0}</strong></span>`).join('')}`; }
 function end() { game.active = false; game.high = Math.max(game.high, game.score); localStorage.setItem('horde-high', game.high); ui.final.textContent = String(game.score).padStart(6, '0'); ui.high.textContent = String(game.high).padStart(6, '0'); ui.over.classList.remove('hidden'); }
 function drawMap() { const w = mapCanvas.width, h = mapCanvas.height, scale = w / (mapRadius * 2); mapCtx.clearRect(0, 0, w, h); mapCtx.fillStyle = "#100d13"; mapCtx.fillRect(0, 0, w, h); mapCtx.save(); mapCtx.translate(w / 2, h / 2); mapCtx.scale(scale, scale); sectorRegions.forEach((regions, sector) => { const radius = (sector + 1) * 3000; mapCtx.strokeStyle = `${regions[0].color}99`; mapCtx.lineWidth = 3 / scale; mapCtx.beginPath(); mapCtx.arc(0, 0, radius, 0, Math.PI * 2); mapCtx.stroke(); }); mapCtx.strokeStyle = "#f9c779"; mapCtx.lineWidth = 7 / scale; mapCtx.beginPath(); mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2); mapCtx.stroke(); game.nodes.forEach(node => { if (!node.taken) { mapCtx.fillStyle = node.type === "relic" ? "#b9f4ff" : "#ffbe68"; mapCtx.fillRect(node.x - 30, node.y - 30, 60, 60); } }); game.enemies.forEach(enemy => { mapCtx.fillStyle = "#ff4d42"; mapCtx.fillRect(enemy.x - 35, enemy.y - 35, 70, 70); }); mapCtx.fillStyle = "#100d13ee"; mapCtx.fillRect(-mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2); game.discovered.forEach(key => { if (key === "sanctuary") { mapCtx.fillStyle = "#f9c77933"; mapCtx.beginPath(); mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2); mapCtx.fill(); } else { const sector = Number(key.split("-")[1]); const inner = sector * 3000; const outer = (sector + 1) * 3000; mapCtx.fillStyle = `${sectorRegions[sector][0].color}28`; mapCtx.beginPath(); mapCtx.arc(0, 0, outer, 0, Math.PI * 2); mapCtx.arc(0, 0, inner, 0, Math.PI * 2, true); mapCtx.fill(); } }); game.nodes.forEach(node => { if (!node.taken && game.discovered.has(getDiscoveryKey(node.x, node.y))) { mapCtx.fillStyle = node.type === "relic" ? "#b9f4ff" : "#ffbe68"; mapCtx.fillRect(node.x - 30, node.y - 30, 60, 60); } }); game.enemies.forEach(enemy => { if (game.discovered.has(getDiscoveryKey(enemy.x, enemy.y))) { mapCtx.fillStyle = "#ff4d42"; mapCtx.fillRect(enemy.x - 35, enemy.y - 35, 70, 70); } }); mapCtx.fillStyle = "#f9c779"; mapCtx.beginPath(); mapCtx.arc(0, 0, 70, 0, Math.PI * 2); mapCtx.fill(); mapCtx.fillStyle = "#ffffff"; mapCtx.beginPath(); mapCtx.arc(game.player.x, game.player.y, 90, 0, Math.PI * 2); mapCtx.fill(); mapCtx.restore(); }
 function draw() {
