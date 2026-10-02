@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main class="game-shell">
+  <main class="game-shell menu-state">
     <header class="topbar">
       <div class="brand"><span class="brand-mark">✦</span><span>FIGHT THE <strong>HORDE</strong></span></div>
       <div class="status-row" aria-label="Game status">
@@ -35,6 +35,11 @@
           <h2>THE HORDE<br><span>GOT THROUGH</span></h2>
           <p class="final-score">SCORE <strong id="final-score">000000</strong></p>
           <button class="primary-button" id="restart-button">RUN IT BACK <span>↻</span></button>
+        </div>
+        <div class="overlay hidden" id="pause-screen">
+          <p class="eyebrow">SIGNAL HOLD</p>
+          <h2>GAME<br><span>PAUSED</span></h2>
+          <p class="controls-hint">PRESS <kbd>ESC</kbd> TO RESUME</p>
         </div>
         <div class="expedition-hud">
           <div><span>RADIUS</span><strong id="distance">000m</strong></div>
