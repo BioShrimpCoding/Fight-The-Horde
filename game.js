@@ -23,6 +23,17 @@ const stationInteractionRadius = 95;
 const stationPositions = { crafting: { x: -300, y: -27 }, furnace: { x: 285, y: -27 } };
 const beaconRegionRadius = 1200;
 const mapRadius = 18000;
+const tacticalMapZoomLevels = [.4, .6, .8, 1, 1.25, 1.5, 2];
+let tacticalMapZoomIndex = 3;
+function cycleTacticalMapZoom() {
+  tacticalMapZoomIndex = (tacticalMapZoomIndex + 1) % tacticalMapZoomLevels.length;
+}
+function getTacticalMapScale() {
+  return mapCanvas.width / (mapRadius * 2) * tacticalMapZoomLevels[tacticalMapZoomIndex];
+}
+function getTacticalMapVisibleRadius() {
+  return mapRadius / tacticalMapZoomLevels[tacticalMapZoomIndex];
+}
 const sectorRegions = [
   [{ name: 'TOXIC MARSH', color: '#65b49a', dark: '#172d2d' }, { name: 'SCORCHED WASTES', color: '#ff865c', dark: '#3b211d' }, { name: 'FROZEN PEAKS', color: '#9fd8e3', dark: '#1b2a3c' }, { name: 'ASHEN LOWLANDS', color: '#c88968', dark: '#322522' }],
   [{ name: 'THUNDER PLAINS', color: '#f2c96d', dark: '#302b1f' }, { name: 'IRONWOOD', color: '#8fc47e', dark: '#1d3026' }, { name: 'GLASS DESERT', color: '#ad7b07', dark: '#382203' }, { name: 'FROSTFALL TRENCH', color: '#82c5d7', dark: '#1b2e3b' }],
@@ -262,7 +273,7 @@ ui.high.textContent = String(game.high).padStart(6, '0');
 renderWeaponBar();
 function resize() { const ratio = window.devicePixelRatio || 1; canvas.width = canvas.clientWidth * ratio; canvas.height = canvas.clientHeight * ratio; ctx.setTransform(ratio, 0, 0, ratio, 0, 0); if (!game.active) game.player = { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2, angle: 0 }; }
 window.addEventListener('resize', resize); resize();
-window.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); togglePause(); return; } keys[event.key.toLowerCase()] = true; if (event.key === adminUnlockSequence[adminUnlockIndex]) { adminUnlockIndex++; if (adminUnlockIndex === adminUnlockSequence.length) { adminUnlockIndex = 0; const code = window.prompt('ADMIN ACCESS CODE'); if (code === 'iAmAdmin') { adminMode = true; adminPanel.hidden = false; gameLog('INFO', 'Admin panel unlocked'); } else { gameLog('WARN', 'Admin access denied'); } } } else { adminUnlockIndex = event.key === adminUnlockSequence[0] ? 1 : 0; } if (event.key.toLowerCase() === 'e' && game.active && !game.paused && !event.repeat) toggleStation(); if (event.key === ' ' && game.active && !game.paused) shoot(); if (event.key.toLowerCase() === 'h' && game.active && !game.paused && !event.repeat) useMedkit(); if (event.key.toLowerCase() === 'q' && game.active && !game.paused) pulse(); if (game.active && !game.paused && !event.repeat && /^[0-9]$/.test(event.key)) switchWeapon(Number(event.key)); }); window.addEventListener('keyup', event => keys[event.key.toLowerCase()] = false);
+window.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); togglePause(); return; } keys[event.key.toLowerCase()] = true; if (event.key === adminUnlockSequence[adminUnlockIndex]) { adminUnlockIndex++; if (adminUnlockIndex === adminUnlockSequence.length) { adminUnlockIndex = 0; const code = window.prompt('ADMIN ACCESS CODE'); if (code === 'iAmAdmin') { adminMode = true; adminPanel.hidden = false; gameLog('INFO', 'Admin panel unlocked'); } else { gameLog('WARN', 'Admin access denied'); } } } else { adminUnlockIndex = event.key === adminUnlockSequence[0] ? 1 : 0; } if (event.key.toLowerCase() === 'j' && game.active && !game.paused && !event.repeat) cycleTacticalMapZoom(); if (event.key.toLowerCase() === 'e' && game.active && !game.paused && !event.repeat) toggleStation(); if (event.key === ' ' && game.active && !game.paused) shoot(); if (event.key.toLowerCase() === 'h' && game.active && !game.paused && !event.repeat) useMedkit(); if (event.key.toLowerCase() === 'q' && game.active && !game.paused) pulse(); if (game.active && !game.paused && !event.repeat && /^[0-9]$/.test(event.key)) switchWeapon(Number(event.key)); }); window.addEventListener('keyup', event => keys[event.key.toLowerCase()] = false);
 canvas.addEventListener('pointermove', event => { const box = canvas.getBoundingClientRect(); pointer.x = event.clientX - box.left; pointer.y = event.clientY - box.top; crosshair.style.left = `${pointer.x}px`; crosshair.style.top = `${pointer.y}px`; }); canvas.addEventListener('pointerdown', () => { pointer.down = true; if (game.active && !game.paused) shoot(); }); window.addEventListener('pointerup', () => pointer.down = false);
 document.querySelector('#start-button').onclick = start; document.querySelector('#restart-button').onclick = start; adminPanel.hidden = !adminMode; adminPanel.querySelectorAll('[data-admin]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); adminAction(button.dataset.admin, button.dataset.value); })); document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const quantityButton = event.target.closest('[data-craft-quantity]'); if (quantityButton) { event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(quantityButton.dataset.craftQuantity), Number(ui.craftDetails.dataset.weaponSlot || 0)); return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm, Number(ui.craftDetails.dataset.quantity || 1), Number(ui.craftDetails.dataset.weaponSlot || 0)); } });
 ui.weaponBar?.addEventListener('click', event => { const slotButton = event.target.closest('[data-weapon-slot]'); if (!slotButton) return; switchWeapon(Number(slotButton.dataset.weaponSlot)); });
@@ -284,7 +295,7 @@ adminAction = function(action, value) {
 };
 function teleportToSector(sector) { teleportPlayer((sector - .5) * 3000, 0); game.currentSector = sector; game.biomeKey = null; game.discovered.add(getSectorKey(sector - 1)); }
 function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camera.x = x; game.camera.y = y; }
-function start() { game = freshGame(); game.active = true; randomizeBiomeData(game.seed); game.hazardZones = generateHazardZones(); const random = seededRandom(game.seed + 17); updateInventoryUI(); updateStationButtons(); for (let i = 0; i < 140; i++) { const roll = random(); game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: roll < .08 ? 'relic' : roll < .54 ? 'chest' : 'scrap', taken: false }); } gameShell.classList.remove('menu-state'); resize(); ui.start.classList.add('hidden'); ui.over.classList.add('hidden'); ui.pause.classList.add('hidden'); lastTime = performance.now(); cancelAnimationFrame(animation); animation = requestAnimationFrame(loop); }
+function start() { game = freshGame(); game.active = true; randomizeBiomeData(game.seed); game.hazardZones = generateHazardZones(); game.enemies.push(createVoidStalker()); const random = seededRandom(game.seed + 17); updateInventoryUI(); updateStationButtons(); for (let i = 0; i < 140; i++) { const roll = random(); game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: roll < .08 ? 'relic' : roll < .54 ? 'chest' : 'scrap', taken: false }); } gameShell.classList.remove('menu-state'); resize(); ui.start.classList.add('hidden'); ui.over.classList.add('hidden'); ui.pause.classList.add('hidden'); lastTime = performance.now(); cancelAnimationFrame(animation); animation = requestAnimationFrame(loop); }
 function togglePause() { if (!game.active) return; game.paused = !game.paused; keys.w = false; keys.a = false; keys.s = false; keys.d = false; pointer.down = false; ui.pause.classList.toggle('hidden', !game.paused); }
 function switchWeapon(index) { const weaponId = game.weaponSlots[index - 1]; if (!weaponId || !game.unlockedWeapons[weaponId]) return; game.weapon = weaponId; game.ammo = 0; game.reloadPending = weaponCatalog[weaponId].kind !== 'melee'; updateAmmoUI(); renderWeaponBar(); }
 function renderWeaponBar() { if (!ui.weaponBar) return; ui.weaponBar.innerHTML = game.weaponSlots.map((weaponId, index) => { const weapon = weaponId ? weaponCatalog[weaponId] : null; return `<button type="button" class="weapon-slot ${weaponId === game.weapon ? 'selected' : ''}" data-weapon-slot="${index + 1}" title="${weapon ? weapon.name : 'EMPTY SLOT'}"><b>${index + 1}</b><span>${weapon ? weapon.name : 'EMPTY'}</span></button>`; }).join(''); }
@@ -414,6 +425,51 @@ function createVoidWalker(x, y) {
       // Become aggressive when damaged
       if (attemptedDamage > 0) enemy.isAggroed = true;
       
+      health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
+    }
+  });
+
+  return enemy;
+}
+function createVoidStalker() {
+  const orbitRadius = mapRadius + 3000;
+  const orbitAngle = Math.random() * Math.PI * 2;
+  const maxHp = 900;
+  const enemy = {
+    x: Math.cos(orbitAngle) * orbitRadius,
+    y: Math.sin(orbitAngle) * orbitRadius,
+    r: 120,
+    speed: 280,
+    voidStalker: true,
+    isAggroed: false,
+    orbitRadius,
+    orbitAngle,
+    orbitSpeed: .05,
+    attackTimer: 4,
+    attackFlashTimer: 0,
+    maxHp,
+    color: '#b34dff',
+    family: 'VOID STALKER',
+    familyIndex: 24,
+    variant: 'THE VOID BOSS',
+    boss: true,
+    contactDamage: 28,
+    score: 2500,
+    drops: 25,
+    abilityTimer: 0,
+    shieldTimer: 0
+  };
+
+  let health = maxHp;
+  Object.defineProperty(enemy, 'hp', {
+    configurable: true,
+    get: () => health,
+    set: value => {
+      const attemptedDamage = health - value;
+      const weapon = weaponCatalog[game.weapon];
+      const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y);
+      const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12;
+      if (attemptedDamage > 0) enemy.isAggroed = true;
       health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
     }
   });
@@ -569,11 +625,11 @@ function drawBiomeHazard(biome, width, height) { if (biome.key === 'sanctuary') 
 function generateHazardZones() { const zones = []; const random = seededRandom(game.seed + 71); for (let i = 0; i < 110; i++) { const x = (random() - .5) * mapRadius * 2; const y = (random() - .5) * mapRadius * 1.5; const biome = getBiome(x, y); if (biome.key === 'sanctuary' || biome.key === 'void') continue; zones.push({ x, y, radius: 90 + random() * 150, biomeKey: biome.key, color: biome.color, damagePerSecond: biome.effects.hazard.zoneDamagePerSecond * 1.6, hazard: biome.effects.hazard }); } return zones; }
 function drawHazardShape(context, zone) { const visual = zone.hazard.visual; const { x, y, radius } = zone; context.beginPath(); if (visual.includes('pool') || visual.includes('crater') || visual.includes('cloud') || visual.includes('patch') || visual.includes('pile') || visual.includes('core')) context.ellipse(x, y, radius, radius * .72, .15, 0, Math.PI * 2); else if (visual.includes('spikes') || visual.includes('pylon')) { context.moveTo(x, y - radius); for (let i = 0; i < 8; i++) { const angle = -Math.PI / 2 + i * Math.PI / 4; const distance = i % 2 ? radius * .62 : radius; context.lineTo(x + Math.cos(angle) * distance, y + Math.sin(angle) * distance); } context.closePath(); } else { context.arc(x, y, radius, 0, Math.PI * 2); } }
 function drawHazardZones() { if (!game.hazardZones.length) return; const biome = getBiome(game.player.x, game.player.y); const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; const time = performance.now() / 1000; ctx.save(); ctx.translate(-camX, -camY); game.hazardZones.forEach(zone => { const radius = zone.radius; ctx.globalAlpha = zone.biomeKey === biome.key ? .34 : .12; ctx.fillStyle = zone.color; ctx.strokeStyle = zone.color; ctx.lineWidth = 3; drawHazardShape(ctx, zone); ctx.fill(); ctx.stroke(); ctx.globalAlpha *= .8; if (zone.hazard.visual.includes('ice') || zone.hazard.visual.includes('spikes')) { for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(zone.x + (i - 2) * radius / 3, zone.y + radius * .45); ctx.lineTo(zone.x + (i - 2) * radius / 4, zone.y - radius * .6); ctx.stroke(); } } else if (zone.hazard.visual.includes('lightning') || zone.hazard.visual.includes('pylon')) { ctx.beginPath(); ctx.moveTo(zone.x, zone.y - zone.radius); ctx.lineTo(zone.x - 10, zone.y - zone.radius * .25); ctx.lineTo(zone.x + 8, zone.y + zone.radius * .05); ctx.lineTo(zone.x - 4, zone.y + zone.radius); ctx.stroke(); } else { ctx.beginPath(); ctx.arc(zone.x, zone.y, radius * (.55 + Math.sin(time * 2 + zone.x) * .08), 0, Math.PI * 2); ctx.stroke(); } }); ctx.restore(); }
-function drawVoidMapRegions() { const scale = mapCanvas.width / (mapRadius * 2); mapCtx.save(); mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2); mapCtx.scale(scale, scale); mapCtx.fillStyle = '#241d3d'; mapCtx.beginPath(); mapCtx.rect(-mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2); mapCtx.arc(0, 0, mapRadius, 0, Math.PI * 2, true); mapCtx.fill('evenodd'); mapCtx.restore(); }
-function drawHazardMap() { drawVoidMapRegions(); if (!game.hazardZones.length) return; const scale = mapCanvas.width / (mapRadius * 2); mapCtx.save(); mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2); mapCtx.scale(scale, scale); game.hazardZones.forEach(zone => { mapCtx.globalAlpha = .55; mapCtx.fillStyle = zone.color; mapCtx.strokeStyle = zone.color; drawHazardShape(mapCtx, zone); mapCtx.fill(); mapCtx.stroke(); }); mapCtx.restore(); }
+function drawVoidMapRegions() { const scale = getTacticalMapScale(); const visibleRadius = getTacticalMapVisibleRadius(); mapCtx.save(); mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2); mapCtx.scale(scale, scale); mapCtx.fillStyle = '#241d3d'; mapCtx.beginPath(); mapCtx.rect(-visibleRadius, -visibleRadius, visibleRadius * 2, visibleRadius * 2); mapCtx.arc(0, 0, mapRadius, 0, Math.PI * 2, true); mapCtx.fill('evenodd'); mapCtx.restore(); }
+function drawHazardMap() { drawVoidMapRegions(); if (!game.hazardZones.length) return; const scale = getTacticalMapScale(); mapCtx.save(); mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2); mapCtx.scale(scale, scale); game.hazardZones.forEach(zone => { mapCtx.globalAlpha = .55; mapCtx.fillStyle = zone.color; mapCtx.strokeStyle = zone.color; drawHazardShape(mapCtx, zone); mapCtx.fill(); mapCtx.stroke(); }); mapCtx.restore(); }
 function drawPickups() { const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); game.nodes.forEach(node => { if (node.taken || node.type !== 'chest') return; ctx.fillStyle = '#d7b07a'; ctx.strokeStyle = '#ffdf91'; ctx.lineWidth = 2; ctx.fillRect(node.x - 12, node.y - 8, 24, 16); ctx.strokeRect(node.x - 12, node.y - 8, 24, 16); ctx.fillStyle = '#ffdf91'; ctx.fillRect(node.x - 2, node.y - 8, 4, 16); }); game.drops.forEach(drop => { const resource = resourceTypes.find(item => item.key === drop.type); ctx.fillStyle = resource.color; ctx.shadowBlur = 12; ctx.shadowColor = resource.color; ctx.beginPath(); ctx.moveTo(drop.x, drop.y - 8); ctx.lineTo(drop.x + 8, drop.y); ctx.lineTo(drop.x, drop.y + 8); ctx.lineTo(drop.x - 8, drop.y); ctx.fill(); ctx.shadowBlur = 0; }); ctx.restore(); }
 function drawSanctuaryStations() { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary') return; const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); ctx.textAlign = 'center'; ctx.font = 'bold 9px Space Mono'; ctx.fillStyle = '#f9c779'; ctx.fillText('CRAFTING TABLE', -300, -82); ctx.fillText('FURNACE', 285, -82); ctx.fillStyle = '#8b5a3c'; ctx.strokeStyle = '#f9c779'; ctx.lineWidth = 3; ctx.fillRect(-360, -55, 120, 70); ctx.strokeRect(-360, -55, 120, 70); ctx.fillStyle = '#c88968'; ctx.fillRect(-350, -68, 100, 16); ctx.fillStyle = '#17131a'; ctx.fillRect(-320, -42, 40, 20); ctx.fillStyle = '#493a36'; ctx.fillRect(230, -55, 110, 70); ctx.strokeStyle = '#ff865c'; ctx.strokeRect(230, -55, 110, 70); ctx.fillStyle = '#ff865c'; ctx.beginPath(); ctx.arc(285, -20, 28, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(285, -20, 16, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#b9b0a8'; ctx.fillRect(245, -70, 80, 15); ctx.restore(); }
-function loop(now) { if (game.paused) { animation = requestAnimationFrame(loop); return; } const dt = Math.min((now - lastTime) / 1000, .04); lastTime = now; updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt); draw(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawMap(); drawHazardMap(); if (game.active) animation = requestAnimationFrame(loop); }
+function loop(now) { if (game.paused) { animation = requestAnimationFrame(loop); return; } const dt = Math.min((now - lastTime) / 1000, .04); lastTime = now; updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt); draw(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawMap(); drawHazardMap(); drawStalkerMapMarker(); if (game.active) animation = requestAnimationFrame(loop); }
  function updateBiomeAnnouncement(dt) { const biome = getBiome(game.player.x, game.player.y); game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(Math.min(sectorRegions.length - 1, Math.floor(Math.hypot(game.player.x, game.player.y) / 3000)))); if (biome.key !== game.biomeKey) { game.biomeKey = biome.key; game.announcementTimer = 3; announceBiome(biome); updateBiomeEffects(biome); updateBiomeHazard(biome); } game.announcementTimer = Math.max(0, game.announcementTimer - dt); if (game.announcementTimer === 0) ui.announcement.classList.remove('show'); }
 function updateBiomeHazard(biome) { const hazard = biome.effects.hazard; ui.effects.querySelector('.biome-hazard-effect')?.remove(); ui.effects.insertAdjacentHTML('beforeend', `<span class="biome-effect negative biome-hazard-effect" title="${hazard.description}"><b>!</b>${hazard.name}</span>`); }
 function updateBiomeEffects(biome) { const effects = biome.effects; const conditions = []; if (effects.healthRegen) conditions.push({ positive: true, text: `REGEN +${effects.healthRegen}/SEC`, detail: `Restores ${effects.healthRegen} health per second while outside the beacon.` }); if (effects.moveMultiplier !== 1) conditions.push({ positive: effects.moveMultiplier > 1, text: `MOVE ${effects.moveMultiplier > 1 ? '+' : ''}${Math.round((effects.moveMultiplier - 1) * 100)}%`, detail: `${effects.moveMultiplier > 1 ? 'Increases' : 'Reduces'} player movement speed by ${Math.abs(Math.round((effects.moveMultiplier - 1) * 100))}%.` }); if (effects.fireCooldownMultiplier !== 1) conditions.push({ positive: effects.fireCooldownMultiplier < 1, text: `FIRE ${effects.fireCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%`, detail: `${effects.fireCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the delay between shots by ${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%.` }); if (effects.pulseCooldownMultiplier !== 1) conditions.push({ positive: effects.pulseCooldownMultiplier < 1, text: `PULSE ${effects.pulseCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%`, detail: `${effects.pulseCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the pulse cooldown by ${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%.` }); if (effects.salvageMultiplier !== 1) conditions.push({ positive: effects.salvageMultiplier > 1, text: `SALVAGE +${Math.round((effects.salvageMultiplier - 1) * 100)}%`, detail: `Collected salvage is multiplied by ${effects.salvageMultiplier}x.` }); if (effects.enemySpeedMultiplier !== 1) conditions.push({ positive: effects.enemySpeedMultiplier < 1, text: `HORDE ${effects.enemySpeedMultiplier < 1 ? '-' : '+'}${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}% SPEED`, detail: `Enemies move ${effects.enemySpeedMultiplier < 1 ? 'slower' : 'faster'} by ${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}%.` }); if (effects.damageMultiplier !== 1) conditions.push({ positive: false, text: `DAMAGE +${Math.round((effects.damageMultiplier - 1) * 100)}%`, detail: `Enemy contact damage is increased by ${Math.round((effects.damageMultiplier - 1) * 100)}%.` }); ui.effects.innerHTML = `<span class="biome-effects-title">${biome.name} // CONDITIONS</span>${conditions.map(condition => `<span class="biome-effect ${condition.positive ? 'positive' : 'negative'}" title="${condition.detail}"><b>${condition.positive ? '+' : '-'}</b>${condition.text}</span>`).join('')}`; }
@@ -703,7 +759,25 @@ function update(dt) {
     e.previousY = e.y;
 
     // Movement calculation
-    if (e.voidWalker && !e.isAggroed) {
+    if (e.voidStalker && !e.isAggroed) {
+      const playerDistance = Math.hypot(p.x, p.y);
+      if (Math.hypot(p.x - e.x, p.y - e.y) <= 250 || playerDistance >= 30000) {
+        e.isAggroed = true;
+      } else {
+        e.orbitAngle += e.orbitSpeed * dt;
+        e.x = Math.cos(e.orbitAngle) * e.orbitRadius;
+        e.y = Math.sin(e.orbitAngle) * e.orbitRadius;
+      }
+    }
+    else if (e.voidStalker && e.isAggroed) {
+      const angle = Math.atan2(p.y - e.y, p.x - e.x);
+      const distance = Math.hypot(p.x - e.x, p.y - e.y);
+      const chaseSpeed = distance > 250 ? 900 : e.speed;
+      const travel = Math.min(distance, chaseSpeed * dt);
+      e.x += Math.cos(angle) * travel;
+      e.y += Math.sin(angle) * travel;
+    }
+    else if (e.voidWalker && !e.isAggroed) {
       // Wander in random directions without tracking the player
       e.wanderTimer = (e.wanderTimer || 0) - dt;
       if (e.wanderTimer <= 0) {
@@ -719,8 +793,8 @@ function update(dt) {
       e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
     }
 
-    // Boundary constraint check (Exempt Void Walker so it can walk anywhere)
-    if (!e.voidWalker) {
+    // Boundary constraint check (Void entities can move anywhere)
+    if (!e.voidWalker && !e.voidStalker) {
       const homeBiome = e.voidWorm ? 'void' : `sector-${Math.floor(e.familyIndex / 4)}-${e.familyIndex % 4}`;
       if (getBiome(e.x, e.y).key !== homeBiome) {
         e.x = e.previousX;
@@ -735,6 +809,14 @@ function update(dt) {
         triggerVoidShockwave(e);
         e.attackFlashTimer = .45;
         e.attackTimer = 3;
+      }
+    }
+    if (e.voidStalker && e.isAggroed) {
+      e.attackTimer -= dt;
+      if (e.attackTimer <= 0) {
+        triggerVoidStalkerAttack(e);
+        e.attackFlashTimer = .5;
+        e.attackTimer = 5;
       }
     }
 
@@ -781,9 +863,37 @@ function update(dt) {
 
   // Handle Enemy Projectiles
   game.projectiles.forEach(proj => {
+    if (proj.redirectTimer !== undefined) {
+      proj.redirectTimer -= dt;
+      if (proj.redirectTimer <= 0 && !proj.redirected) {
+        const angle = Math.atan2(game.player.y - proj.y, game.player.x - proj.x) + (Math.random() - .5) * .25;
+        const speed = Math.hypot(proj.vx, proj.vy);
+        proj.vx = Math.cos(angle) * speed;
+        proj.vy = Math.sin(angle) * speed;
+        proj.redirected = true;
+      }
+    }
     proj.x += proj.vx * dt;
     proj.y += proj.vy * dt;
     proj.life -= dt;
+
+    if (proj.split && proj.life <= 0 && !proj.hasSplit) {
+      proj.hasSplit = true;
+      for (let i = 0; i < 8; i++) {
+        const angle = Math.atan2(proj.vy, proj.vx) + (i - 3.5) * .08;
+        game.projectiles.push({
+          x: proj.x,
+          y: proj.y,
+          vx: Math.cos(angle) * 1050,
+          vy: Math.sin(angle) * 1050,
+          life: 3,
+          radius: 7,
+          damage: 6,
+          color: '#d78cff',
+          redirectTimer: 1
+        });
+      }
+    }
     
     // Player collision
     if (Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
@@ -861,6 +971,24 @@ function triggerVoidShockwave(enemy) {
         });
     }
 }
+function triggerVoidStalkerAttack(enemy) {
+  const projectileCount = 8;
+  const speed = 1100;
+  for (let i = 0; i < projectileCount; i++) {
+    const angle = (Math.PI * 2 / projectileCount) * i;
+    game.projectiles.push({
+      x: enemy.x,
+      y: enemy.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1.2,
+      radius: 11,
+      damage: 7,
+      color: '#b34dff',
+      split: true
+    });
+  }
+}
 
 const baseUpdate = update;
 update = function(dt) { const wasEmpty = game.ammo === 0 && weaponCatalog[game.weapon].kind !== 'melee'; baseUpdate(dt); if (wasEmpty) { game.ammo = 0; game.reloadPending = true; } if (game.active) { applyEnemyAbilities(dt); const status = game.enemyStatus; const reduction = getArmorEffects().statusDamageReduction || 0; if (status && reduction) game.health += (status.burn * 6 + status.acid * 4 + status.bleed * 3 + (status.freeze || status.root)) * reduction * dt; } };
@@ -873,7 +1001,7 @@ function renderEnemySystem() {
   ctx.textAlign = 'center';
 
   // 1. Standard Enemies
-  game.enemies.filter(enemy => !enemy.voidWorm && !enemy.voidWalker).forEach(enemy => {
+  game.enemies.filter(enemy => !enemy.voidWorm && !enemy.voidWalker && !enemy.voidStalker).forEach(enemy => {
     const shape = (enemy.familyIndex + enemy.variant.length) % 6;
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
@@ -960,7 +1088,52 @@ function renderEnemySystem() {
     ctx.fillText(`${enemy.family} // ${enemy.variant}`, enemy.x, barY - 7);
   });
 
-  // 3. Void Walkers & Labels
+  // 3. Void Stalker
+  game.enemies.filter(enemy => enemy.voidStalker).forEach(enemy => {
+    ctx.save();
+    ctx.translate(enemy.x, enemy.y);
+    ctx.rotate(Date.now() * .0004);
+    const pulse = Math.sin(Date.now() * .006) * 8;
+    ctx.shadowBlur = 24;
+    ctx.shadowColor = '#b34dff';
+    ctx.strokeStyle = '#e0aaff';
+    ctx.fillStyle = '#26053d';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(0, 0, enemy.r + pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    for (let i = 0; i < 8; i++) {
+      const angle = i * Math.PI / 4;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(angle) * 35, Math.sin(angle) * 35);
+      ctx.lineTo(Math.cos(angle) * (enemy.r + 18), Math.sin(angle) * (enemy.r + 18));
+      ctx.stroke();
+    }
+    ctx.fillStyle = enemy.isAggroed ? '#ff8cff' : '#b34dff';
+    ctx.beginPath();
+    ctx.arc(0, 0, 22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    const barWidth = 150;
+    const barY = enemy.y - enemy.r - 25;
+    ctx.fillStyle = '#17131a';
+    ctx.fillRect(enemy.x - barWidth / 2, barY, barWidth, 7);
+    ctx.fillStyle = '#b34dff';
+    ctx.fillRect(enemy.x - barWidth / 2, barY, barWidth * Math.max(0, enemy.hp / enemy.maxHp), 7);
+    ctx.strokeStyle = '#e0aaff';
+    ctx.strokeRect(enemy.x - barWidth / 2 - .5, barY - .5, barWidth + 1, 8);
+    ctx.fillStyle = '#f7e5c5';
+    ctx.font = 'bold 12px Space Mono';
+    ctx.fillText(`${enemy.family} // ${enemy.variant}`, enemy.x, barY - 8);
+    ctx.restore();
+  });
+
+  // 4. Void Walkers & Labels
   game.enemies.filter(enemy => enemy.voidWalker).forEach(enemy => {
     // Body & Visuals
     ctx.save();
@@ -1021,7 +1194,7 @@ function renderEnemySystem() {
     ctx.restore();
   });
 
-  // 4. Small Enemy Health Bars
+  // 5. Small Enemy Health Bars
   game.enemies.forEach(enemy => {
     if (enemy.maxHp > 1) return;
     ctx.fillStyle = '#17131a';
@@ -1043,7 +1216,20 @@ function burst(x, y, amount, force) { for (let i = 0; i < amount; i++) game.spar
 function updateUI(distance, safe, biome) { const sector = safe ? 0 : Math.floor(distance / 3000) + 1; const health = Math.max(0, Math.round(game.health)); if (safe && bankInventory()) updateInventoryUI(); updateStationUI(); ui.wave.textContent = String(sector).padStart(2, '0'); ui.score.textContent = String(game.score).padStart(6, '0'); ui.ammo.textContent = game.ammo; ui.health.style.width = `${health}%`; ui.healthValue.textContent = `${health}%`; ui.threats.textContent = String(game.enemies.length).padStart(2, '0'); ui.distance.textContent = `${String(Math.floor(distance / 10)).padStart(3, '0')}m`; ui.salvage.textContent = String(game.salvage).padStart(2, '0'); ui.relics.textContent = String(game.relics).padStart(2, '0'); ui.objective.textContent = safe ? 'SANCTUARY // SALVAGE BANKED' : 'RETURN TO BEACON // SALVAGE'; }
 function updateInventoryUI() { const armor = getArmorEffects(); ui.inventory.innerHTML = `<span class="inventory-title">ARMOR // ${armor.name || 'NONE'}</span><span class="inventory-title">CARRIED // VAULT</span>${resourceTypes.map(resource => `<span class="inventory-item" title="${resource.name}: carried / stored in sanctuary vault"><span>${resource.name}</span><strong>${game.inventory[resource.key]} / ${game.vault[resource.key] || 0}</strong></span>`).join('')}`; }
 function end() { game.active = false; game.high = Math.max(game.high, game.score); localStorage.setItem('horde-high', game.high); localStorage.setItem('horde-salvage', game.banked + game.salvage); localStorage.setItem('horde-relics', game.relics); localStorage.setItem('horde-atlas-crystals', game.atlasCrystals); ui.final.textContent = String(game.score).padStart(6, '0'); ui.high.textContent = String(game.high).padStart(6, '0'); ui.over.classList.remove('hidden'); }
-function drawMap() { const w = mapCanvas.width, h = mapCanvas.height, scale = w / (mapRadius * 2); mapCtx.clearRect(0, 0, w, h); mapCtx.fillStyle = "#100d13"; mapCtx.fillRect(0, 0, w, h); mapCtx.save(); mapCtx.translate(w / 2, h / 2); mapCtx.scale(scale, scale); sectorRegions.forEach((regions, sector) => { const radius = (sector + 1) * 3000; mapCtx.strokeStyle = `${regions[0].color}99`; mapCtx.lineWidth = 3 / scale; mapCtx.beginPath(); mapCtx.arc(0, 0, radius, 0, Math.PI * 2); mapCtx.stroke(); }); mapCtx.strokeStyle = "#f9c779"; mapCtx.lineWidth = 7 / scale; mapCtx.beginPath(); mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2); mapCtx.stroke(); game.nodes.forEach(node => { if (!node.taken) { mapCtx.fillStyle = node.type === "relic" ? "#b9f4ff" : "#ffbe68"; mapCtx.fillRect(node.x - 30, node.y - 30, 60, 60); } }); game.enemies.forEach(enemy => { mapCtx.fillStyle = "#ff4d42"; mapCtx.fillRect(enemy.x - 35, enemy.y - 35, 70, 70); }); mapCtx.fillStyle = "#100d13ee"; mapCtx.fillRect(-mapRadius, -mapRadius, mapRadius * 2, mapRadius * 2); game.discovered.forEach(key => { if (key === "sanctuary") { mapCtx.fillStyle = "#f9c77933"; mapCtx.beginPath(); mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2); mapCtx.fill(); } else { const sector = Number(key.split("-")[1]); const inner = sector * 3000; const outer = (sector + 1) * 3000; mapCtx.fillStyle = `${sectorRegions[sector][0].color}28`; mapCtx.beginPath(); mapCtx.arc(0, 0, outer, 0, Math.PI * 2); mapCtx.arc(0, 0, inner, 0, Math.PI * 2, true); mapCtx.fill(); } }); game.nodes.forEach(node => { if (!node.taken && game.discovered.has(getDiscoveryKey(node.x, node.y))) { mapCtx.fillStyle = node.type === "relic" ? "#b9f4ff" : "#ffbe68"; mapCtx.fillRect(node.x - 30, node.y - 30, 60, 60); } }); game.enemies.forEach(enemy => { if (game.discovered.has(getDiscoveryKey(enemy.x, enemy.y))) { mapCtx.fillStyle = "#ff4d42"; mapCtx.fillRect(enemy.x - 35, enemy.y - 35, 70, 70); } }); mapCtx.fillStyle = "#f9c779"; mapCtx.beginPath(); mapCtx.arc(0, 0, 70, 0, Math.PI * 2); mapCtx.fill(); mapCtx.fillStyle = "#ffffff"; mapCtx.beginPath(); mapCtx.arc(game.player.x, game.player.y, 90, 0, Math.PI * 2); mapCtx.fill(); mapCtx.restore(); }
+function drawMap() { const w = mapCanvas.width, h = mapCanvas.height, scale = getTacticalMapScale(), visibleRadius = getTacticalMapVisibleRadius(); mapCtx.clearRect(0, 0, w, h); mapCtx.fillStyle = "#100d13"; mapCtx.fillRect(0, 0, w, h); mapCtx.save(); mapCtx.translate(w / 2, h / 2); mapCtx.scale(scale, scale); sectorRegions.forEach((regions, sector) => { const radius = (sector + 1) * 3000; mapCtx.strokeStyle = `${regions[0].color}99`; mapCtx.lineWidth = 3 / scale; mapCtx.beginPath(); mapCtx.arc(0, 0, radius, 0, Math.PI * 2); mapCtx.stroke(); }); mapCtx.strokeStyle = "#f9c779"; mapCtx.lineWidth = 7 / scale; mapCtx.beginPath(); mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2); mapCtx.stroke(); game.nodes.forEach(node => { if (!node.taken) { mapCtx.fillStyle = node.type === "relic" ? "#b9f4ff" : "#ffbe68"; mapCtx.fillRect(node.x - 30, node.y - 30, 60, 60); } }); game.enemies.forEach(enemy => { if (!enemy.voidStalker) { mapCtx.fillStyle = "#ff4d42"; mapCtx.fillRect(enemy.x - 35, enemy.y - 35, 70, 70); } }); mapCtx.fillStyle = "#100d13ee"; mapCtx.fillRect(-visibleRadius, -visibleRadius, visibleRadius * 2, visibleRadius * 2); game.discovered.forEach(key => { if (key === "sanctuary") { mapCtx.fillStyle = "#f9c77933"; mapCtx.beginPath(); mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2); mapCtx.fill(); } else { const sector = Number(key.split("-")[1]); const inner = sector * 3000; const outer = (sector + 1) * 3000; mapCtx.fillStyle = `${sectorRegions[sector][0].color}28`; mapCtx.beginPath(); mapCtx.arc(0, 0, outer, 0, Math.PI * 2); mapCtx.arc(0, 0, inner, 0, Math.PI * 2, true); mapCtx.fill(); } }); game.nodes.forEach(node => { if (!node.taken && game.discovered.has(getDiscoveryKey(node.x, node.y))) { mapCtx.fillStyle = node.type === "relic" ? "#b9f4ff" : "#ffbe68"; mapCtx.fillRect(node.x - 30, node.y - 30, 60, 60); } }); game.enemies.forEach(enemy => { if (!enemy.voidStalker && game.discovered.has(getDiscoveryKey(enemy.x, enemy.y))) { mapCtx.fillStyle = "#ff4d42"; mapCtx.fillRect(enemy.x - 35, enemy.y - 35, 70, 70); } }); mapCtx.fillStyle = "#f9c779"; mapCtx.beginPath(); mapCtx.arc(0, 0, 70, 0, Math.PI * 2); mapCtx.fill(); mapCtx.fillStyle = "#ffffff"; mapCtx.beginPath(); mapCtx.arc(game.player.x, game.player.y, 90, 0, Math.PI * 2); mapCtx.fill(); mapCtx.restore(); }
+function drawStalkerMapMarker() {
+  const stalker = game.enemies.find(enemy => enemy.voidStalker && !enemy.defeated);
+  if (!stalker) return;
+  const scale = getTacticalMapScale();
+  mapCtx.save();
+  mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2);
+  mapCtx.scale(scale, scale);
+  mapCtx.fillStyle = '#d78cff';
+  mapCtx.beginPath();
+  mapCtx.arc(stalker.x, stalker.y, 4 / scale, 0, Math.PI * 2);
+  mapCtx.fill();
+  mapCtx.restore();
+}
 function draw() {
   const w = canvas.clientWidth,
     h = canvas.clientHeight,
@@ -1168,7 +1354,7 @@ function draw() {
   }
 
   // Enemies
-  game.enemies.forEach(e => {
+  game.enemies.filter(e => !e.voidStalker).forEach(e => {
     ctx.save();
     ctx.translate(e.x, e.y);
     ctx.rotate(Math.atan2(game.player.y - e.y, game.player.x - e.x));
