@@ -20,6 +20,7 @@ let adminUnlockIndex = 0;
 const clipSize = 12;
 const startingAmmoReserve = 15;
 const stationInteractionRadius = 95;
+const frostfallAuraRadius = 80;
 const stationPositions = { crafting: { x: -300, y: -27 }, furnace: { x: 285, y: -27 } };
 const beaconRegionRadius = 1200;
 const mapRadius = 18000;
@@ -205,9 +206,9 @@ const biomeHazards = [
 ];
 const hazardVisuals = ['acid-pool', 'fire-crater', 'ice-spikes', 'ash-vent', 'lightning-pylon', 'root-patch', 'glass-shards', 'frost-rift', 'bone-pile', 'ember-pool', 'spore-ring', 'gravity-well', 'storm-pylon', 'blood-pool', 'null-ice', 'wraith-rift', 'shadow-patch', 'starfire-crater', 'nebula-cloud', 'pressure-ring', 'void-rift', 'horizon-well', 'star-core', 'dark-pool'];
 const enemyFamilies = [
-  ['MIRE CRAWLER', 'ACID BLOOD', 'acid'], ['CINDER HOUND', 'IGNITE', 'burn'], ['ICE MAW', 'FLASH FREEZE', 'slow'], ['ASH STALKER', 'SMOKE VEIL', 'evasion'],
-  ['THUNDER RAM', 'ARC CHARGE', 'shock'], ['IRONWOOD TREANT', 'ROOT GRIP', 'root'], ['MIRAGE WRAITH', 'FALSE IMAGE', 'evasion'], ['FROSTBURROWER', 'PERMAFROST', 'slow'],
-  ['BONE HARVESTER', 'BONE ARMOR', 'armor'], ['EMBER SERPENT', 'EMBER TRAIL', 'burn'], ['SPORE BRUTE', 'SPORE CLOUD', 'drain'], ['GRAVITY LEECH', 'GRAVITY WELL', 'pull'],
+  ['MIRE CRAWLER', null, null], ['CINDER HOUND', null, null], ['ICE MAW', null, null], ['ASH STALKER', null, null],
+  ['THUNDER RAM', 'STRAIGHT DASH', 'dash'], ['IRONWOOD TREANT', 'DAMAGE NEGATION', 'damage-ignore'], ['MIRAGE WRAITH', 'BURNING DEATH BURST', 'death-burn'], ['FROSTBURROWER', 'FREEZING AURA', 'slow-aura'],
+  ['BONE HARVESTER', 'BONE SHARD BURST', 'damage-burst'], ['EMBER SERPENT', 'DEATHBOUND FIREBALLS', 'death-fireballs'], ['SPORE BRUTE', 'BRAMBLE SNARE', 'bramble'], ['GRAVITY LEECH', 'GRAVITY WELL', 'gravity-fields-pull'],
   ['STORM KNIGHT', 'CHAIN LIGHTNING', 'shock'], ['BLOOD HUNTER', 'HEMORRHAGE', 'bleed'], ['NULL PHANTOM', 'NULL FIELD', 'slow'], ['WRAITH EATER', 'LIFE DRAIN', 'drain'],
   ['DUSK STAG', 'DARKSTEP', 'evasion'], ['STARFIRE GOLEM', 'STARFIRE', 'burn'], ['NEBULA SWARM', 'RADIATION', 'drain'], ['PRESSURE TITAN', 'PRESSURE WAVE', 'pull'],
   ['VOID CRAWLER', 'REALITY TEAR', 'armor'], ['HORIZON DEVOURER', 'SINGULARITY', 'pull'], ['STAR EATER', 'SOLAR FLARE', 'shock'], ['ENDLESS SHADE', 'VOID STEP', 'evasion']
@@ -255,7 +256,8 @@ function freshGame() {
     gems: [], 
     drops: [], 
     nodes: [], 
-    hazardZones: [], 
+    hazardZones: [],
+    brambleZones: [],
     discovered: new Set(['sanctuary']), 
     player: { x: 0, y: 0, angle: 0 }, 
     spawnTimer: 0, 
@@ -529,7 +531,9 @@ function spawn() {
     variant: variant.name, boss: Boolean(variant.boss), color: biome.color, 
     r: (10 + Math.random() * 6) * variant.radius, speed: baseSpeed * variant.speed, 
     hp: scaledHp, maxHp: scaledHp, damage: variant.damage, contactDamage: variant.contactDamage, 
-    score: variant.score, drops: variant.drops, abilityTimer: 1 + Math.random() * 2, 
+    score: variant.score, drops: variant.drops, abilityTimer: 1 + Math.random() * 2,
+    dashCooldown: family.effect === 'dash' ? 4 : 0, dashTimer: 0, dashX: 0, dashY: 0,
+    brambleCooldown: family.effect === 'bramble' ? 3 + Math.random() * 7 : 0,
     shieldTimer: 0, hitTimer: 0 
   };
 
@@ -539,18 +543,90 @@ function spawn() {
     get: () => health,
     set: value => {
       const attemptedDamage = health - value;
+      if (attemptedDamage > 0 && enemy.effect === 'damage-ignore' && Math.random() < .05) return;
       const weapon = weaponCatalog[game.weapon];
       const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y);
       const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12;
+      const previousHealth = health;
       health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
+      if (health < previousHealth && enemy.effect === 'damage-burst') triggerBoneOrchardHit(enemy);
     }
   });
 
   game.enemies.push(enemy);
+  if (enemy.effect === 'death-fireballs') attachEmberFireballs(enemy);
+}
+
+function triggerBoneOrchardHit(enemy) {
+  const projectileCount = 6;
+  const speed = 280;
+  for (let i = 0; i < projectileCount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    game.projectiles.push({
+      x: enemy.x,
+      y: enemy.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1.8,
+      radius: 7,
+      damage: 4,
+      color: '#d7b07a'
+    });
+  }
+}
+
+function attachEmberFireballs(enemy) {
+  for (const offset of [-1, 1]) {
+    game.projectiles.push({
+      x: enemy.x,
+      y: enemy.y,
+      vx: 0,
+      vy: 0,
+      life: Infinity,
+      radius: 10,
+      damage: 8,
+      color: '#ff725e',
+      followTarget: enemy,
+      followOffset: offset
+    });
+  }
+}
+
+function launchEmberFireballs(enemy) {
+  const angleToPlayer = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+  game.projectiles.filter(projectile => projectile.followTarget === enemy).forEach(projectile => {
+    const angle = angleToPlayer + projectile.followOffset * .12;
+    const speed = 380;
+    projectile.vx = Math.cos(angle) * speed;
+    projectile.vy = Math.sin(angle) * speed;
+    projectile.life = 2;
+    projectile.burnDuration = 3;
+    projectile.followTarget = null;
+  });
 }
 
 
-function defeatEnemy(enemy, bonus = 0) { if (!enemy || enemy.defeated || enemy.hp > 0) return; enemy.defeated = true; if (enemy.voidWorm) { if (Math.random() < .33) game.atlasCrystals++; if (enemy.canSplit && Math.random() < .15) { const activeWorms = game.enemies.filter(candidate => candidate.voidWorm && !candidate.defeated).length; const splitCount = Math.min(2, Math.max(0, 8 - activeWorms)); for (let i = 0; i < splitCount; i++) game.enemies.push(createVoidWorm(enemy.x + (i ? 26 : -26), enemy.y, false)); } } dropResource(enemy.x, enemy.y, enemy.drops || 1); game.score += (enemy.score || 100) + bonus; if (enemy.boss && Math.random() < .5) game.relics++; if (Math.random() > (enemy.boss ? .35 : .72)) game.gems.push({ x: enemy.x, y: enemy.y, life: 18 }); burst(enemy.x, enemy.y, enemy.boss ? 18 : 8, enemy.boss ? 260 : 170); }
+function triggerGlassDesertDeath(enemy) {
+  const angleToPlayer = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+  const spread = .28;
+  for (let i = -1; i <= 1; i++) {
+    const angle = angleToPlayer + i * spread;
+    const speed = 360;
+    game.projectiles.push({
+      x: enemy.x,
+      y: enemy.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 2,
+      radius: 9,
+      damage: 5,
+      color: '#ff865c',
+      burnDuration: 3
+    });
+  }
+}
+
+function defeatEnemy(enemy, bonus = 0) { if (!enemy || enemy.defeated || enemy.hp > 0) return; enemy.defeated = true; if (enemy.effect === 'death-burn') triggerGlassDesertDeath(enemy); if (enemy.effect === 'death-fireballs') launchEmberFireballs(enemy); if (enemy.voidWorm) { if (Math.random() < .33) game.atlasCrystals++; if (enemy.canSplit && Math.random() < .15) { const activeWorms = game.enemies.filter(candidate => candidate.voidWorm && !candidate.defeated).length; const splitCount = Math.min(2, Math.max(0, 8 - activeWorms)); for (let i = 0; i < splitCount; i++) game.enemies.push(createVoidWorm(enemy.x + (i ? 26 : -26), enemy.y, false)); } } dropResource(enemy.x, enemy.y, enemy.drops || 1); game.score += (enemy.score || 100) + bonus; if (enemy.boss && Math.random() < .5) game.relics++; if (Math.random() > (enemy.boss ? .35 : .72)) game.gems.push({ x: enemy.x, y: enemy.y, life: 18 }); burst(enemy.x, enemy.y, enemy.boss ? 18 : 8, enemy.boss ? 260 : 170); }
 function randomResource() {
   const totalWeight = resourceTypes.reduce((sum, item) => sum + item.weight, 0);
   let randomNum = Math.random() * totalWeight;
@@ -624,25 +700,82 @@ openCraftDetails = function(recipeKey, requestedQuantity = 1, requestedSlot = 0)
 function drawBiomeHazard(biome, width, height) { if (biome.key === 'sanctuary') return; const hazard = biome.effects.hazard; const time = performance.now() / 1000; const name = hazard.name; ctx.save(); ctx.globalAlpha = .2; if (name.includes('MIST') || name.includes('ASH') || name.includes('SPORES') || name.includes('RAIN')) { ctx.fillStyle = biome.color; for (let i = 0; i < 28; i++) { const x = (i * 97 + time * 18) % width; const y = (i * 53 + time * 11) % height; ctx.beginPath(); ctx.arc(x, y, 3 + (i % 4), 0, Math.PI * 2); ctx.fill(); } } else if (name.includes('HEAT') || name.includes('EMBER') || name.includes('FIRE') || name.includes('BURN')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 2; for (let i = 0; i < 18; i++) { const x = (i * 131 + time * 35) % width; const y = (i * 71 + time * 24) % height; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 12, y + 28); ctx.stroke(); } } else if (name.includes('FREEZE') || name.includes('FROST') || name.includes('COLD')) { ctx.fillStyle = biome.color; for (let i = 0; i < 24; i++) { const x = (i * 83 + time * 12) % width; const y = (i * 61 + time * 30) % height; ctx.fillRect(x, y, 2, 8); } } else if (name.includes('LIGHTNING') || name.includes('THUNDER')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 3; for (let i = 0; i < 3; i++) { const x = (i * 211 + time * 7) % width; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x - 14, height * .25); ctx.lineTo(x + 8, height * .5); ctx.lineTo(x - 12, height * .78); ctx.stroke(); } } else if (name.includes('ROOT') || name.includes('BONE')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 4; for (let i = 0; i < 8; i++) { const x = i * width / 7; ctx.beginPath(); ctx.moveTo(x, height); ctx.quadraticCurveTo(x + 20, height * .7, x - 8, height * .42); ctx.stroke(); } } else if (name.includes('GRAVITY') || name.includes('PRESSURE') || name.includes('HORIZON')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 2; for (let radius = 70; radius < Math.max(width, height); radius += 100) { ctx.beginPath(); ctx.arc(width / 2, height / 2, radius + Math.sin(time * 2 + radius) * 8, 0, Math.PI * 2); ctx.stroke(); } } else { ctx.fillStyle = biome.color; for (let i = 0; i < 18; i++) { const x = (i * 113 + time * 20) % width; const y = (i * 67 + time * 14) % height; ctx.beginPath(); ctx.arc(x, y, 2 + i % 3, 0, Math.PI * 2); ctx.fill(); } } ctx.restore(); }
 function generateHazardZones() { const zones = []; const random = seededRandom(game.seed + 71); for (let i = 0; i < 110; i++) { const x = (random() - .5) * mapRadius * 2; const y = (random() - .5) * mapRadius * 1.5; const biome = getBiome(x, y); if (biome.key === 'sanctuary' || biome.key === 'void') continue; zones.push({ x, y, radius: 90 + random() * 150, biomeKey: biome.key, color: biome.color, damagePerSecond: biome.effects.hazard.zoneDamagePerSecond * 1.6, hazard: biome.effects.hazard }); } return zones; }
 function drawHazardShape(context, zone) { const visual = zone.hazard.visual; const { x, y, radius } = zone; context.beginPath(); if (visual.includes('pool') || visual.includes('crater') || visual.includes('cloud') || visual.includes('patch') || visual.includes('pile') || visual.includes('core')) context.ellipse(x, y, radius, radius * .72, .15, 0, Math.PI * 2); else if (visual.includes('spikes') || visual.includes('pylon')) { context.moveTo(x, y - radius); for (let i = 0; i < 8; i++) { const angle = -Math.PI / 2 + i * Math.PI / 4; const distance = i % 2 ? radius * .62 : radius; context.lineTo(x + Math.cos(angle) * distance, y + Math.sin(angle) * distance); } context.closePath(); } else { context.arc(x, y, radius, 0, Math.PI * 2); } }
+function drawBrambleZones() {
+  if (!game.brambleZones.length) return;
+  const camX = game.camera.x - canvas.clientWidth / 2;
+  const camY = game.camera.y - canvas.clientHeight / 2;
+  ctx.save();
+  ctx.translate(-camX, -camY);
+  game.brambleZones.forEach(zone => {
+    ctx.save();
+    ctx.globalAlpha = zone.active ? .75 : .5 + Math.sin(performance.now() / 90) * .2;
+    ctx.strokeStyle = zone.active ? '#8fc47e' : '#d7b07a';
+    ctx.fillStyle = zone.active ? '#315a3544' : '#d7b07a22';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    if (zone.active) {
+      for (let i = 0; i < 8; i++) {
+        const angle = i * Math.PI / 4;
+        ctx.beginPath();
+        ctx.moveTo(zone.x + Math.cos(angle) * 12, zone.y + Math.sin(angle) * 12);
+        ctx.lineTo(zone.x + Math.cos(angle) * (zone.radius + 8), zone.y + Math.sin(angle) * (zone.radius + 8));
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  });
+  ctx.restore();
+}
 function drawHazardZones() { if (!game.hazardZones.length) return; const biome = getBiome(game.player.x, game.player.y); const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; const time = performance.now() / 1000; ctx.save(); ctx.translate(-camX, -camY); game.hazardZones.forEach(zone => { const radius = zone.radius; ctx.globalAlpha = zone.biomeKey === biome.key ? .34 : .12; ctx.fillStyle = zone.color; ctx.strokeStyle = zone.color; ctx.lineWidth = 3; drawHazardShape(ctx, zone); ctx.fill(); ctx.stroke(); ctx.globalAlpha *= .8; if (zone.hazard.visual.includes('ice') || zone.hazard.visual.includes('spikes')) { for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(zone.x + (i - 2) * radius / 3, zone.y + radius * .45); ctx.lineTo(zone.x + (i - 2) * radius / 4, zone.y - radius * .6); ctx.stroke(); } } else if (zone.hazard.visual.includes('lightning') || zone.hazard.visual.includes('pylon')) { ctx.beginPath(); ctx.moveTo(zone.x, zone.y - zone.radius); ctx.lineTo(zone.x - 10, zone.y - zone.radius * .25); ctx.lineTo(zone.x + 8, zone.y + zone.radius * .05); ctx.lineTo(zone.x - 4, zone.y + zone.radius); ctx.stroke(); } else { ctx.beginPath(); ctx.arc(zone.x, zone.y, radius * (.55 + Math.sin(time * 2 + zone.x) * .08), 0, Math.PI * 2); ctx.stroke(); } }); ctx.restore(); }
 function drawVoidMapRegions() { const scale = getTacticalMapScale(); const visibleRadius = getTacticalMapVisibleRadius(); mapCtx.save(); mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2); mapCtx.scale(scale, scale); mapCtx.fillStyle = '#241d3d'; mapCtx.beginPath(); mapCtx.rect(-visibleRadius, -visibleRadius, visibleRadius * 2, visibleRadius * 2); mapCtx.arc(0, 0, mapRadius, 0, Math.PI * 2, true); mapCtx.fill('evenodd'); mapCtx.restore(); }
 function drawHazardMap() { drawVoidMapRegions(); if (!game.hazardZones.length) return; const scale = getTacticalMapScale(); mapCtx.save(); mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2); mapCtx.scale(scale, scale); game.hazardZones.forEach(zone => { mapCtx.globalAlpha = .55; mapCtx.fillStyle = zone.color; mapCtx.strokeStyle = zone.color; drawHazardShape(mapCtx, zone); mapCtx.fill(); mapCtx.stroke(); }); mapCtx.restore(); }
 function drawPickups() { const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); game.nodes.forEach(node => { if (node.taken || node.type !== 'chest') return; ctx.fillStyle = '#d7b07a'; ctx.strokeStyle = '#ffdf91'; ctx.lineWidth = 2; ctx.fillRect(node.x - 12, node.y - 8, 24, 16); ctx.strokeRect(node.x - 12, node.y - 8, 24, 16); ctx.fillStyle = '#ffdf91'; ctx.fillRect(node.x - 2, node.y - 8, 4, 16); }); game.drops.forEach(drop => { const resource = resourceTypes.find(item => item.key === drop.type); ctx.fillStyle = resource.color; ctx.shadowBlur = 12; ctx.shadowColor = resource.color; ctx.beginPath(); ctx.moveTo(drop.x, drop.y - 8); ctx.lineTo(drop.x + 8, drop.y); ctx.lineTo(drop.x, drop.y + 8); ctx.lineTo(drop.x - 8, drop.y); ctx.fill(); ctx.shadowBlur = 0; }); ctx.restore(); }
 function drawSanctuaryStations() { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary') return; const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); ctx.textAlign = 'center'; ctx.font = 'bold 9px Space Mono'; ctx.fillStyle = '#f9c779'; ctx.fillText('CRAFTING TABLE', -300, -82); ctx.fillText('FURNACE', 285, -82); ctx.fillStyle = '#8b5a3c'; ctx.strokeStyle = '#f9c779'; ctx.lineWidth = 3; ctx.fillRect(-360, -55, 120, 70); ctx.strokeRect(-360, -55, 120, 70); ctx.fillStyle = '#c88968'; ctx.fillRect(-350, -68, 100, 16); ctx.fillStyle = '#17131a'; ctx.fillRect(-320, -42, 40, 20); ctx.fillStyle = '#493a36'; ctx.fillRect(230, -55, 110, 70); ctx.strokeStyle = '#ff865c'; ctx.strokeRect(230, -55, 110, 70); ctx.fillStyle = '#ff865c'; ctx.beginPath(); ctx.arc(285, -20, 28, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(285, -20, 16, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#b9b0a8'; ctx.fillRect(245, -70, 80, 15); ctx.restore(); }
-function loop(now) { if (game.paused) { animation = requestAnimationFrame(loop); return; } const dt = Math.min((now - lastTime) / 1000, .04); lastTime = now; updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt); draw(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawMap(); drawHazardMap(); drawStalkerMapMarker(); if (game.active) animation = requestAnimationFrame(loop); }
+function loop(now) { if (game.paused) { animation = requestAnimationFrame(loop); return; } const dt = Math.min((now - lastTime) / 1000, .04); lastTime = now; updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt); draw(); drawBrambleZones(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawMap(); drawHazardMap(); drawStalkerMapMarker(); if (game.active) animation = requestAnimationFrame(loop); }
  function updateBiomeAnnouncement(dt) { const biome = getBiome(game.player.x, game.player.y); game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(Math.min(sectorRegions.length - 1, Math.floor(Math.hypot(game.player.x, game.player.y) / 3000)))); if (biome.key !== game.biomeKey) { game.biomeKey = biome.key; game.announcementTimer = 3; announceBiome(biome); updateBiomeEffects(biome); updateBiomeHazard(biome); } game.announcementTimer = Math.max(0, game.announcementTimer - dt); if (game.announcementTimer === 0) ui.announcement.classList.remove('show'); }
 function updateBiomeHazard(biome) { const hazard = biome.effects.hazard; ui.effects.querySelector('.biome-hazard-effect')?.remove(); ui.effects.insertAdjacentHTML('beforeend', `<span class="biome-effect negative biome-hazard-effect" title="${hazard.description}"><b>!</b>${hazard.name}</span>`); }
 function updateBiomeEffects(biome) { const effects = biome.effects; const conditions = []; if (effects.healthRegen) conditions.push({ positive: true, text: `REGEN +${effects.healthRegen}/SEC`, detail: `Restores ${effects.healthRegen} health per second while outside the beacon.` }); if (effects.moveMultiplier !== 1) conditions.push({ positive: effects.moveMultiplier > 1, text: `MOVE ${effects.moveMultiplier > 1 ? '+' : ''}${Math.round((effects.moveMultiplier - 1) * 100)}%`, detail: `${effects.moveMultiplier > 1 ? 'Increases' : 'Reduces'} player movement speed by ${Math.abs(Math.round((effects.moveMultiplier - 1) * 100))}%.` }); if (effects.fireCooldownMultiplier !== 1) conditions.push({ positive: effects.fireCooldownMultiplier < 1, text: `FIRE ${effects.fireCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%`, detail: `${effects.fireCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the delay between shots by ${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%.` }); if (effects.pulseCooldownMultiplier !== 1) conditions.push({ positive: effects.pulseCooldownMultiplier < 1, text: `PULSE ${effects.pulseCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%`, detail: `${effects.pulseCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the pulse cooldown by ${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%.` }); if (effects.salvageMultiplier !== 1) conditions.push({ positive: effects.salvageMultiplier > 1, text: `SALVAGE +${Math.round((effects.salvageMultiplier - 1) * 100)}%`, detail: `Collected salvage is multiplied by ${effects.salvageMultiplier}x.` }); if (effects.enemySpeedMultiplier !== 1) conditions.push({ positive: effects.enemySpeedMultiplier < 1, text: `HORDE ${effects.enemySpeedMultiplier < 1 ? '-' : '+'}${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}% SPEED`, detail: `Enemies move ${effects.enemySpeedMultiplier < 1 ? 'slower' : 'faster'} by ${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}%.` }); if (effects.damageMultiplier !== 1) conditions.push({ positive: false, text: `DAMAGE +${Math.round((effects.damageMultiplier - 1) * 100)}%`, detail: `Enemy contact damage is increased by ${Math.round((effects.damageMultiplier - 1) * 100)}%.` }); ui.effects.innerHTML = `<span class="biome-effects-title">${biome.name} // CONDITIONS</span>${conditions.map(condition => `<span class="biome-effect ${condition.positive ? 'positive' : 'negative'}" title="${condition.detail}"><b>${condition.positive ? '+' : '-'}</b>${condition.text}</span>`).join('')}`; }
+function updateBrambleZones(dt) {
+  let slowsPlayer = false;
+  game.brambleZones.forEach(zone => {
+    let justActivated = false;
+    if (!zone.active) {
+      zone.telegraphTimer -= dt;
+      if (zone.telegraphTimer <= 0) {
+        zone.active = true;
+        zone.life = 3;
+        justActivated = true;
+        burst(zone.x, zone.y, 8, 100);
+      }
+    }
+    if (zone.active) {
+      if (!justActivated) zone.life -= dt;
+      if (Math.hypot(game.player.x - zone.x, game.player.y - zone.y) < zone.radius) {
+        game.health -= 8 * dt;
+        slowsPlayer = true;
+      }
+    }
+  });
+  game.brambleZones = game.brambleZones.filter(zone => !zone.active || zone.life > 0);
+  return slowsPlayer;
+}
+
 function update(dt) {
+  const slowedByBramble = updateBrambleZones(dt);
   const p = game.player;
   const dx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
   const dy = (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
   const length = Math.hypot(dx, dy) || 1;
   const movementEffects = getBiome(p.x, p.y).effects;
   const armor = getArmorEffects();
+  const slowedByFrostfallAura = game.enemies.some(enemy => !enemy.defeated && enemy.effect === 'slow-aura' && Math.hypot(p.x - enemy.x, p.y - enemy.y) < frostfallAuraRadius);
+  const enemySlowMultiplier = (slowedByFrostfallAura ? .75 : 1) * (slowedByBramble ? .5 : 1);
 
-  p.x += dx / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * dt;
-  p.y += dy / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * dt;
+  p.x += dx / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * enemySlowMultiplier * dt;
+  p.y += dy / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * enemySlowMultiplier * dt;
   p.angle = Math.atan2(pointer.y - canvas.clientHeight / 2, pointer.x - canvas.clientWidth / 2);
 
   game.camera.x += (p.x - game.camera.x) * Math.min(1, dt * 7);
@@ -786,6 +919,25 @@ function update(dt) {
       }
       e.x += Math.cos(e.wanderAngle) * (e.speed * 0.6) * effects.enemySpeedMultiplier * dt;
       e.y += Math.sin(e.wanderAngle) * (e.speed * 0.6) * effects.enemySpeedMultiplier * dt;
+    } else if (e.effect === 'dash') {
+      e.dashCooldown = Math.max(0, e.dashCooldown - dt);
+      if (e.dashTimer > 0 || e.dashCooldown === 0) {
+        if (e.dashTimer <= 0) {
+          const angle = Math.atan2(p.y - e.y, p.x - e.x);
+          e.dashX = Math.cos(angle);
+          e.dashY = Math.sin(angle);
+          e.dashTimer = .4;
+          e.dashCooldown = 4;
+        }
+        const dashTime = Math.min(dt, e.dashTimer);
+        e.x += e.dashX * e.speed * 3 * effects.enemySpeedMultiplier * dashTime;
+        e.y += e.dashY * e.speed * 3 * effects.enemySpeedMultiplier * dashTime;
+        e.dashTimer -= dashTime;
+      } else {
+        const angle = Math.atan2(p.y - e.y, p.x - e.x);
+        e.x += Math.cos(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+        e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+      }
     } else {
       // Standard aggressive tracking
       const angle = Math.atan2(p.y - e.y, p.x - e.x);
@@ -863,6 +1015,14 @@ function update(dt) {
 
   // Handle Enemy Projectiles
   game.projectiles.forEach(proj => {
+    if (proj.followTarget) {
+      if (!proj.followTarget.defeated) {
+        proj.x = proj.followTarget.x + proj.followOffset * (proj.followTarget.r + 12);
+        proj.y = proj.followTarget.y - (proj.followTarget.r + 12);
+        return;
+      }
+      launchEmberFireballs(proj.followTarget);
+    }
     if (proj.redirectTimer !== undefined) {
       proj.redirectTimer -= dt;
       if (proj.redirectTimer <= 0 && !proj.redirected) {
@@ -898,6 +1058,10 @@ function update(dt) {
     // Player collision
     if (Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
       game.health -= proj.damage * (1 - (getArmorEffects().voidDamageReduction || 0));
+      if (proj.burnDuration) {
+        const status = game.enemyStatus || (game.enemyStatus = { burn: 0, acid: 0, bleed: 0, freeze: 0, root: 0 });
+        status.burn = Math.max(status.burn, proj.burnDuration);
+      }
       proj.life = 0; // Destroy on impact
     }
   });
@@ -951,7 +1115,65 @@ function update(dt) {
 
   if (game.health <= 0) end();
 }
-function applyEnemyAbilities(dt) { const status = game.enemyStatus || (game.enemyStatus = { burn: 0, acid: 0, bleed: 0, freeze: 0, root: 0 }); game.enemies.forEach(enemy => { const distance = Math.hypot(game.player.x - enemy.x, game.player.y - enemy.y); const contact = distance < enemy.r + 18; enemy.abilityTimer -= dt; if (contact) { if (enemy.effect === 'burn') status.burn = Math.max(status.burn, enemy.boss ? 5 : 3); if (enemy.effect === 'acid') status.acid = Math.max(status.acid, 4); if (enemy.effect === 'bleed') status.bleed = Math.max(status.bleed, 4); if (enemy.effect === 'slow') status.freeze = Math.max(status.freeze, 2.5); if (enemy.effect === 'root') status.root = Math.max(status.root, 2); } if (enemy.abilityTimer <= 0) { if (distance < 260 && enemy.effect === 'shock') { game.health -= enemy.boss ? 8 : 5; burst(enemy.x, enemy.y, 5, 90); } if (distance < 260 && enemy.effect === 'drain') { game.health -= 3; enemy.hp = Math.min(enemy.maxHp, enemy.hp + 1); } if (distance < 260 && enemy.effect === 'pull') { const angle = Math.atan2(enemy.y - game.player.y, enemy.x - game.player.x); game.player.x += Math.cos(angle) * 35; game.player.y += Math.sin(angle) * 35; } if (distance < 260 && enemy.effect === 'armor') enemy.shieldTimer = 2; if (distance < 260 && enemy.effect === 'evasion') { const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x) + Math.PI / 2; enemy.x += Math.cos(angle) * 28; enemy.y += Math.sin(angle) * 28; } enemy.abilityTimer = enemy.boss ? 1.4 : 2.8; } }); status.burn = Math.max(0, status.burn - dt); status.acid = Math.max(0, status.acid - dt); status.bleed = Math.max(0, status.bleed - dt); status.freeze = Math.max(0, status.freeze - dt); status.root = Math.max(0, status.root - dt); if (status.burn) game.health -= 6 * dt; if (status.acid) game.health -= 4 * dt; if (status.bleed) game.health -= 3 * dt; if (status.freeze || status.root) game.health -= 1 * dt; }
+function applyEnemyAbilities(dt) {
+  const status = game.enemyStatus || (game.enemyStatus = { burn: 0, acid: 0, bleed: 0, freeze: 0, root: 0 });
+  game.enemies.forEach(enemy => {
+    const distance = Math.hypot(game.player.x - enemy.x, game.player.y - enemy.y);
+    const contact = distance < enemy.r + 18;
+    enemy.abilityTimer -= dt;
+    if (contact) {
+      if (enemy.effect === 'burn') status.burn = Math.max(status.burn, enemy.boss ? 5 : 3);
+      if (enemy.effect === 'acid') status.acid = Math.max(status.acid, 4);
+      if (enemy.effect === 'bleed') status.bleed = Math.max(status.bleed, 4);
+      if (enemy.effect === 'slow') status.freeze = Math.max(status.freeze, 2.5);
+      if (enemy.effect === 'root') status.root = Math.max(status.root, 2);
+    }
+    if (enemy.effect === 'bramble') {
+      enemy.brambleCooldown -= dt;
+      if (distance < 550 && enemy.brambleCooldown <= 0) {
+        game.brambleZones.push({
+          x: game.player.x,
+          y: game.player.y,
+          radius: 52,
+          telegraphTimer: 1.5,
+          active: false,
+          life: 0
+        });
+        enemy.brambleCooldown = 10;
+      }
+    } else if (enemy.abilityTimer <= 0) {
+      if (distance < 260 && enemy.effect === 'shock') {
+        game.health -= enemy.boss ? 8 : 5;
+        burst(enemy.x, enemy.y, 5, 90);
+      }
+      if (distance < 260 && enemy.effect === 'drain') {
+        game.health -= 3;
+        enemy.hp = Math.min(enemy.maxHp, enemy.hp + 1);
+      }
+      if (distance < 260 && (enemy.effect === 'pull' || (enemy.effect === 'gravity-fields-pull' && Math.random() >= .75))) {
+        const angle = Math.atan2(enemy.y - game.player.y, enemy.x - game.player.x);
+        game.player.x += Math.cos(angle) * 35;
+        game.player.y += Math.sin(angle) * 35;
+      }
+      if (distance < 260 && enemy.effect === 'armor') enemy.shieldTimer = 2;
+      if (distance < 260 && enemy.effect === 'evasion') {
+        const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x) + Math.PI / 2;
+        enemy.x += Math.cos(angle) * 28;
+        enemy.y += Math.sin(angle) * 28;
+      }
+      enemy.abilityTimer = enemy.boss ? 1.4 : 2.8;
+    }
+  });
+  status.burn = Math.max(0, status.burn - dt);
+  status.acid = Math.max(0, status.acid - dt);
+  status.bleed = Math.max(0, status.bleed - dt);
+  status.freeze = Math.max(0, status.freeze - dt);
+  status.root = Math.max(0, status.root - dt);
+  if (status.burn) game.health -= 6 * dt;
+  if (status.acid) game.health -= 4 * dt;
+  if (status.bleed) game.health -= 3 * dt;
+  if (status.freeze || status.root) game.health -= 1 * dt;
+}
 function triggerVoidShockwave(enemy) {
     if (!enemy) return;
     const projectileCount = 35;
@@ -1005,6 +1227,17 @@ function renderEnemySystem() {
     const shape = (enemy.familyIndex + enemy.variant.length) % 6;
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
+    if (enemy.effect === 'slow-aura') {
+      ctx.save();
+      ctx.fillStyle = '#82c5d733';
+      ctx.strokeStyle = '#82c5d777';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, 0, frostfallAuraRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.strokeStyle = enemy.color;
     ctx.fillStyle = `${enemy.color}55`;
     ctx.lineWidth = enemy.boss ? 4 : 2;
