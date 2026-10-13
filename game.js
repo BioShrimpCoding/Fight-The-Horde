@@ -1095,9 +1095,9 @@ function renderEnemySystem() {
     ctx.rotate(Date.now() * .0004);
     const pulse = Math.sin(Date.now() * .006) * 8;
     ctx.shadowBlur = 24;
-    ctx.shadowColor = '#b34dff';
-    ctx.strokeStyle = '#e0aaff';
-    ctx.fillStyle = '#26053d';
+    ctx.shadowColor = '#0e6b5c';
+    ctx.strokeStyle = '#0e6b5c';
+    ctx.fillStyle = '#17131a';
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.arc(0, 0, enemy.r + pulse, 0, Math.PI * 2);
@@ -1111,7 +1111,7 @@ function renderEnemySystem() {
       ctx.lineTo(Math.cos(angle) * (enemy.r + 18), Math.sin(angle) * (enemy.r + 18));
       ctx.stroke();
     }
-    ctx.fillStyle = enemy.isAggroed ? '#ff8cff' : '#b34dff';
+    ctx.fillStyle = enemy.isAggroed ? '#0e6b5c' : '#49a797';
     ctx.beginPath();
     ctx.arc(0, 0, 22, 0, Math.PI * 2);
     ctx.fill();
