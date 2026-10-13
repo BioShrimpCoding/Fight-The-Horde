@@ -884,12 +884,12 @@ function update(dt) {
         game.projectiles.push({
           x: proj.x,
           y: proj.y,
-          vx: Math.cos(angle) * 1050,
-          vy: Math.sin(angle) * 1050,
+          vx: Math.cos(angle) * 1000,
+          vy: Math.sin(angle) * 1000,
           life: 3,
           radius: 7,
           damage: 6,
-          color: '#d78cff',
+          color: '#00fff2',
           redirectTimer: 1
         });
       }
@@ -972,8 +972,8 @@ function triggerVoidShockwave(enemy) {
     }
 }
 function triggerVoidStalkerAttack(enemy) {
-  const projectileCount = 8;
-  const speed = 1100;
+  const projectileCount = 10;
+  const speed = 700;
   for (let i = 0; i < projectileCount; i++) {
     const angle = (Math.PI * 2 / projectileCount) * i;
     game.projectiles.push({
@@ -984,7 +984,7 @@ function triggerVoidStalkerAttack(enemy) {
       life: 1.2,
       radius: 11,
       damage: 7,
-      color: '#b34dff',
+      color: '#00fff2',
       split: true
     });
   }
@@ -1111,7 +1111,7 @@ function renderEnemySystem() {
       ctx.lineTo(Math.cos(angle) * (enemy.r + 18), Math.sin(angle) * (enemy.r + 18));
       ctx.stroke();
     }
-    ctx.fillStyle = enemy.isAggroed ? '#0e6b5c' : '#49a797';
+    ctx.fillStyle = enemy.isAggroed ? '#49a797' : '#49a797';
     ctx.beginPath();
     ctx.arc(0, 0, 22, 0, Math.PI * 2);
     ctx.fill();
