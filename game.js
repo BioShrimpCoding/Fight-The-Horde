@@ -549,7 +549,7 @@ function spawn() {
       const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12;
       const previousHealth = health;
       health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
-      if (health < previousHealth && enemy.effect === 'damage-burst') triggerBoneOrchardHit(enemy);
+      if (health < previousHealth && enemy.effect === 'damage-burst' && Math.random() < .5) triggerBoneOrchardHit(enemy);
     }
   });
 
@@ -558,8 +558,8 @@ function spawn() {
 }
 
 function triggerBoneOrchardHit(enemy) {
-  const projectileCount = 6;
-  const speed = 280;
+  const projectileCount = 2;
+  const speed = 200;
   for (let i = 0; i < projectileCount; i++) {
     const angle = Math.random() * Math.PI * 2;
     game.projectiles.push({
@@ -567,7 +567,7 @@ function triggerBoneOrchardHit(enemy) {
       y: enemy.y,
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
-      life: 1.8,
+      life: 1.3,
       radius: 7,
       damage: 4,
       color: '#d7b07a'
