@@ -209,7 +209,7 @@ const enemyFamilies = [
   ['MIRE CRAWLER', null, null], ['CINDER HOUND', null, null], ['ICE MAW', null, null], ['ASH STALKER', null, null],
   ['THUNDER RAM', 'STRAIGHT DASH', 'dash'], ['IRONWOOD TREANT', 'DAMAGE NEGATION', 'damage-ignore'], ['MIRAGE WRAITH', 'BURNING DEATH BURST', 'death-burn'], ['FROSTBURROWER', 'FREEZING AURA', 'slow-aura'],
   ['BONE HARVESTER', 'BONE SHARD BURST', 'damage-burst'], ['EMBER SERPENT', 'DEATHBOUND FIREBALLS', 'death-fireballs'], ['SPORE BRUTE', 'BRAMBLE SNARE', 'bramble'], ['GRAVITY LEECH', 'GRAVITY WELL', 'gravity-fields-pull'],
-  ['STORM KNIGHT', 'CHAIN LIGHTNING', 'shock'], ['BLOOD HUNTER', 'HEMORRHAGE', 'bleed'], ['NULL PHANTOM', 'NULL FIELD', 'slow'], ['WRAITH EATER', 'LIFE DRAIN', 'drain'],
+  ['STORM KNIGHT', 'LIGHTNING SWORD', 'storm-sword'], ['BLOOD HUNTER', 'BLOOD TRAIL', 'damage-trail'], ['NULL PHANTOM', 'NULL EXPLOSION', 'death-explosion'], ['WRAITH EATER', 'WRAITH PEST', 'spawn-pest'],
   ['DUSK STAG', 'DARKSTEP', 'evasion'], ['STARFIRE GOLEM', 'STARFIRE', 'burn'], ['NEBULA SWARM', 'RADIATION', 'drain'], ['PRESSURE TITAN', 'PRESSURE WAVE', 'pull'],
   ['VOID CRAWLER', 'REALITY TEAR', 'armor'], ['HORIZON DEVOURER', 'SINGULARITY', 'pull'], ['STAR EATER', 'SOLAR FLARE', 'shock'], ['ENDLESS SHADE', 'VOID STEP', 'evasion']
 ];
@@ -252,6 +252,7 @@ function freshGame() {
     bullets: [], 
     projectiles: [], 
     explosions: [],
+    enemyTrails: [],
     sparks: [], 
     gems: [], 
     drops: [], 
@@ -264,6 +265,7 @@ function freshGame() {
     voidSpawnTimer: 0, 
     fireTimer: 0, 
     pulseTimer: 0, 
+    attackDisabledTimer: 0,
     magicGauntletRechargeTimer: 5, 
     cosmosGauntletRechargeTimer: 6, 
     biomeKey: null, 
@@ -315,7 +317,7 @@ function addExplosion(x, y, radius, color = '#ff725e') {
 }
 function meleeAttack(weapon) { const p = game.player; game.enemies.forEach(enemy => { const distance = Math.hypot(enemy.x - p.x, enemy.y - p.y); const angle = Math.atan2(enemy.y - p.y, enemy.x - p.x); const difference = Math.atan2(Math.sin(angle - p.angle), Math.cos(angle - p.angle)); if (!enemy.defeated && enemy.shieldTimer <= 0 && distance < weapon.range && Math.abs(difference) < weapon.arc) { enemy.hp = Math.max(0, enemy.hp - weapon.damage); if (enemy.hp <= 0) defeatEnemy(enemy); burst(enemy.x, enemy.y, 5, 100); } }); for (let i = 0; i < 10; i++) game.sparks.push({ x: p.x + Math.cos(p.angle) * weapon.range * .5, y: p.y + Math.sin(p.angle) * weapon.range * .5, life: .2, vx: (Math.random() - .5) * 100, vy: (Math.random() - .5) * 100 }); }
 function shoot() { 
-  if (!game.active || game.fireTimer > 0) return; 
+  if (!game.active || game.attackDisabledTimer > 0 || game.fireTimer > 0) return;
   const weapon = weaponCatalog[game.weapon]; 
   const p = game.player; 
   const effects = getBiome(p.x, p.y).effects; 
@@ -366,7 +368,7 @@ function shoot() {
   }
 }
 function useMedkit() { if (!game.active || !game.stationItems.medkit || game.health >= 100) return; game.stationItems.medkit = Math.max(0, (game.stationItems.medkit || 0) - 1); game.health = Math.min(100, game.health + 45); localStorage.setItem('horde-station-items', JSON.stringify(game.stationItems)); updateAmmoUI(); ui.stationOutput.textContent = 'MEDKIT USED // +45% VITALITY'; }
-function pulse() { if (game.pulseTimer > 0) return; game.pulseTimer = 7 * getBiome(game.player.x, game.player.y).effects.pulseCooldownMultiplier; game.enemies.forEach(e => { if (!e.defeated && e.shieldTimer <= 0 && e.hp && Math.hypot(e.x - game.player.x, e.y - game.player.y) < 170) { e.hp -= 2; if (e.hp <= 0) defeatEnemy(e, 50); burst(e.x, e.y, 8, 180); } }); burst(game.player.x, game.player.y, 35, 260); }
+function pulse() { if (game.attackDisabledTimer > 0 || game.pulseTimer > 0) return; game.pulseTimer = 7 * getBiome(game.player.x, game.player.y).effects.pulseCooldownMultiplier; game.enemies.forEach(e => { if (!e.defeated && e.shieldTimer <= 0 && e.hp && Math.hypot(e.x - game.player.x, e.y - game.player.y) < 170) { e.hp -= 2; if (e.hp <= 0) defeatEnemy(e, 50); burst(e.x, e.y, 8, 180); } }); burst(game.player.x, game.player.y, 35, 260); }
 function createVoidWorm(x, y, canSplit = true) {
   const maxHp = 120.0;
   const enemy = { 
@@ -534,6 +536,13 @@ function spawn() {
     score: variant.score, drops: variant.drops, abilityTimer: 1 + Math.random() * 2,
     dashCooldown: family.effect === 'dash' ? 4 : 0, dashTimer: 0, dashX: 0, dashY: 0,
     brambleCooldown: family.effect === 'bramble' ? 3 + Math.random() * 7 : 0,
+    stormAttackCooldown: Math.random() * 1.5,
+    stormRecovery: 0,
+    stormSwingTimer: 0,
+    facingAngle: Math.atan2(game.player.y - y, game.player.x - x),
+    trailTimer: 0,
+    pestCooldown: 0,
+    pest: null,
     shieldTimer: 0, hitTimer: 0 
   };
 
@@ -605,6 +614,52 @@ function launchEmberFireballs(enemy) {
   });
 }
 
+function triggerNullIceExplosion(enemy) {
+  const radius = 150;
+  addExplosion(enemy.x, enemy.y, radius, '#a9e3e6');
+  if (Math.hypot(game.player.x - enemy.x, game.player.y - enemy.y) <= radius) {
+    game.health -= 10;
+    game.attackDisabledTimer = 4;
+  }
+}
+
+function createWraithPest(owner) {
+  const angle = Math.random() * Math.PI * 2;
+  const pest = {
+    x: owner.x + Math.cos(angle) * (owner.r + 18),
+    y: owner.y + Math.sin(angle) * (owner.r + 18),
+    family: 'WRAITH PEST',
+    familyIndex: owner.familyIndex,
+    ability: null,
+    effect: null,
+    variant: 'PEST',
+    boss: false,
+    wraithPest: true,
+    pestOwner: owner,
+    color: '#a88fd0',
+    r: 7,
+    speed: 170,
+    hp: 1,
+    maxHp: 1,
+    damage: 1,
+    contactDamage: 2,
+    score: 10,
+    drops: 0,
+    shieldTimer: 0,
+    hitTimer: 0
+  };
+  owner.pest = pest;
+  game.enemies.push(pest);
+}
+
+function updateWraithPestSpawns(dt) {
+  game.enemies.forEach(enemy => {
+    if (enemy.effect !== 'spawn-pest' || enemy.defeated) return;
+    enemy.pestCooldown = Math.max(0, enemy.pestCooldown - dt);
+    if ((!enemy.pest || enemy.pest.defeated) && enemy.pestCooldown === 0) createWraithPest(enemy);
+  });
+}
+
 
 function triggerGlassDesertDeath(enemy) {
   const angleToPlayer = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
@@ -626,7 +681,7 @@ function triggerGlassDesertDeath(enemy) {
   }
 }
 
-function defeatEnemy(enemy, bonus = 0) { if (!enemy || enemy.defeated || enemy.hp > 0) return; enemy.defeated = true; if (enemy.effect === 'death-burn') triggerGlassDesertDeath(enemy); if (enemy.effect === 'death-fireballs') launchEmberFireballs(enemy); if (enemy.voidWorm) { if (Math.random() < .33) game.atlasCrystals++; if (enemy.canSplit && Math.random() < .15) { const activeWorms = game.enemies.filter(candidate => candidate.voidWorm && !candidate.defeated).length; const splitCount = Math.min(2, Math.max(0, 8 - activeWorms)); for (let i = 0; i < splitCount; i++) game.enemies.push(createVoidWorm(enemy.x + (i ? 26 : -26), enemy.y, false)); } } dropResource(enemy.x, enemy.y, enemy.drops || 1); game.score += (enemy.score || 100) + bonus; if (enemy.boss && Math.random() < .5) game.relics++; if (Math.random() > (enemy.boss ? .35 : .72)) game.gems.push({ x: enemy.x, y: enemy.y, life: 18 }); burst(enemy.x, enemy.y, enemy.boss ? 18 : 8, enemy.boss ? 260 : 170); }
+function defeatEnemy(enemy, bonus = 0) { if (!enemy || enemy.defeated || enemy.hp > 0) return; enemy.defeated = true; if (enemy.effect === 'death-burn') triggerGlassDesertDeath(enemy); if (enemy.effect === 'death-fireballs') launchEmberFireballs(enemy); if (enemy.effect === 'death-explosion') triggerNullIceExplosion(enemy); if (enemy.wraithPest && enemy.pestOwner && !enemy.pestOwner.defeated) { enemy.pestOwner.pest = null; enemy.pestOwner.pestCooldown = 7; } if (enemy.voidWorm) { if (Math.random() < .33) game.atlasCrystals++; if (enemy.canSplit && Math.random() < .15) { const activeWorms = game.enemies.filter(candidate => candidate.voidWorm && !candidate.defeated).length; const splitCount = Math.min(2, Math.max(0, 8 - activeWorms)); for (let i = 0; i < splitCount; i++) game.enemies.push(createVoidWorm(enemy.x + (i ? 26 : -26), enemy.y, false)); } } dropResource(enemy.x, enemy.y, enemy.drops || 1); game.score += (enemy.score || 100) + bonus; if (enemy.boss && Math.random() < .5) game.relics++; if (Math.random() > (enemy.boss ? .35 : .72)) game.gems.push({ x: enemy.x, y: enemy.y, life: 18 }); burst(enemy.x, enemy.y, enemy.boss ? 18 : 8, enemy.boss ? 260 : 170); }
 function randomResource() {
   const totalWeight = resourceTypes.reduce((sum, item) => sum + item.weight, 0);
   let randomNum = Math.random() * totalWeight;
@@ -729,12 +784,42 @@ function drawBrambleZones() {
   });
   ctx.restore();
 }
+function drawSectorFourEffects() {
+  const camX = game.camera.x - canvas.clientWidth / 2;
+  const camY = game.camera.y - canvas.clientHeight / 2;
+  ctx.save();
+  ctx.translate(-camX, -camY);
+  game.enemyTrails.forEach(trail => {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, trail.life / trail.maxLife) * .65;
+    ctx.fillStyle = '#ef6672';
+    ctx.beginPath();
+    ctx.arc(trail.x, trail.y, trail.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
+  game.enemies.forEach(enemy => {
+    if (enemy.effect !== 'storm-sword' || enemy.stormSwingTimer <= 0) return;
+    ctx.save();
+    ctx.translate(enemy.x, enemy.y);
+    ctx.rotate(enemy.facingAngle);
+    ctx.strokeStyle = '#8db7ee';
+    ctx.lineWidth = 7;
+    ctx.beginPath();
+    ctx.moveTo(enemy.r, -18);
+    ctx.lineTo(enemy.r + 52, 0);
+    ctx.lineTo(enemy.r, 18);
+    ctx.stroke();
+    ctx.restore();
+  });
+  ctx.restore();
+}
 function drawHazardZones() { if (!game.hazardZones.length) return; const biome = getBiome(game.player.x, game.player.y); const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; const time = performance.now() / 1000; ctx.save(); ctx.translate(-camX, -camY); game.hazardZones.forEach(zone => { const radius = zone.radius; ctx.globalAlpha = zone.biomeKey === biome.key ? .34 : .12; ctx.fillStyle = zone.color; ctx.strokeStyle = zone.color; ctx.lineWidth = 3; drawHazardShape(ctx, zone); ctx.fill(); ctx.stroke(); ctx.globalAlpha *= .8; if (zone.hazard.visual.includes('ice') || zone.hazard.visual.includes('spikes')) { for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(zone.x + (i - 2) * radius / 3, zone.y + radius * .45); ctx.lineTo(zone.x + (i - 2) * radius / 4, zone.y - radius * .6); ctx.stroke(); } } else if (zone.hazard.visual.includes('lightning') || zone.hazard.visual.includes('pylon')) { ctx.beginPath(); ctx.moveTo(zone.x, zone.y - zone.radius); ctx.lineTo(zone.x - 10, zone.y - zone.radius * .25); ctx.lineTo(zone.x + 8, zone.y + zone.radius * .05); ctx.lineTo(zone.x - 4, zone.y + zone.radius); ctx.stroke(); } else { ctx.beginPath(); ctx.arc(zone.x, zone.y, radius * (.55 + Math.sin(time * 2 + zone.x) * .08), 0, Math.PI * 2); ctx.stroke(); } }); ctx.restore(); }
 function drawVoidMapRegions() { const scale = getTacticalMapScale(); const visibleRadius = getTacticalMapVisibleRadius(); mapCtx.save(); mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2); mapCtx.scale(scale, scale); mapCtx.fillStyle = '#241d3d'; mapCtx.beginPath(); mapCtx.rect(-visibleRadius, -visibleRadius, visibleRadius * 2, visibleRadius * 2); mapCtx.arc(0, 0, mapRadius, 0, Math.PI * 2, true); mapCtx.fill('evenodd'); mapCtx.restore(); }
 function drawHazardMap() { drawVoidMapRegions(); if (!game.hazardZones.length) return; const scale = getTacticalMapScale(); mapCtx.save(); mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2); mapCtx.scale(scale, scale); game.hazardZones.forEach(zone => { mapCtx.globalAlpha = .55; mapCtx.fillStyle = zone.color; mapCtx.strokeStyle = zone.color; drawHazardShape(mapCtx, zone); mapCtx.fill(); mapCtx.stroke(); }); mapCtx.restore(); }
 function drawPickups() { const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); game.nodes.forEach(node => { if (node.taken || node.type !== 'chest') return; ctx.fillStyle = '#d7b07a'; ctx.strokeStyle = '#ffdf91'; ctx.lineWidth = 2; ctx.fillRect(node.x - 12, node.y - 8, 24, 16); ctx.strokeRect(node.x - 12, node.y - 8, 24, 16); ctx.fillStyle = '#ffdf91'; ctx.fillRect(node.x - 2, node.y - 8, 4, 16); }); game.drops.forEach(drop => { const resource = resourceTypes.find(item => item.key === drop.type); ctx.fillStyle = resource.color; ctx.shadowBlur = 12; ctx.shadowColor = resource.color; ctx.beginPath(); ctx.moveTo(drop.x, drop.y - 8); ctx.lineTo(drop.x + 8, drop.y); ctx.lineTo(drop.x, drop.y + 8); ctx.lineTo(drop.x - 8, drop.y); ctx.fill(); ctx.shadowBlur = 0; }); ctx.restore(); }
 function drawSanctuaryStations() { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary') return; const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); ctx.textAlign = 'center'; ctx.font = 'bold 9px Space Mono'; ctx.fillStyle = '#f9c779'; ctx.fillText('CRAFTING TABLE', -300, -82); ctx.fillText('FURNACE', 285, -82); ctx.fillStyle = '#8b5a3c'; ctx.strokeStyle = '#f9c779'; ctx.lineWidth = 3; ctx.fillRect(-360, -55, 120, 70); ctx.strokeRect(-360, -55, 120, 70); ctx.fillStyle = '#c88968'; ctx.fillRect(-350, -68, 100, 16); ctx.fillStyle = '#17131a'; ctx.fillRect(-320, -42, 40, 20); ctx.fillStyle = '#493a36'; ctx.fillRect(230, -55, 110, 70); ctx.strokeStyle = '#ff865c'; ctx.strokeRect(230, -55, 110, 70); ctx.fillStyle = '#ff865c'; ctx.beginPath(); ctx.arc(285, -20, 28, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(285, -20, 16, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#b9b0a8'; ctx.fillRect(245, -70, 80, 15); ctx.restore(); }
-function loop(now) { if (game.paused) { animation = requestAnimationFrame(loop); return; } const dt = Math.min((now - lastTime) / 1000, .04); lastTime = now; updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt); draw(); drawBrambleZones(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawMap(); drawHazardMap(); drawStalkerMapMarker(); if (game.active) animation = requestAnimationFrame(loop); }
+function loop(now) { if (game.paused) { animation = requestAnimationFrame(loop); return; } const dt = Math.min((now - lastTime) / 1000, .04); lastTime = now; updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt); draw(); drawBrambleZones(); drawSectorFourEffects(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawMap(); drawHazardMap(); drawStalkerMapMarker(); if (game.active) animation = requestAnimationFrame(loop); }
  function updateBiomeAnnouncement(dt) { const biome = getBiome(game.player.x, game.player.y); game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(Math.min(sectorRegions.length - 1, Math.floor(Math.hypot(game.player.x, game.player.y) / 3000)))); if (biome.key !== game.biomeKey) { game.biomeKey = biome.key; game.announcementTimer = 3; announceBiome(biome); updateBiomeEffects(biome); updateBiomeHazard(biome); } game.announcementTimer = Math.max(0, game.announcementTimer - dt); if (game.announcementTimer === 0) ui.announcement.classList.remove('show'); }
 function updateBiomeHazard(biome) { const hazard = biome.effects.hazard; ui.effects.querySelector('.biome-hazard-effect')?.remove(); ui.effects.insertAdjacentHTML('beforeend', `<span class="biome-effect negative biome-hazard-effect" title="${hazard.description}"><b>!</b>${hazard.name}</span>`); }
 function updateBiomeEffects(biome) { const effects = biome.effects; const conditions = []; if (effects.healthRegen) conditions.push({ positive: true, text: `REGEN +${effects.healthRegen}/SEC`, detail: `Restores ${effects.healthRegen} health per second while outside the beacon.` }); if (effects.moveMultiplier !== 1) conditions.push({ positive: effects.moveMultiplier > 1, text: `MOVE ${effects.moveMultiplier > 1 ? '+' : ''}${Math.round((effects.moveMultiplier - 1) * 100)}%`, detail: `${effects.moveMultiplier > 1 ? 'Increases' : 'Reduces'} player movement speed by ${Math.abs(Math.round((effects.moveMultiplier - 1) * 100))}%.` }); if (effects.fireCooldownMultiplier !== 1) conditions.push({ positive: effects.fireCooldownMultiplier < 1, text: `FIRE ${effects.fireCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%`, detail: `${effects.fireCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the delay between shots by ${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%.` }); if (effects.pulseCooldownMultiplier !== 1) conditions.push({ positive: effects.pulseCooldownMultiplier < 1, text: `PULSE ${effects.pulseCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%`, detail: `${effects.pulseCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the pulse cooldown by ${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%.` }); if (effects.salvageMultiplier !== 1) conditions.push({ positive: effects.salvageMultiplier > 1, text: `SALVAGE +${Math.round((effects.salvageMultiplier - 1) * 100)}%`, detail: `Collected salvage is multiplied by ${effects.salvageMultiplier}x.` }); if (effects.enemySpeedMultiplier !== 1) conditions.push({ positive: effects.enemySpeedMultiplier < 1, text: `HORDE ${effects.enemySpeedMultiplier < 1 ? '-' : '+'}${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}% SPEED`, detail: `Enemies move ${effects.enemySpeedMultiplier < 1 ? 'slower' : 'faster'} by ${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}%.` }); if (effects.damageMultiplier !== 1) conditions.push({ positive: false, text: `DAMAGE +${Math.round((effects.damageMultiplier - 1) * 100)}%`, detail: `Enemy contact damage is increased by ${Math.round((effects.damageMultiplier - 1) * 100)}%.` }); ui.effects.innerHTML = `<span class="biome-effects-title">${biome.name} // CONDITIONS</span>${conditions.map(condition => `<span class="biome-effect ${condition.positive ? 'positive' : 'negative'}" title="${condition.detail}"><b>${condition.positive ? '+' : '-'}</b>${condition.text}</span>`).join('')}`; }
@@ -764,6 +849,15 @@ function updateBrambleZones(dt) {
 }
 
 function update(dt) {
+  game.attackDisabledTimer = Math.max(0, game.attackDisabledTimer - dt);
+  updateWraithPestSpawns(dt);
+  game.enemyTrails.forEach(trail => {
+    trail.life -= dt;
+    if (Math.hypot(game.player.x - trail.x, game.player.y - trail.y) < trail.radius) {
+      game.health -= trail.damagePerSecond * dt;
+    }
+  });
+  game.enemyTrails = game.enemyTrails.filter(trail => trail.life > 0);
   const slowedByBramble = updateBrambleZones(dt);
   const p = game.player;
   const dx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
@@ -772,7 +866,7 @@ function update(dt) {
   const movementEffects = getBiome(p.x, p.y).effects;
   const armor = getArmorEffects();
   const slowedByFrostfallAura = game.enemies.some(enemy => !enemy.defeated && enemy.effect === 'slow-aura' && Math.hypot(p.x - enemy.x, p.y - enemy.y) < frostfallAuraRadius);
-  const enemySlowMultiplier = (slowedByFrostfallAura ? .75 : 1) * (slowedByBramble ? .5 : 1);
+  const enemySlowMultiplier = (slowedByFrostfallAura ? .75 : 1) * (slowedByBramble ? .5 : 1) * (game.attackDisabledTimer > 0 ? .5 : 1);
 
   p.x += dx / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * enemySlowMultiplier * dt;
   p.y += dy / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * enemySlowMultiplier * dt;
@@ -888,6 +982,9 @@ function update(dt) {
   game.enemies.forEach(e => {
     e.attackFlashTimer = Math.max(0, (e.attackFlashTimer || 0) - dt);
     e.shieldTimer = Math.max(0, (e.shieldTimer || 0) - dt);
+    e.stormAttackCooldown = Math.max(0, (e.stormAttackCooldown || 0) - dt);
+    e.stormRecovery = Math.max(0, (e.stormRecovery || 0) - dt);
+    e.stormSwingTimer = Math.max(0, (e.stormSwingTimer || 0) - dt);
     e.previousX = e.x;
     e.previousY = e.y;
 
@@ -919,6 +1016,23 @@ function update(dt) {
       }
       e.x += Math.cos(e.wanderAngle) * (e.speed * 0.6) * effects.enemySpeedMultiplier * dt;
       e.y += Math.sin(e.wanderAngle) * (e.speed * 0.6) * effects.enemySpeedMultiplier * dt;
+    } else if (e.effect === 'storm-sword') {
+      const angle = Math.atan2(p.y - e.y, p.x - e.x);
+      const distance = Math.hypot(p.x - e.x, p.y - e.y);
+      if (e.stormRecovery <= 0 && distance < 230 && e.stormAttackCooldown <= 0 && Math.abs(Math.atan2(Math.sin(angle - e.facingAngle), Math.cos(angle - e.facingAngle))) < .7) {
+        e.facingAngle = angle;
+        e.stormRecovery = .65;
+        e.stormSwingTimer = .35;
+        e.stormAttackCooldown = 2.4;
+        if (distance < 125) {
+          game.health -= (e.contactDamage || 8) * 1.5 * effects.damageMultiplier * (1 - (armor.contactDamageReduction || 0));
+          e.attackFlashTimer = .25;
+        }
+      } else if (e.stormRecovery <= 0) {
+        e.facingAngle = angle;
+        e.x += Math.cos(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+        e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+      }
     } else if (e.effect === 'dash') {
       e.dashCooldown = Math.max(0, e.dashCooldown - dt);
       if (e.dashTimer > 0 || e.dashCooldown === 0) {
@@ -951,6 +1065,14 @@ function update(dt) {
       if (getBiome(e.x, e.y).key !== homeBiome) {
         e.x = e.previousX;
         e.y = e.previousY;
+      }
+    }
+
+    if (e.effect === 'damage-trail' && Math.hypot(e.x - e.previousX, e.y - e.previousY) > 1) {
+      e.trailTimer -= dt;
+      if (e.trailTimer <= 0) {
+        game.enemyTrails.push({ x: e.previousX, y: e.previousY, radius: 22, life: 2, maxLife: 2, damagePerSecond: 12 });
+        e.trailTimer = .18;
       }
     }
 
