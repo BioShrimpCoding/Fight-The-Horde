@@ -210,8 +210,8 @@ const enemyFamilies = [
   ['THUNDER RAM', 'STRAIGHT DASH', 'dash'], ['IRONWOOD TREANT', 'DAMAGE NEGATION', 'damage-ignore'], ['MIRAGE WRAITH', 'BURNING DEATH BURST', 'death-burn'], ['FROSTBURROWER', 'FREEZING AURA', 'slow-aura'],
   ['BONE HARVESTER', 'BONE SHARD BURST', 'damage-burst'], ['EMBER SERPENT', 'DEATHBOUND FIREBALLS', 'death-fireballs'], ['SPORE BRUTE', 'BRAMBLE SNARE', 'bramble'], ['GRAVITY LEECH', 'GRAVITY WELL', 'gravity-fields-pull'],
   ['STORM KNIGHT', 'LIGHTNING SWORD', 'storm-sword'], ['BLOOD HUNTER', 'BLOOD TRAIL', 'damage-trail'], ['NULL PHANTOM', 'NULL EXPLOSION', 'death-explosion'], ['WRAITH EATER', 'WRAITH PEST', 'spawn-pest'],
-  ['DUSK STAG', 'DARKSTEP', 'evasion'], ['STARFIRE GOLEM', 'STARFIRE', 'burn'], ['NEBULA SWARM', 'RADIATION', 'drain'], ['PRESSURE TITAN', 'PRESSURE WAVE', 'pull'],
-  ['VOID CRAWLER', 'REALITY TEAR', 'armor'], ['HORIZON DEVOURER', 'SINGULARITY', 'pull'], ['STAR EATER', 'SOLAR FLARE', 'shock'], ['ENDLESS SHADE', 'VOID STEP', 'evasion']
+  ['DUSK STAG', 'DECAY DASH', 'decay-dash'], ['STARFIRE GOLEM', 'LINGERING FIRE', 'fire-explosion'], ['NEBULA SWARM', 'NEBULA MISSILES', 'nebula-missiles'], ['PRESSURE TITAN', 'ARC PROJECTILES', 'arc-projectiles'],
+  ['VOID CRAWLER', 'RIFT PORTAL', 'rift-portal'], ['HORIZON DEVOURER', 'PROJECTILE BLINK', 'projectile-teleport'], ['STAR EATER', 'DEATH EXPLOSION', 'dead-star-explosion'], ['ENDLESS SHADE', 'DARK SPIN', 'spin-attack']
 ];
 
 sectorRegions.flat().forEach((biome, index) => { biome.effects = { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { ...biomeHazards[index], visual: hazardVisuals[index], zoneDamagePerSecond: biomeHazards[index].damagePerSecond }, ...biomeEffectProfiles[index] }; });
@@ -252,6 +252,7 @@ function freshGame() {
     bullets: [], 
     projectiles: [], 
     explosions: [],
+    portals: [],
     enemyTrails: [],
     sparks: [], 
     gems: [], 
@@ -266,6 +267,7 @@ function freshGame() {
     fireTimer: 0, 
     pulseTimer: 0, 
     attackDisabledTimer: 0,
+    decayTimer: 0,
     magicGauntletRechargeTimer: 5, 
     cosmosGauntletRechargeTimer: 6, 
     biomeKey: null, 
@@ -520,21 +522,24 @@ function spawn() {
     return;
   }
 
+  createBiomeEnemy(x, y, biome);
+}
+
+function createBiomeEnemy(x, y, biome, variant = null) {
   const family = biome.enemyFamily;
   const distance = Math.hypot(x, y);
-  const variantIndex = Math.random() < Math.min(.22, distance / 30000 * .22) ? 4 : Math.floor(Math.random() * 4);
-  const variant = enemyVariants[variantIndex];
+  const enemyVariant = variant || enemyVariants[Math.random() < Math.min(.22, distance / 30000 * .22) ? 4 : Math.floor(Math.random() * 4)];
   const baseSpeed = 38 + game.currentSector * 10 + Math.random() * 22;
   const familyIndex = (biome.sector - 1) * 4 + Number(biome.key.split('-')[2]);
-  const scaledHp = Math.ceil(variant.hp * (1 + game.currentSector * 0.15));
+  const scaledHp = Math.ceil(enemyVariant.hp * (1 + game.currentSector * 0.15));
 
   const enemy = { 
     x, y, family: family.name, familyIndex, ability: family.ability, effect: family.effect, 
-    variant: variant.name, boss: Boolean(variant.boss), color: biome.color, 
-    r: (10 + Math.random() * 6) * variant.radius, speed: baseSpeed * variant.speed, 
-    hp: scaledHp, maxHp: scaledHp, damage: variant.damage, contactDamage: variant.contactDamage, 
-    score: variant.score, drops: variant.drops, abilityTimer: 1 + Math.random() * 2,
-    dashCooldown: family.effect === 'dash' ? 4 : 0, dashTimer: 0, dashX: 0, dashY: 0,
+    variant: enemyVariant.name, boss: Boolean(enemyVariant.boss), color: biome.color,
+    r: (10 + Math.random() * 6) * enemyVariant.radius, speed: baseSpeed * enemyVariant.speed * (family.effect === 'nebula-missiles' ? .65 : family.effect === 'spin-attack' ? 1.5 : 1),
+    hp: scaledHp, maxHp: scaledHp, damage: enemyVariant.damage, contactDamage: enemyVariant.contactDamage,
+    score: enemyVariant.score, drops: enemyVariant.drops, abilityTimer: 1 + Math.random() * 2,
+    dashCooldown: family.effect === 'dash' || family.effect === 'decay-dash' ? 4 : 0, dashTimer: 0, dashX: 0, dashY: 0,
     brambleCooldown: family.effect === 'bramble' ? 3 + Math.random() * 7 : 0,
     stormAttackCooldown: Math.random() * 1.5,
     stormRecovery: 0,
@@ -543,6 +548,13 @@ function spawn() {
     trailTimer: 0,
     pestCooldown: 0,
     pest: null,
+    decayApplied: false,
+    fireExplosionCooldown: 0,
+    missileCooldown: family.effect === 'nebula-missiles' ? 10 : 0,
+    arcProjectileCooldown: 0,
+    teleportCooldown: 0,
+    spinCooldown: Math.random() * 2,
+    spinTimer: 0,
     shieldTimer: 0, hitTimer: 0 
   };
 
@@ -564,6 +576,7 @@ function spawn() {
 
   game.enemies.push(enemy);
   if (enemy.effect === 'death-fireballs') attachEmberFireballs(enemy);
+  return enemy;
 }
 
 function triggerBoneOrchardHit(enemy) {
@@ -660,6 +673,117 @@ function updateWraithPestSpawns(dt) {
   });
 }
 
+function spawnNebulaMissile(owner) {
+  const missile = {
+    x: owner.x,
+    y: owner.y,
+    family: 'NEBULA MISSILE',
+    familyIndex: owner.familyIndex,
+    ability: null,
+    effect: null,
+    variant: 'MISSILE',
+    boss: false,
+    nebulaMissile: true,
+    color: '#d58ee0',
+    r: 8,
+    speed: 220,
+    hp: 4,
+    maxHp: 4,
+    damage: 0,
+    contactDamage: 0,
+    score: 5,
+    drops: 0,
+    damageOverTimeTimer: 0,
+    shieldTimer: 0,
+    hitTimer: 0
+  };
+  game.enemies.push(missile);
+}
+
+function triggerNebulaMissileDeath(missile) {
+  const radius = 48;
+  addExplosion(missile.x, missile.y, radius, '#d58ee0');
+  if (Math.hypot(game.player.x - missile.x, game.player.y - missile.y) < radius) game.health -= 5;
+}
+
+function fireNebulaMissiles(enemy) {
+  spawnNebulaMissile(enemy);
+  spawnNebulaMissile(enemy);
+}
+
+function fireAbyssalProjectile(enemy) {
+  const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+  const speed = 155;
+  game.projectiles.push({
+    x: enemy.x,
+    y: enemy.y,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    life: 2.5,
+    radius: 8,
+    maxRadius: 24,
+    damage: 7,
+    color: '#709ed0',
+    grows: true,
+    arcGravity: 95
+  });
+}
+
+function triggerStarfireExplosion(enemy) {
+  const x = enemy.x;
+  const y = enemy.y;
+  const radius = 80;
+  addExplosion(x, y, radius, '#ff9b62');
+  if (Math.hypot(game.player.x - x, game.player.y - y) < radius) game.health -= 10;
+  game.enemyTrails.push({ x, y, radius: 68, life: 2, maxLife: 2, damagePerSecond: 8, color: '#ff9b62' });
+}
+
+function createRiftPortal(enemy) {
+  game.portals.push({ x: enemy.x, y: enemy.y, timer: 2 });
+}
+
+function updateRiftPortals(dt) {
+  game.portals.forEach(portal => {
+    portal.timer -= dt;
+    if (portal.timer > 0) return;
+
+    const inwardDistance = Math.hypot(portal.x, portal.y);
+    const spawnX = portal.x - portal.x / inwardDistance * 180;
+    const spawnY = portal.y - portal.y / inwardDistance * 180;
+    for (let i = 0; i < 3; i++) {
+      const familyIndex = Math.floor(Math.random() * 20);
+      const sectorIndex = Math.floor(familyIndex / 4);
+      const biomeIndex = familyIndex % 4;
+      const biome = {
+        ...sectorRegions[sectorIndex][biomeIndex],
+        key: `sector-${sectorIndex}-${biomeIndex}`,
+        sector: sectorIndex + 1
+      };
+      const angle = Math.random() * Math.PI * 2;
+      const variant = enemyVariants[3];
+      createBiomeEnemy(spawnX + Math.cos(angle) * 45, spawnY + Math.sin(angle) * 45, biome, variant);
+    }
+    portal.timer = 0;
+  });
+  game.portals = game.portals.filter(portal => portal.timer > 0);
+}
+
+function triggerDeadStarExplosion(enemy) {
+  const health = enemy.maxHp;
+  const damage = health;
+  const radius = 80;
+  addExplosion(enemy.x, enemy.y, radius, '#ffb067');
+  if (Math.hypot(game.player.x - enemy.x, game.player.y - enemy.y) <= radius) {
+    game.health -= damage;
+  }
+  game.enemies.forEach(target => {
+    if (target === enemy || target.defeated || target.effect !== 'dead-star-explosion') return;
+    if (Math.hypot(target.x - enemy.x, target.y - enemy.y) > radius) return;
+    target.hp = Math.max(0, target.hp - damage);
+    if (target.hp <= 0) defeatEnemy(target);
+  });
+}
+
 
 function triggerGlassDesertDeath(enemy) {
   const angleToPlayer = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
@@ -681,7 +805,33 @@ function triggerGlassDesertDeath(enemy) {
   }
 }
 
-function defeatEnemy(enemy, bonus = 0) { if (!enemy || enemy.defeated || enemy.hp > 0) return; enemy.defeated = true; if (enemy.effect === 'death-burn') triggerGlassDesertDeath(enemy); if (enemy.effect === 'death-fireballs') launchEmberFireballs(enemy); if (enemy.effect === 'death-explosion') triggerNullIceExplosion(enemy); if (enemy.wraithPest && enemy.pestOwner && !enemy.pestOwner.defeated) { enemy.pestOwner.pest = null; enemy.pestOwner.pestCooldown = 7; } if (enemy.voidWorm) { if (Math.random() < .33) game.atlasCrystals++; if (enemy.canSplit && Math.random() < .15) { const activeWorms = game.enemies.filter(candidate => candidate.voidWorm && !candidate.defeated).length; const splitCount = Math.min(2, Math.max(0, 8 - activeWorms)); for (let i = 0; i < splitCount; i++) game.enemies.push(createVoidWorm(enemy.x + (i ? 26 : -26), enemy.y, false)); } } dropResource(enemy.x, enemy.y, enemy.drops || 1); game.score += (enemy.score || 100) + bonus; if (enemy.boss && Math.random() < .5) game.relics++; if (Math.random() > (enemy.boss ? .35 : .72)) game.gems.push({ x: enemy.x, y: enemy.y, life: 18 }); burst(enemy.x, enemy.y, enemy.boss ? 18 : 8, enemy.boss ? 260 : 170); }
+function defeatEnemy(enemy, bonus = 0) {
+  if (!enemy || enemy.defeated || enemy.hp > 0) return;
+  enemy.defeated = true;
+  if (enemy.effect === 'death-burn') triggerGlassDesertDeath(enemy);
+  if (enemy.effect === 'death-fireballs') launchEmberFireballs(enemy);
+  if (enemy.effect === 'death-explosion') triggerNullIceExplosion(enemy);
+  if (enemy.effect === 'rift-portal' && Math.random() < .05) createRiftPortal(enemy);
+  if (enemy.effect === 'dead-star-explosion') triggerDeadStarExplosion(enemy);
+  if (enemy.nebulaMissile) triggerNebulaMissileDeath(enemy);
+  if (enemy.wraithPest && enemy.pestOwner && !enemy.pestOwner.defeated) {
+    enemy.pestOwner.pest = null;
+    enemy.pestOwner.pestCooldown = 7;
+  }
+  if (enemy.voidWorm) {
+    if (Math.random() < .33) game.atlasCrystals++;
+    if (enemy.canSplit && Math.random() < .15) {
+      const activeWorms = game.enemies.filter(candidate => candidate.voidWorm && !candidate.defeated).length;
+      const splitCount = Math.min(2, Math.max(0, 8 - activeWorms));
+      for (let i = 0; i < splitCount; i++) game.enemies.push(createVoidWorm(enemy.x + (i ? 26 : -26), enemy.y, false));
+    }
+  }
+  if (!enemy.wraithPest && !enemy.nebulaMissile) dropResource(enemy.x, enemy.y, enemy.drops || 1);
+  game.score += (enemy.score || 100) + bonus;
+  if (enemy.boss && Math.random() < .5) game.relics++;
+  if (Math.random() > (enemy.boss ? .35 : .72)) game.gems.push({ x: enemy.x, y: enemy.y, life: 18 });
+  burst(enemy.x, enemy.y, enemy.boss ? 18 : 8, enemy.boss ? 260 : 170);
+}
 function randomResource() {
   const totalWeight = resourceTypes.reduce((sum, item) => sum + item.weight, 0);
   let randomNum = Math.random() * totalWeight;
@@ -789,16 +939,38 @@ function drawSectorFourEffects() {
   const camY = game.camera.y - canvas.clientHeight / 2;
   ctx.save();
   ctx.translate(-camX, -camY);
+  game.portals.forEach(portal => {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, portal.timer);
+    ctx.strokeStyle = '#ca8bea';
+    ctx.fillStyle = '#ca8bea33';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.ellipse(portal.x, portal.y, 42, 24, performance.now() / 500, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  });
   game.enemyTrails.forEach(trail => {
     ctx.save();
     ctx.globalAlpha = Math.max(0, trail.life / trail.maxLife) * .65;
-    ctx.fillStyle = '#ef6672';
+    ctx.fillStyle = trail.color || '#ef6672';
     ctx.beginPath();
     ctx.arc(trail.x, trail.y, trail.radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   });
   game.enemies.forEach(enemy => {
+    if (enemy.effect === 'spin-attack' && enemy.spinTimer > 0) {
+      ctx.save();
+      ctx.globalAlpha = enemy.spinTimer / .5;
+      ctx.strokeStyle = '#809eea';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, 80, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     if (enemy.effect !== 'storm-sword' || enemy.stormSwingTimer <= 0) return;
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
@@ -850,6 +1022,9 @@ function updateBrambleZones(dt) {
 
 function update(dt) {
   game.attackDisabledTimer = Math.max(0, game.attackDisabledTimer - dt);
+  game.decayTimer = Math.max(0, game.decayTimer - dt);
+  if (game.decayTimer > 0) game.health -= 4 * (1 - (getArmorEffects().statusDamageReduction || 0)) * dt;
+  updateRiftPortals(dt);
   updateWraithPestSpawns(dt);
   game.enemyTrails.forEach(trail => {
     trail.life -= dt;
@@ -985,6 +1160,7 @@ function update(dt) {
     e.stormAttackCooldown = Math.max(0, (e.stormAttackCooldown || 0) - dt);
     e.stormRecovery = Math.max(0, (e.stormRecovery || 0) - dt);
     e.stormSwingTimer = Math.max(0, (e.stormSwingTimer || 0) - dt);
+    e.spinTimer = Math.max(0, (e.spinTimer || 0) - dt);
     e.previousX = e.x;
     e.previousY = e.y;
 
@@ -1016,6 +1192,65 @@ function update(dt) {
       }
       e.x += Math.cos(e.wanderAngle) * (e.speed * 0.6) * effects.enemySpeedMultiplier * dt;
       e.y += Math.sin(e.wanderAngle) * (e.speed * 0.6) * effects.enemySpeedMultiplier * dt;
+    } else if (e.nebulaMissile) {
+      e.damageOverTimeTimer += dt;
+      if (e.damageOverTimeTimer >= .5) {
+        e.hp = Math.max(0, e.hp - 1);
+        e.damageOverTimeTimer -= .5;
+      }
+      if (e.hp <= 0) {
+        defeatEnemy(e);
+      } else {
+        const angle = Math.atan2(p.y - e.y, p.x - e.x);
+        e.x += Math.cos(angle) * e.speed * dt;
+        e.y += Math.sin(angle) * e.speed * dt;
+        if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + 12) {
+          e.hp = 0;
+          defeatEnemy(e);
+        }
+      }
+    } else if (e.effect === 'projectile-teleport') {
+      e.teleportCooldown = Math.max(0, e.teleportCooldown - dt);
+      const nearbyProjectile = [...game.bullets, ...game.projectiles].some(projectile => Math.hypot(projectile.x - e.x, projectile.y - e.y) < 20);
+      if (nearbyProjectile && e.teleportCooldown <= 0) {
+        const angle = Math.atan2(p.y - e.y, p.x - e.x);
+        const distance = Math.hypot(p.x - e.x, p.y - e.y);
+        const teleportDistance = Math.min(80, distance);
+        e.x += Math.cos(angle) * teleportDistance;
+        e.y += Math.sin(angle) * teleportDistance;
+        e.teleportCooldown = 7;
+        burst(e.previousX, e.previousY, 10, 120);
+        burst(e.x, e.y, 10, 120);
+      } else {
+        const angle = Math.atan2(p.y - e.y, p.x - e.x);
+        e.x += Math.cos(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+        e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+      }
+    } else if (e.effect === 'decay-dash') {
+      e.dashCooldown = Math.max(0, e.dashCooldown - dt);
+      if (e.dashTimer > 0) {
+        const dashTime = Math.min(dt, e.dashTimer);
+        e.x += e.dashX * e.speed * 3 * effects.enemySpeedMultiplier * dashTime;
+        e.y += e.dashY * e.speed * 3 * effects.enemySpeedMultiplier * dashTime;
+        e.dashTimer -= dashTime;
+        if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + 18 && !e.decayApplied) {
+          game.decayTimer = Math.max(game.decayTimer, 3);
+          e.decayApplied = true;
+        }
+      } else {
+        const angle = Math.atan2(p.y - e.y, p.x - e.x);
+        const distance = Math.hypot(p.x - e.x, p.y - e.y);
+        if (distance > 180 && distance < 420 && e.dashCooldown <= 0) {
+          e.dashX = Math.cos(angle);
+          e.dashY = Math.sin(angle);
+          e.dashTimer = .35;
+          e.dashCooldown = 4;
+          e.decayApplied = false;
+        } else {
+          e.x += Math.cos(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+          e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+        }
+      }
     } else if (e.effect === 'storm-sword') {
       const angle = Math.atan2(p.y - e.y, p.x - e.x);
       const distance = Math.hypot(p.x - e.x, p.y - e.y);
@@ -1059,13 +1294,11 @@ function update(dt) {
       e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
     }
 
-    // Boundary constraint check (Void entities can move anywhere)
-    if (!e.voidWalker && !e.voidStalker) {
-      const homeBiome = e.voidWorm ? 'void' : `sector-${Math.floor(e.familyIndex / 4)}-${e.familyIndex % 4}`;
-      if (getBiome(e.x, e.y).key !== homeBiome) {
-        e.x = e.previousX;
-        e.y = e.previousY;
-      }
+    const destinationBiome = getBiome(e.x, e.y).key;
+    const isVoidEntity = e.voidWorm || e.voidWalker || e.voidStalker;
+    if (destinationBiome === 'sanctuary' || (destinationBiome === 'void' && !isVoidEntity)) {
+      e.x = e.previousX;
+      e.y = e.previousY;
     }
 
     if (e.effect === 'damage-trail' && Math.hypot(e.x - e.previousX, e.y - e.previousY) > 1) {
@@ -1155,9 +1388,14 @@ function update(dt) {
         proj.redirected = true;
       }
     }
+    if (proj.arcGravity) proj.vy += proj.arcGravity * dt;
     proj.x += proj.vx * dt;
     proj.y += proj.vy * dt;
     proj.life -= dt;
+    if (proj.grows) {
+      const growth = 1 - Math.max(0, proj.life) / 2.5;
+      proj.radius = 8 + (proj.maxRadius - 8) * growth;
+    }
 
     if (proj.split && proj.life <= 0 && !proj.hasSplit) {
       proj.hasSplit = true;
@@ -1262,6 +1500,32 @@ function applyEnemyAbilities(dt) {
           life: 0
         });
         enemy.brambleCooldown = 10;
+      }
+    } else if (enemy.effect === 'fire-explosion') {
+      enemy.fireExplosionCooldown = Math.max(0, enemy.fireExplosionCooldown - dt);
+      if (distance < 380 && enemy.fireExplosionCooldown <= 0) {
+        triggerStarfireExplosion(enemy);
+        enemy.fireExplosionCooldown = 6;
+      }
+    } else if (enemy.effect === 'nebula-missiles') {
+      enemy.missileCooldown = Math.max(0, enemy.missileCooldown - dt);
+      if (distance < 650 && enemy.missileCooldown <= 0) {
+        fireNebulaMissiles(enemy);
+        enemy.missileCooldown = 10;
+      }
+    } else if (enemy.effect === 'arc-projectiles') {
+      enemy.arcProjectileCooldown = Math.max(0, enemy.arcProjectileCooldown - dt);
+      if (distance < 600 && enemy.arcProjectileCooldown <= 0) {
+        fireAbyssalProjectile(enemy);
+        enemy.arcProjectileCooldown = 6;
+      }
+    } else if (enemy.effect === 'spin-attack') {
+      enemy.spinCooldown = Math.max(0, enemy.spinCooldown - dt);
+      enemy.spinTimer = Math.max(0, enemy.spinTimer - dt);
+      if (distance < 80 && enemy.spinCooldown <= 0) {
+        game.health -= (enemy.contactDamage || 8) * (1 - (getArmorEffects().contactDamageReduction || 0));
+        enemy.spinTimer = .5;
+        enemy.spinCooldown = 3;
       }
     } else if (enemy.abilityTimer <= 0) {
       if (distance < 260 && enemy.effect === 'shock') {
