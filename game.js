@@ -57,19 +57,20 @@ const resourceTypes = [
 const weaponCatalog = {
   // Tier 0 (Starter)
   sidearm: { name: 'SIDEARM', ammo: 'pistolAmmo', magazine: 12, cooldown: 200, damage: 0.30, speed: 650, life: .7, pellets: 1, spread: .05, kind: 'gun' },
-  
+
   // Tier 1 (Early Game)
   duelSidearm: { name: 'DUEL SIDEARM', ammo: 'pistolAmmo', magazine: 24, cooldown: 110, damage: 0.22, speed: 680, life: .7, pellets: 1, spread: .18, kind: 'gun', dualWield: true },
   smg: { name: 'SMG', ammo: 'smgAmmo', magazine: 32, cooldown: 55, damage: 0.16, speed: 700, life: .7, pellets: 1, spread: .12, kind: 'gun' },
-  machete: { name: 'MACHETE', ammo: null, cooldown: 450, damage: 1.20, range: 105, arc: .9, kind: 'melee' },
-  spear: { name: 'SPEAR', ammo: null, cooldown: 600, damage: 1.80, range: 160, arc: .35, kind: 'melee' },
+  machete: { name: 'MACHETE', ammo: null, cooldown: 450, damage: 1.20, range: 85, meleeDuration: .28, meleeSweep: 1.9, meleeStyle: 'machete', kind: 'melee' },
+  spear: { name: 'SPEAR', ammo: null, cooldown: 600, damage: 1.80, range: 145, meleeDuration: .32, meleeStyle: 'spear', kind: 'melee' },
+
   // Tier 2 (Mid Game)
   minigun: { name: 'MINIGUN', ammo: 'minigunAmmo', magazine: 100, cooldown: 50, damage: 0.1, speed: 750, life: .8, pellets: 1, spread: .38, kind: 'gun' },
   shotgun: { name: 'SHOTGUN', ammo: 'shells', magazine: 6, cooldown: 480, damage: 0.30, speed: 580, life: .45, pellets: 8, spread: .34, falloff: true, kind: 'gun' },
   burstRifle: { name: 'BURST RIFLE', ammo: 'rifleAmmo', magazine: 24, cooldown: 220, damage: 0.325, speed: 780, life: .8, pellets: 3, spread: .06, kind: 'gun' },
   flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 40, damage: 0.02, speed: 450, life: 3.0, pellets: 2, spread: .3, kind: 'gun', pierce: true },
   sniper: { name: 'SNIPER', ammo: 'marksmanAmmo', magazine: 5, cooldown: 750, damage: 3.60, speed: 1200, life: 1, pellets: 1, spread: 0, kind: 'gun' },
-  warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 850, damage: 4.20, range: 95, arc: .75, kind: 'melee' },
+  warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 850, damage: 4.20, range: 112, meleeDuration: .48, meleeSweep: 2.1, meleeStyle: 'warHammer', kind: 'melee' },
 
   // Tier 3 (Late Mid Game)
   laser: { name: 'LASER', ammo: 'cells', magazine: 20, cooldown: 100, damage: 0.85, speed: 1100, life: .55, pellets: 1, spread: 0, kind: 'gun' },
@@ -78,10 +79,10 @@ const weaponCatalog = {
 
   // Tier 4 (Exotic / Endgame)
   voidBatar: { name: 'VOID BATAR', ammo: 'voidChains', magazine: 200, cooldown: 30, damage: 0.45, speed: 750, life: .8, pellets: 1, spread: .15, kind: 'gun' },
-  laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 4.80, range: 105, arc: .55, kind: 'melee' },
+  laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 4.80, range: 115, meleeDuration: .36, meleeSweep: 2.5, meleeStyle: 'laserBlade', kind: 'melee' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 100, damage: 1.30, speed: 440, life: .50, pellets: 1, spread: .50, kind: 'gun', oscillating: true, coneSize: .20 },
   railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 1, cooldown: 1200, damage: 18.00, speed: 1600, life: 1, pellets: 1, spread: 0, kind: 'gun' },
-  cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 16, cooldown: 200, damage: 1.60, speed: 650, life: 0.8, pellets: 2, spread: .60, kind: 'gun', oscillating: true, coneSize: .25 }
+  cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 16, cooldown: 100, damage: 1.60, speed: 450, life: 0.8, pellets: 2, spread: .60, kind: 'gun', oscillating: true, coneSize: .25 }
 };
 
 // ==================== AMMO CRAFTING BATCHES ====================
@@ -213,6 +214,13 @@ const enemyFamilies = [
   ['DUSK STAG', 'DECAY DASH', 'decay-dash'], ['STARFIRE GOLEM', 'LINGERING FIRE', 'fire-explosion'], ['NEBULA SWARM', 'NEBULA MISSILES', 'nebula-missiles'], ['PRESSURE TITAN', 'ARC PROJECTILES', 'arc-projectiles'],
   ['VOID CRAWLER', 'RIFT PORTAL', 'rift-portal'], ['HORIZON DEVOURER', 'PROJECTILE BLINK', 'projectile-teleport'], ['STAR EATER', 'DEATH EXPLOSION', 'dead-star-explosion'], ['ENDLESS SHADE', 'DARK SPIN', 'spin-attack']
 ];
+const sectorOneMiniBossAbilities = [
+  { ability: 'TOXIC BURST', effect: 'toxic-boss-burst' },
+  { ability: 'SCORCHED SHOT', effect: 'scorched-boss-shot' },
+  { ability: 'FROZEN AURA', effect: 'frozen-boss-aura' },
+  { ability: 'ASHEN AURA', effect: 'ashen-boss-aura' }
+];
+const sectorOneBossAuraRadius = 150;
 
 sectorRegions.flat().forEach((biome, index) => { biome.effects = { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { ...biomeHazards[index], visual: hazardVisuals[index], zoneDamagePerSecond: biomeHazards[index].damagePerSecond }, ...biomeEffectProfiles[index] }; });
 sectorRegions.flat().forEach((biome, index) => { const family = enemyFamilies[index]; biome.enemyFamily = { name: family[0], ability: family[1], effect: family[2] }; });
@@ -254,6 +262,7 @@ function freshGame() {
     explosions: [],
     portals: [],
     enemyTrails: [],
+    toxicBossZones: [],
     sparks: [], 
     gems: [], 
     drops: [], 
@@ -265,6 +274,7 @@ function freshGame() {
     spawnTimer: 0, 
     voidSpawnTimer: 0, 
     fireTimer: 0, 
+    meleeAttack: null,
     pulseTimer: 0, 
     attackDisabledTimer: 0,
     decayTimer: 0,
@@ -317,7 +327,129 @@ function addExplosion(x, y, radius, color = '#ff725e') {
   });
   burst(x, y, 30, 250); // Optional: keep particle sparks for extra punch
 }
-function meleeAttack(weapon) { const p = game.player; game.enemies.forEach(enemy => { const distance = Math.hypot(enemy.x - p.x, enemy.y - p.y); const angle = Math.atan2(enemy.y - p.y, enemy.x - p.x); const difference = Math.atan2(Math.sin(angle - p.angle), Math.cos(angle - p.angle)); if (!enemy.defeated && enemy.shieldTimer <= 0 && distance < weapon.range && Math.abs(difference) < weapon.arc) { enemy.hp = Math.max(0, enemy.hp - weapon.damage); if (enemy.hp <= 0) defeatEnemy(enemy); burst(enemy.x, enemy.y, 5, 100); } }); for (let i = 0; i < 10; i++) game.sparks.push({ x: p.x + Math.cos(p.angle) * weapon.range * .5, y: p.y + Math.sin(p.angle) * weapon.range * .5, life: .2, vx: (Math.random() - .5) * 100, vy: (Math.random() - .5) * 100 }); }
+function meleeAttack(weapon) {
+  game.meleeAttack = {
+    weaponId: game.weapon,
+    angle: game.player.angle,
+    elapsed: 0,
+    duration: weapon.meleeDuration,
+    previousProgress: 0,
+    hitEnemies: new Set()
+  };
+}
+function getMeleeAttackPose(attack) {
+  const weapon = weaponCatalog[attack.weaponId];
+  const progress = Math.min(1, attack.elapsed / attack.duration);
+  if (weapon.meleeStyle === 'spear') {
+    return { style: 'spear', progress, angle: attack.angle, length: 32 + (weapon.range - 32) * Math.sin(progress * Math.PI) };
+  }
+  const centerOffset = (progress - .5) * weapon.meleeSweep;
+  return {
+    style: weapon.meleeStyle,
+    progress,
+    angle: attack.angle + centerOffset,
+    centerOffset,
+    range: weapon.range
+  };
+}
+function pointSegmentDistance(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lengthSquared = dx * dx + dy * dy;
+  const projection = lengthSquared ? Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lengthSquared)) : 0;
+  return Math.hypot(px - (x1 + projection * dx), py - (y1 + projection * dy));
+}
+function updateMeleeAttack(dt) {
+  const attack = game.meleeAttack;
+  if (!attack) return;
+
+  const weapon = weaponCatalog[attack.weaponId];
+  attack.elapsed = Math.min(attack.duration, attack.elapsed + dt);
+  const pose = getMeleeAttackPose(attack);
+  game.enemies.forEach(enemy => {
+    if (enemy.defeated || enemy.shieldTimer > 0 || attack.hitEnemies.has(enemy)) return;
+    const dx = enemy.x - game.player.x;
+    const dy = enemy.y - game.player.y;
+    const distance = Math.hypot(dx, dy);
+    let hit = false;
+
+    if (pose.style === 'spear') {
+      const startX = game.player.x + Math.cos(pose.angle) * 18;
+      const startY = game.player.y + Math.sin(pose.angle) * 18;
+      const endX = game.player.x + Math.cos(pose.angle) * (18 + pose.length);
+      const endY = game.player.y + Math.sin(pose.angle) * (18 + pose.length);
+      hit = pointSegmentDistance(enemy.x, enemy.y, startX, startY, endX, endY) <= enemy.r + 10;
+    } else if (distance > 0 && distance <= pose.range + enemy.r) {
+      const previousOffset = (attack.previousProgress - .5) * weapon.meleeSweep;
+      const sweepCenter = attack.angle + (previousOffset + pose.centerOffset) / 2;
+      const sweepHalfAngle = Math.abs(pose.centerOffset - previousOffset) / 2;
+      const enemyAngle = Math.atan2(dy, dx);
+      const angleDifference = Math.atan2(Math.sin(enemyAngle - sweepCenter), Math.cos(enemyAngle - sweepCenter));
+      const hitboxPadding = Math.asin(Math.min(1, (enemy.r + 12) / distance));
+      hit = distance >= 18 && Math.abs(angleDifference) <= sweepHalfAngle + hitboxPadding;
+    }
+
+    if (!hit) return;
+    attack.hitEnemies.add(enemy);
+    enemy.hp = Math.max(0, enemy.hp - weapon.damage);
+    if (enemy.hp <= 0) defeatEnemy(enemy);
+    burst(enemy.x, enemy.y, 5, 100);
+  });
+
+  attack.previousProgress = pose.progress;
+  if (attack.elapsed >= attack.duration) game.meleeAttack = null;
+}
+function drawMeleeWeapon(attack, weapon) {
+  const pose = attack ? getMeleeAttackPose(attack) : { style: weapon.meleeStyle, angle: game.player.angle, length: 34, range: weapon.range };
+  const relativeAngle = pose.angle - game.player.angle;
+  ctx.save();
+  ctx.rotate(relativeAngle);
+  ctx.lineCap = 'round';
+
+  if (pose.style === 'spear') {
+    const end = 18 + pose.length;
+    ctx.strokeStyle = '#c88968';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(12, 0);
+    ctx.lineTo(end, 0);
+    ctx.stroke();
+    ctx.fillStyle = '#d7d0c8';
+    ctx.beginPath();
+    ctx.moveTo(end + 10, 0);
+    ctx.lineTo(end - 2, -5);
+    ctx.lineTo(end - 2, 5);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    const start = 22;
+    const end = pose.range;
+    const color = pose.style === 'laserBlade' ? '#b9f4ff' : pose.style === 'warHammer' ? '#b9b0a8' : '#d7d0c8';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = pose.style === 'warHammer' ? 9 : pose.style === 'laserBlade' ? 6 : 5;
+    if (pose.style === 'laserBlade') {
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = '#6feaff';
+    }
+    ctx.beginPath();
+    ctx.moveTo(start, 0);
+    ctx.lineTo(end, 0);
+    ctx.stroke();
+    if (pose.style === 'warHammer') {
+      ctx.fillStyle = '#77716c';
+      ctx.fillRect(end - 4, -11, 20, 22);
+    }
+    if (pose.style === 'laserBlade') {
+      ctx.globalAlpha = .55;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(start, -3);
+      ctx.lineTo(end, -3);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
 function shoot() { 
   if (!game.active || game.attackDisabledTimer > 0 || game.fireTimer > 0) return;
   const weapon = weaponCatalog[game.weapon]; 
@@ -532,9 +664,14 @@ function createBiomeEnemy(x, y, biome, variant = null) {
   const baseSpeed = 38 + game.currentSector * 10 + Math.random() * 22;
   const familyIndex = (biome.sector - 1) * 4 + Number(biome.key.split('-')[2]);
   const scaledHp = Math.ceil(enemyVariant.hp * (1 + game.currentSector * 0.15));
+  const sectorOneMiniBossAbility = familyIndex < sectorOneMiniBossAbilities.length && enemyVariant.boss
+    ? sectorOneMiniBossAbilities[familyIndex]
+    : null;
+  const ability = sectorOneMiniBossAbility?.ability ?? family.ability;
+  const effect = sectorOneMiniBossAbility?.effect ?? family.effect;
 
   const enemy = { 
-    x, y, family: family.name, familyIndex, ability: family.ability, effect: family.effect, 
+    x, y, family: family.name, familyIndex, ability, effect,
     variant: enemyVariant.name, boss: Boolean(enemyVariant.boss), color: biome.color,
     r: (10 + Math.random() * 6) * enemyVariant.radius, speed: baseSpeed * enemyVariant.speed * (family.effect === 'nebula-missiles' ? .65 : family.effect === 'spin-attack' ? 1.5 : 1),
     hp: scaledHp, maxHp: scaledHp, damage: enemyVariant.damage, contactDamage: enemyVariant.contactDamage,
@@ -555,6 +692,7 @@ function createBiomeEnemy(x, y, biome, variant = null) {
     teleportCooldown: 0,
     spinCooldown: Math.random() * 2,
     spinTimer: 0,
+    bossAbilityCooldown: effect === 'scorched-boss-shot' ? 3 : 0,
     shieldTimer: 0, hitTimer: 0 
   };
 
@@ -571,6 +709,7 @@ function createBiomeEnemy(x, y, biome, variant = null) {
       const previousHealth = health;
       health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
       if (health < previousHealth && enemy.effect === 'damage-burst' && Math.random() < .5) triggerBoneOrchardHit(enemy);
+      if (health < previousHealth && enemy.effect === 'toxic-boss-burst') createToxicBossZone(enemy);
     }
   });
 
@@ -595,6 +734,17 @@ function triggerBoneOrchardHit(enemy) {
       color: '#d7b07a'
     });
   }
+}
+
+function createToxicBossZone(enemy) {
+  game.toxicBossZones.push({
+    x: enemy.x,
+    y: enemy.y,
+    radius: 105,
+    life: 1.5,
+    maxLife: 1.5,
+    damagePerSecond: 8
+  });
 }
 
 function attachEmberFireballs(enemy) {
@@ -960,7 +1110,31 @@ function drawSectorFourEffects() {
     ctx.fill();
     ctx.restore();
   });
+  game.toxicBossZones.forEach(zone => {
+    ctx.save();
+    ctx.globalAlpha = .45 * zone.life / zone.maxLife;
+    ctx.fillStyle = '#8fbf3f';
+    ctx.strokeStyle = '#b7dc61';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  });
   game.enemies.forEach(enemy => {
+    if (enemy.effect === 'frozen-boss-aura' || enemy.effect === 'ashen-boss-aura') {
+      ctx.save();
+      ctx.globalAlpha = .2 + Math.sin(performance.now() / 180) * .04;
+      ctx.fillStyle = enemy.effect === 'frozen-boss-aura' ? '#8bd9f2' : '#d8a75d';
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, sectorOneBossAuraRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     if (enemy.effect === 'spin-attack' && enemy.spinTimer > 0) {
       ctx.save();
       ctx.globalAlpha = enemy.spinTimer / .5;
@@ -1033,6 +1207,13 @@ function update(dt) {
     }
   });
   game.enemyTrails = game.enemyTrails.filter(trail => trail.life > 0);
+  game.toxicBossZones.forEach(zone => {
+    zone.life -= dt;
+    if (Math.hypot(game.player.x - zone.x, game.player.y - zone.y) < zone.radius) {
+      game.health -= zone.damagePerSecond * dt;
+    }
+  });
+  game.toxicBossZones = game.toxicBossZones.filter(zone => zone.life > 0);
   const slowedByBramble = updateBrambleZones(dt);
   const p = game.player;
   const dx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
@@ -1041,7 +1222,9 @@ function update(dt) {
   const movementEffects = getBiome(p.x, p.y).effects;
   const armor = getArmorEffects();
   const slowedByFrostfallAura = game.enemies.some(enemy => !enemy.defeated && enemy.effect === 'slow-aura' && Math.hypot(p.x - enemy.x, p.y - enemy.y) < frostfallAuraRadius);
-  const enemySlowMultiplier = (slowedByFrostfallAura ? .75 : 1) * (slowedByBramble ? .5 : 1) * (game.attackDisabledTimer > 0 ? .5 : 1);
+  const inFrozenMiniBossAura = game.enemies.some(enemy => !enemy.defeated && enemy.effect === 'frozen-boss-aura' && Math.hypot(p.x - enemy.x, p.y - enemy.y) < sectorOneBossAuraRadius);
+  const enemySlowMultiplier = (slowedByFrostfallAura ? .75 : 1) * (inFrozenMiniBossAura ? .85 : 1) * (slowedByBramble ? .5 : 1) * (game.attackDisabledTimer > 0 ? .5 : 1);
+  if (inFrozenMiniBossAura) game.health -= 6 * (1 - (armor.hazardDamageReduction || 0)) * dt;
 
   p.x += dx / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * enemySlowMultiplier * dt;
   p.y += dy / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * enemySlowMultiplier * dt;
@@ -1154,7 +1337,11 @@ function update(dt) {
   game.bullets = game.bullets.filter(b => b.life > 0);
 
   // Consolidated Enemy Update Loop (Movement, Boundary Checks, Attacks, and Player Damage)
+  const ashenAuras = game.enemies
+    .filter(enemy => !enemy.defeated && enemy.effect === 'ashen-boss-aura')
+    .map(enemy => ({ x: enemy.x, y: enemy.y }));
   game.enemies.forEach(e => {
+    const localEnemySpeedMultiplier = effects.enemySpeedMultiplier * (ashenAuras.some(aura => Math.hypot(e.x - aura.x, e.y - aura.y) < sectorOneBossAuraRadius) ? 1.1 : 1);
     e.attackFlashTimer = Math.max(0, (e.attackFlashTimer || 0) - dt);
     e.shieldTimer = Math.max(0, (e.shieldTimer || 0) - dt);
     e.stormAttackCooldown = Math.max(0, (e.stormAttackCooldown || 0) - dt);
@@ -1190,8 +1377,8 @@ function update(dt) {
         e.wanderAngle = Math.random() * Math.PI * 2;
         e.wanderTimer = 2 + Math.random() * 3;
       }
-      e.x += Math.cos(e.wanderAngle) * (e.speed * 0.6) * effects.enemySpeedMultiplier * dt;
-      e.y += Math.sin(e.wanderAngle) * (e.speed * 0.6) * effects.enemySpeedMultiplier * dt;
+      e.x += Math.cos(e.wanderAngle) * (e.speed * 0.6) * localEnemySpeedMultiplier * dt;
+      e.y += Math.sin(e.wanderAngle) * (e.speed * 0.6) * localEnemySpeedMultiplier * dt;
     } else if (e.nebulaMissile) {
       e.damageOverTimeTimer += dt;
       if (e.damageOverTimeTimer >= .5) {
@@ -1223,15 +1410,15 @@ function update(dt) {
         burst(e.x, e.y, 10, 120);
       } else {
         const angle = Math.atan2(p.y - e.y, p.x - e.x);
-        e.x += Math.cos(angle) * e.speed * effects.enemySpeedMultiplier * dt;
-        e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+        e.x += Math.cos(angle) * e.speed * localEnemySpeedMultiplier * dt;
+        e.y += Math.sin(angle) * e.speed * localEnemySpeedMultiplier * dt;
       }
     } else if (e.effect === 'decay-dash') {
       e.dashCooldown = Math.max(0, e.dashCooldown - dt);
       if (e.dashTimer > 0) {
         const dashTime = Math.min(dt, e.dashTimer);
-        e.x += e.dashX * e.speed * 3 * effects.enemySpeedMultiplier * dashTime;
-        e.y += e.dashY * e.speed * 3 * effects.enemySpeedMultiplier * dashTime;
+        e.x += e.dashX * e.speed * 3 * localEnemySpeedMultiplier * dashTime;
+        e.y += e.dashY * e.speed * 3 * localEnemySpeedMultiplier * dashTime;
         e.dashTimer -= dashTime;
         if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + 18 && !e.decayApplied) {
           game.decayTimer = Math.max(game.decayTimer, 3);
@@ -1247,8 +1434,8 @@ function update(dt) {
           e.dashCooldown = 4;
           e.decayApplied = false;
         } else {
-          e.x += Math.cos(angle) * e.speed * effects.enemySpeedMultiplier * dt;
-          e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+          e.x += Math.cos(angle) * e.speed * localEnemySpeedMultiplier * dt;
+          e.y += Math.sin(angle) * e.speed * localEnemySpeedMultiplier * dt;
         }
       }
     } else if (e.effect === 'storm-sword') {
@@ -1265,8 +1452,8 @@ function update(dt) {
         }
       } else if (e.stormRecovery <= 0) {
         e.facingAngle = angle;
-        e.x += Math.cos(angle) * e.speed * effects.enemySpeedMultiplier * dt;
-        e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+        e.x += Math.cos(angle) * e.speed * localEnemySpeedMultiplier * dt;
+        e.y += Math.sin(angle) * e.speed * localEnemySpeedMultiplier * dt;
       }
     } else if (e.effect === 'dash') {
       e.dashCooldown = Math.max(0, e.dashCooldown - dt);
@@ -1279,19 +1466,19 @@ function update(dt) {
           e.dashCooldown = 4;
         }
         const dashTime = Math.min(dt, e.dashTimer);
-        e.x += e.dashX * e.speed * 3 * effects.enemySpeedMultiplier * dashTime;
-        e.y += e.dashY * e.speed * 3 * effects.enemySpeedMultiplier * dashTime;
+        e.x += e.dashX * e.speed * 3 * localEnemySpeedMultiplier * dashTime;
+        e.y += e.dashY * e.speed * 3 * localEnemySpeedMultiplier * dashTime;
         e.dashTimer -= dashTime;
       } else {
         const angle = Math.atan2(p.y - e.y, p.x - e.x);
-        e.x += Math.cos(angle) * e.speed * effects.enemySpeedMultiplier * dt;
-        e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+        e.x += Math.cos(angle) * e.speed * localEnemySpeedMultiplier * dt;
+        e.y += Math.sin(angle) * e.speed * localEnemySpeedMultiplier * dt;
       }
     } else {
       // Standard aggressive tracking
       const angle = Math.atan2(p.y - e.y, p.x - e.x);
-      e.x += Math.cos(angle) * e.speed * effects.enemySpeedMultiplier * dt;
-      e.y += Math.sin(angle) * e.speed * effects.enemySpeedMultiplier * dt;
+      e.x += Math.cos(angle) * e.speed * localEnemySpeedMultiplier * dt;
+      e.y += Math.sin(angle) * e.speed * localEnemySpeedMultiplier * dt;
     }
 
     const destinationBiome = getBiome(e.x, e.y).key;
@@ -1332,6 +1519,8 @@ function update(dt) {
       game.health -= (e.contactDamage || 0) * effects.damageMultiplier * (1 - (armor.contactDamageReduction || 0)) * dt;
     }
   });
+
+  updateMeleeAttack(dt);
 
   // Bullet Collision & Explosive (AOE) Damage Loop
   game.bullets.forEach(b => game.enemies.forEach(e => {
@@ -1488,7 +1677,24 @@ function applyEnemyAbilities(dt) {
       if (enemy.effect === 'slow') status.freeze = Math.max(status.freeze, 2.5);
       if (enemy.effect === 'root') status.root = Math.max(status.root, 2);
     }
-    if (enemy.effect === 'bramble') {
+    if (enemy.effect === 'scorched-boss-shot') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (distance < 700 && enemy.bossAbilityCooldown <= 0) {
+        const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+        const speed = 320;
+        game.projectiles.push({
+          x: enemy.x,
+          y: enemy.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 3,
+          radius: 8,
+          damage: 8,
+          color: '#ff9b55'
+        });
+        enemy.bossAbilityCooldown = 3;
+      }
+    } else if (enemy.effect === 'bramble') {
       enemy.brambleCooldown -= dt;
       if (distance < 550 && enemy.brambleCooldown <= 0) {
         game.brambleZones.push({
@@ -2012,8 +2218,13 @@ function draw() {
   ctx.arc(0, 0, 13, 0, Math.PI * 2);
   ctx.fill();
   
-  ctx.fillStyle = '#ffb35c';
-  ctx.fillRect(5, -3, 22, 6);
+  const heldWeapon = weaponCatalog[game.weapon];
+  if (heldWeapon.kind === 'melee') {
+    drawMeleeWeapon(game.meleeAttack, heldWeapon);
+  } else {
+    ctx.fillStyle = '#ffb35c';
+    ctx.fillRect(5, -3, 22, 6);
+  }
   
   ctx.fillStyle = '#3f2630';
   ctx.beginPath();
