@@ -68,20 +68,20 @@ const weaponCatalog = {
   minigun: { name: 'MINIGUN', ammo: 'minigunAmmo', magazine: 100, cooldown: 50, damage: 0.1, speed: 750, life: .8, pellets: 1, spread: .38, kind: 'gun' },
   shotgun: { name: 'SHOTGUN', ammo: 'shells', magazine: 6, cooldown: 480, damage: 0.30, speed: 580, life: .45, pellets: 8, spread: .34, falloff: true, kind: 'gun' },
   burstRifle: { name: 'BURST RIFLE', ammo: 'rifleAmmo', magazine: 24, cooldown: 220, damage: 0.325, speed: 780, life: .8, pellets: 3, spread: .06, kind: 'gun' },
-  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 40, damage: 0.02, speed: 450, life: 3.0, pellets: 2, spread: .3, kind: 'gun', pierce: true },
+  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 40, damage: 0.02, speed: 450, life: 3.0, pellets: 2, spread: .3, bulletRadius: 6, deceleration: [25, 75], decelerationInterval: .125, vibrationAmplitude: 3, vibrationFrequency: 20, burnDuration: 3, burnDamage: .23, burnInterval: .5, kind: 'gun', pierce: true },
   sniper: { name: 'SNIPER', ammo: 'marksmanAmmo', magazine: 5, cooldown: 750, damage: 3.60, speed: 1200, life: 1, pellets: 1, spread: 0, kind: 'gun' },
   warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 850, damage: 4.20, range: 112, meleeDuration: .48, meleeSweep: 2.1, meleeStyle: 'warHammer', kind: 'melee' },
 
   // Tier 3 (Late Mid Game)
-  laser: { name: 'LASER', ammo: 'cells', magazine: 20, cooldown: 100, damage: 0.85, speed: 1100, life: .55, pellets: 1, spread: 0, kind: 'gun' },
-  grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 6, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 80, kind: 'gun', pierce: true },
+  laser: { name: 'LASER', ammo: 'cells', magazine: 20, cooldown: 100, damage: 0.65, speed: 1100, life: .55, pellets: 1, spread: 0, beam: true, kind: 'gun' },
+  grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 6, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 80, kind: 'gun'},
   pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 180, life: 1.7, pellets: 1, spread: .02, kind: 'gun' },
 
   // Tier 4 (Exotic / Endgame)
   voidBatar: { name: 'VOID BATAR', ammo: 'voidChains', magazine: 200, cooldown: 30, damage: 0.45, speed: 750, life: .8, pellets: 1, spread: .15, kind: 'gun' },
   laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 4.80, range: 115, meleeDuration: .36, meleeSweep: 2.5, meleeStyle: 'laserBlade', kind: 'melee' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 100, damage: 1.30, speed: 440, life: .50, pellets: 1, spread: .50, kind: 'gun', oscillating: true, coneSize: .20 },
-  railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 1, cooldown: 1200, damage: 18.00, speed: 1600, life: 1, pellets: 1, spread: 0, kind: 'gun' },
+  railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 1, cooldown: 1200, damage: 18.00, speed: 1600, life: 1, pellets: 1, spread: 0, beam: true, kind: 'gun' },
   cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 16, cooldown: 100, damage: 1.60, speed: 450, life: 0.8, pellets: 2, spread: .60, kind: 'gun', oscillating: true, coneSize: .25 }
 };
 
@@ -257,7 +257,8 @@ function freshGame() {
     crafting: null, 
     stationOpen: null, 
     enemies: [], 
-    bullets: [], 
+    bullets: [],
+    beams: [],
     projectiles: [], 
     explosions: [],
     portals: [],
@@ -450,6 +451,69 @@ function drawMeleeWeapon(attack, weapon) {
   }
   ctx.restore();
 }
+function fireBeam(weapon) {
+  const { x, y, angle } = game.player;
+  const startX = x + Math.cos(angle) * 20;
+  const startY = y + Math.sin(angle) * 20;
+  const length = weapon.speed * weapon.life;
+  const directionX = Math.cos(angle);
+  const directionY = Math.sin(angle);
+
+  game.beams.push({
+    x: startX,
+    y: startY,
+    angle,
+    length,
+    life: .2,
+    maxLife: .2,
+    color: weapon.name === 'RAILGUN' ? '#b9f4ff' : '#75eaff'
+  });
+
+  game.enemies.forEach(enemy => {
+    if (enemy.defeated || enemy.shieldTimer > 0 || !enemy.hp) return;
+
+    const relativeX = enemy.x - startX;
+    const relativeY = enemy.y - startY;
+    const alongBeam = Math.max(0, Math.min(length, relativeX * directionX + relativeY * directionY));
+    const closestX = startX + directionX * alongBeam;
+    const closestY = startY + directionY * alongBeam;
+    if (Math.hypot(enemy.x - closestX, enemy.y - closestY) >= enemy.r + 5) return;
+
+    enemy.hp = Math.max(0, enemy.hp - weapon.damage);
+    if (enemy.hp <= 0) defeatEnemy(enemy);
+  });
+}
+function decelerateBullet(bullet, dt) {
+  if (!bullet.deceleration || !bullet.decelerationInterval) return;
+
+  bullet.decelerationTimer = (bullet.decelerationTimer ?? bullet.decelerationInterval) - dt;
+  let speed = Math.hypot(bullet.vx, bullet.vy);
+  while (bullet.decelerationTimer <= 0 && speed > 0) {
+    speed = Math.max(0, speed - bullet.deceleration);
+    bullet.decelerationTimer += bullet.decelerationInterval;
+  }
+  if (speed === 0) {
+    bullet.vx = 0;
+    bullet.vy = 0;
+  } else if (speed < Math.hypot(bullet.vx, bullet.vy)) {
+    const scale = speed / Math.hypot(bullet.vx, bullet.vy);
+    bullet.vx *= scale;
+    bullet.vy *= scale;
+  }
+}
+function vibrateBullet(bullet, dt) {
+  if (!bullet.vibrationAmplitude) {
+    bullet.x += bullet.vx * dt;
+    bullet.y += bullet.vy * dt;
+    return;
+  }
+
+  bullet.travelX += bullet.vx * dt;
+  bullet.travelY += bullet.vy * dt;
+  bullet.vibrationPhase += dt * bullet.vibrationFrequency * Math.PI * 2;
+  bullet.x = bullet.travelX + Math.sin(bullet.vibrationPhase) * bullet.vibrationAmplitude;
+  bullet.y = bullet.travelY + Math.sin(bullet.vibrationPhase + Math.PI / 2) * bullet.vibrationAmplitude;
+}
 function shoot() { 
   if (!game.active || game.attackDisabledTimer > 0 || game.fireTimer > 0) return;
   const weapon = weaponCatalog[game.weapon]; 
@@ -470,26 +534,43 @@ function shoot() {
   if (game.ammo === 0) game.reloadPending = true; 
   game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier; 
 
-  for (let i = 0; i < weapon.pellets; i++) { 
-    const angle = p.angle + (Math.random() - .5) * weapon.spread; 
-    const bullet = { 
-      x: p.x + Math.cos(angle) * 20, 
-      y: p.y + Math.sin(angle) * 20, 
-      vx: Math.cos(angle) * weapon.speed, 
-      vy: Math.sin(angle) * weapon.speed, 
-      life: weapon.life, 
-      damage: weapon.damage, 
-      blast: weapon.blast || 0, 
-      falloff: weapon.falloff, 
-      baseAngle: angle, 
-      oscillating: Boolean(weapon.oscillating), 
-      swayAmplitude: weapon.coneSize || 0, 
-      swayPhase: Math.random() * Math.PI * 2,
-      pierce: Boolean(weapon.pierce),
-      hitEnemies: new Set()
-    }; 
-    game.bullets.push(bullet); 
-  } 
+  if (weapon.beam) {
+    fireBeam(weapon);
+  } else {
+    for (let i = 0; i < weapon.pellets; i++) {
+      const angle = p.angle + (Math.random() - .5) * weapon.spread;
+      const bullet = {
+        x: p.x + Math.cos(angle) * 20,
+        y: p.y + Math.sin(angle) * 20,
+        vx: Math.cos(angle) * weapon.speed,
+        vy: Math.sin(angle) * weapon.speed,
+        life: weapon.life,
+        damage: weapon.damage,
+        blast: weapon.blast || 0,
+        falloff: weapon.falloff,
+        baseAngle: angle,
+        oscillating: Boolean(weapon.oscillating),
+        swayAmplitude: weapon.coneSize || 0,
+        swayPhase: Math.random() * Math.PI * 2,
+        pierce: Boolean(weapon.pierce),
+        hitEnemies: new Set(),
+        radius: weapon.bulletRadius || 3,
+        deceleration: Array.isArray(weapon.deceleration)
+          ? weapon.deceleration[0] + Math.random() * (weapon.deceleration[1] - weapon.deceleration[0])
+          : weapon.deceleration || 0,
+        decelerationInterval: weapon.decelerationInterval || 0,
+        burnDuration: weapon.burnDuration || 0,
+        burnDamage: weapon.burnDamage || 0,
+        burnInterval: weapon.burnInterval || 0,
+        vibrationAmplitude: weapon.vibrationAmplitude || 0,
+        vibrationFrequency: weapon.vibrationFrequency || 0,
+        vibrationPhase: Math.random() * Math.PI * 2,
+        travelX: p.x + Math.cos(angle) * 20,
+        travelY: p.y + Math.sin(angle) * 20
+      };
+      game.bullets.push(bullet);
+    }
+  }
 
   for (let i = 0; i < 4; i++) {
     game.sparks.push({ 
@@ -693,6 +774,7 @@ function createBiomeEnemy(x, y, biome, variant = null) {
     spinCooldown: Math.random() * 2,
     spinTimer: 0,
     bossAbilityCooldown: effect === 'scorched-boss-shot' ? 3 : 0,
+    toxicRetaliationCooldown: 0,
     shieldTimer: 0, hitTimer: 0 
   };
 
@@ -709,7 +791,10 @@ function createBiomeEnemy(x, y, biome, variant = null) {
       const previousHealth = health;
       health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
       if (health < previousHealth && enemy.effect === 'damage-burst' && Math.random() < .5) triggerBoneOrchardHit(enemy);
-      if (health < previousHealth && enemy.effect === 'toxic-boss-burst') createToxicBossZone(enemy);
+      if (health < previousHealth && enemy.effect === 'toxic-boss-burst' && enemy.toxicRetaliationCooldown <= 0) {
+        createToxicBossZone(enemy);
+        enemy.toxicRetaliationCooldown = 1;
+      }
     }
   });
 
@@ -740,7 +825,7 @@ function createToxicBossZone(enemy) {
   game.toxicBossZones.push({
     x: enemy.x,
     y: enemy.y,
-    radius: 105,
+    radius: 75,
     life: 1.5,
     maxLife: 1.5,
     damagePerSecond: 8
@@ -1316,8 +1401,8 @@ function update(dt) {
       b.vx = Math.cos(angle) * speed;
       b.vy = Math.sin(angle) * speed;
     }
-    b.x += b.vx * dt;
-    b.y += b.vy * dt;
+    decelerateBullet(b, dt);
+    vibrateBullet(b, dt);
     b.life -= dt;
 
     // Trigger AOE explosion if explosive bullet reaches end of life without hitting target
@@ -1335,6 +1420,8 @@ function update(dt) {
     }
   });
   game.bullets = game.bullets.filter(b => b.life > 0);
+  game.beams.forEach(beam => beam.life -= dt);
+  game.beams = game.beams.filter(beam => beam.life > 0);
 
   // Consolidated Enemy Update Loop (Movement, Boundary Checks, Attacks, and Player Damage)
   const ashenAuras = game.enemies
@@ -1342,6 +1429,22 @@ function update(dt) {
     .map(enemy => ({ x: enemy.x, y: enemy.y }));
   game.enemies.forEach(e => {
     const localEnemySpeedMultiplier = effects.enemySpeedMultiplier * (ashenAuras.some(aura => Math.hypot(e.x - aura.x, e.y - aura.y) < sectorOneBossAuraRadius) ? 1.1 : 1);
+    if (e.burnTimer > 0) {
+      const burnTime = Math.min(dt, e.burnTimer);
+      e.burnTimer = Math.max(0, e.burnTimer - dt);
+      if (!e.defeated) {
+        e.burnTickTimer -= burnTime;
+        while (e.burnTickTimer <= 0 && e.hp > 0) {
+          e.hp = Math.max(0, e.hp - e.burnDamage);
+          e.burnTickTimer += e.burnInterval;
+          if (e.hp <= 0) {
+            defeatEnemy(e);
+            return;
+          }
+        }
+      }
+    }
+    e.toxicRetaliationCooldown = Math.max(0, (e.toxicRetaliationCooldown || 0) - dt);
     e.attackFlashTimer = Math.max(0, (e.attackFlashTimer || 0) - dt);
     e.shieldTimer = Math.max(0, (e.shieldTimer || 0) - dt);
     e.stormAttackCooldown = Math.max(0, (e.stormAttackCooldown || 0) - dt);
@@ -1542,6 +1645,14 @@ function update(dt) {
         }
       } else {
         e.hp = Math.max(0, e.hp - (b.damage || .12));
+        if (b.burnDuration) {
+          if (!(e.burnTimer > 0)) {
+            e.burnDamage = b.burnDamage;
+            e.burnInterval = b.burnInterval;
+            e.burnTickTimer = b.burnInterval;
+          }
+          e.burnTimer = Math.max(e.burnTimer || 0, b.burnDuration);
+        }
         if (e.hp <= 0) defeatEnemy(e);
       }
 
@@ -2028,6 +2139,17 @@ function renderEnemySystem() {
     ctx.fillRect(enemy.x - enemy.r, enemy.y - enemy.r - 9, enemy.r * 2 * Math.max(0, enemy.hp / Math.max(enemy.maxHp, 1)), 3);
   });
 
+  game.enemies.forEach(enemy => {
+    if (!(enemy.burnTimer > 0) || enemy.defeated) return;
+    ctx.strokeStyle = '#ff865c';
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = .8;
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, enemy.r + 10, 0, Math.PI * 2);
+    ctx.stroke();
+  });
+  ctx.globalAlpha = 1;
+
   ctx.restore();
 }
 const baseDraw = draw;
@@ -2162,10 +2284,24 @@ function draw() {
 
   // Player Bullets
   game.bullets.forEach(b => {
-    ctx.fillStyle = '#ffd08a';
+    ctx.fillStyle = b.burnDuration ? '#ff865c' : '#ffd08a';
     ctx.beginPath();
-    ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+    ctx.arc(b.x, b.y, b.radius || 3, 0, Math.PI * 2);
     ctx.fill();
+  });
+
+  game.beams.forEach(beam => {
+    ctx.save();
+    ctx.globalAlpha = beam.life / beam.maxLife;
+    ctx.strokeStyle = beam.color;
+    ctx.lineWidth = 5;
+    ctx.shadowBlur = 16;
+    ctx.shadowColor = beam.color;
+    ctx.beginPath();
+    ctx.moveTo(beam.x, beam.y);
+    ctx.lineTo(beam.x + Math.cos(beam.angle) * beam.length, beam.y + Math.sin(beam.angle) * beam.length);
+    ctx.stroke();
+    ctx.restore();
   });
 
   // Enemy Projectiles (Void Walker Shockwaves)
