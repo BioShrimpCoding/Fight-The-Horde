@@ -548,6 +548,24 @@ function updateVoidBatarBullet(bullet, dt) {
   const initialSpeed = bullet.voidBatarInitialSpeed;
   let distance = 0;
 
+  if (endTime > 2) {
+    let target = null;
+    let targetDistance = Infinity;
+    game.enemies.forEach(enemy => {
+      if (enemy.defeated || enemy.shieldTimer > 0 || !enemy.hp) return;
+      const distanceToEnemy = Math.hypot(enemy.x - bullet.x, enemy.y - bullet.y);
+      if (distanceToEnemy < targetDistance) {
+        target = enemy;
+        targetDistance = distanceToEnemy;
+      }
+    });
+    if (target) {
+      const angle = Math.atan2(target.y - bullet.y, target.x - bullet.x);
+      bullet.directionX = Math.cos(angle);
+      bullet.directionY = Math.sin(angle);
+    }
+  }
+
   const decelerationEnd = Math.min(endTime, 1);
   const decelerationStart = Math.min(startTime, 1);
   distance += initialSpeed * ((decelerationEnd - decelerationEnd ** 2 / 2) - (decelerationStart - decelerationStart ** 2 / 2));
