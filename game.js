@@ -75,7 +75,7 @@ const weaponCatalog = {
   // Tier 3 (Late Mid Game)
   laser: { name: 'LASER', ammo: 'cells', magazine: 20, cooldown: 100, damage: 0.65, speed: 1100, life: .55, pellets: 1, spread: 0.2, beam: true, kind: 'gun' },
   grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 6, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 80, kind: 'gun'},
-  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 180, life: 1.7, pellets: 1, spread: .02, kind: 'gun' },
+  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 180, life: 1.7, pellets: 1, spread: .02, pulseBlastRadius: 50, pulseKnockback: 400, kind: 'gun' },
 
   // Tier 4 (Exotic / Endgame)
   voidBatar: { name: 'VOID BATAR', ammo: 'voidChains', magazine: 200, cooldown: 30, damage: 0.45, speed: 400, life: 6, pellets: 1, spread: .15, voidBatarMotion: true, kind: 'gun' },
@@ -494,6 +494,23 @@ function releaseCosmosExplosion() {
     if (enemy.hp <= 0) defeatEnemy(enemy);
   });
 }
+function triggerPulseBlast(bullet) {
+  const { x, y } = bullet;
+  addExplosion(x, y, bullet.pulseBlastRadius, '#8db7ee');
+  game.enemies.forEach(enemy => {
+    if (enemy.defeated || enemy.shieldTimer > 0) return;
+
+    const dx = enemy.x - x;
+    const dy = enemy.y - y;
+    const distance = Math.hypot(dx, dy);
+    if (distance > bullet.pulseBlastRadius) return;
+
+    const directionX = distance > 0 ? dx / distance : bullet.directionX;
+    const directionY = distance > 0 ? dy / distance : bullet.directionY;
+    enemy.knockbackX = (enemy.knockbackX || 0) + directionX * bullet.pulseKnockback;
+    enemy.knockbackY = (enemy.knockbackY || 0) + directionY * bullet.pulseKnockback;
+  });
+}
 function decelerateBullet(bullet, dt) {
   if (!bullet.deceleration || !bullet.decelerationInterval) return;
 
@@ -606,6 +623,8 @@ function shoot() {
         vibrationAmplitude: weapon.vibrationAmplitude || 0,
         vibrationFrequency: weapon.vibrationFrequency || 0,
         vibrationPhase: Math.random() * Math.PI * 2,
+        pulseBlastRadius: weapon.pulseBlastRadius || 0,
+        pulseKnockback: weapon.pulseKnockback || 0,
         travelX: p.x + Math.cos(angle) * 20,
         travelY: p.y + Math.sin(angle) * 20,
         voidBatarMotion: Boolean(weapon.voidBatarMotion),
@@ -1657,6 +1676,13 @@ function update(dt) {
       e.x = e.previousX;
       e.y = e.previousY;
     }
+    if (e.knockbackX || e.knockbackY) {
+      e.x += e.knockbackX * dt;
+      e.y += e.knockbackY * dt;
+      const knockbackDecay = Math.exp(-5 * dt);
+      e.knockbackX *= knockbackDecay;
+      e.knockbackY *= knockbackDecay;
+    }
 
     if (e.effect === 'damage-trail' && Math.hypot(e.x - e.previousX, e.y - e.previousY) > 1) {
       e.trailTimer -= dt;
@@ -1721,6 +1747,10 @@ function update(dt) {
           e.burnTimer = Math.max(e.burnTimer || 0, b.burnDuration);
         }
         if (e.hp <= 0) defeatEnemy(e);
+      }
+      if (b.pulseBlastRadius && !b.blastApplied) {
+        b.blastApplied = true;
+        triggerPulseBlast(b);
       }
 
       if (!b.pierce) {
