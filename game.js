@@ -78,7 +78,7 @@ const weaponCatalog = {
   pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 180, life: 1.7, pellets: 1, spread: .02, kind: 'gun' },
 
   // Tier 4 (Exotic / Endgame)
-  voidBatar: { name: 'VOID BATAR', ammo: 'voidChains', magazine: 200, cooldown: 30, damage: 0.45, speed: 750, life: .8, pellets: 1, spread: .15, kind: 'gun' },
+  voidBatar: { name: 'VOID BATAR', ammo: 'voidChains', magazine: 200, cooldown: 30, damage: 0.45, speed: 400, life: 6, pellets: 1, spread: .15, voidBatarMotion: true, kind: 'gun' },
   laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 4.80, range: 115, meleeDuration: .36, meleeSweep: 2.5, meleeStyle: 'laserBlade', kind: 'melee' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 100, damage: 1.30, speed: 440, life: .50, pellets: 1, spread: .50, kind: 'gun', oscillating: true, coneSize: .20 },
   railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 1, cooldown: 1200, damage: 18.00, speed: 1600, life: 1, pellets: 1, spread: 0, beam: true, kind: 'gun' },
@@ -483,6 +483,17 @@ function fireBeam(weapon) {
     if (enemy.hp <= 0) defeatEnemy(enemy);
   });
 }
+function releaseCosmosExplosion() {
+  const { x, y } = game.player;
+  const radius = 12 * 10;
+  addExplosion(x, y, radius, '#b9f4ff');
+  game.enemies.forEach(enemy => {
+    if (enemy.defeated || enemy.shieldTimer > 0 || !enemy.hp || Math.hypot(enemy.x - x, enemy.y - y) > radius) return;
+
+    enemy.hp = Math.max(0, enemy.hp - 5);
+    if (enemy.hp <= 0) defeatEnemy(enemy);
+  });
+}
 function decelerateBullet(bullet, dt) {
   if (!bullet.deceleration || !bullet.decelerationInterval) return;
 
@@ -513,6 +524,36 @@ function vibrateBullet(bullet, dt) {
   bullet.vibrationPhase += dt * bullet.vibrationFrequency * Math.PI * 2;
   bullet.x = bullet.travelX + Math.sin(bullet.vibrationPhase) * bullet.vibrationAmplitude;
   bullet.y = bullet.travelY + Math.sin(bullet.vibrationPhase + Math.PI / 2) * bullet.vibrationAmplitude;
+}
+function updateVoidBatarBullet(bullet, dt) {
+  const startTime = bullet.voidBatarElapsed;
+  const endTime = startTime + dt;
+  const initialSpeed = bullet.voidBatarInitialSpeed;
+  let distance = 0;
+
+  const decelerationEnd = Math.min(endTime, 1);
+  const decelerationStart = Math.min(startTime, 1);
+  distance += initialSpeed * ((decelerationEnd - decelerationEnd ** 2 / 2) - (decelerationStart - decelerationStart ** 2 / 2));
+
+  let time = Math.max(startTime, 2);
+  while (time < endTime) {
+    const speedStep = Math.floor((time - 2) / .25);
+    const nextStep = 2 + (speedStep + 1) * .25;
+    const segmentEnd = Math.min(endTime, nextStep);
+    distance += (speedStep + 1) * 200 * (segmentEnd - time);
+    time = segmentEnd;
+  }
+
+  bullet.x += bullet.directionX * distance;
+  bullet.y += bullet.directionY * distance;
+  bullet.voidBatarElapsed = endTime;
+  const speed = endTime < 1
+    ? initialSpeed * (1 - endTime)
+    : endTime < 2
+      ? 0
+      : (Math.floor((endTime - 2) / .25) + 1) * 200/*<<change void batar accelation*/;
+  bullet.vx = bullet.directionX * speed;
+  bullet.vy = bullet.directionY * speed;
 }
 function shoot() { 
   if (!game.active || game.attackDisabledTimer > 0 || game.fireTimer > 0) return;
@@ -566,7 +607,12 @@ function shoot() {
         vibrationFrequency: weapon.vibrationFrequency || 0,
         vibrationPhase: Math.random() * Math.PI * 2,
         travelX: p.x + Math.cos(angle) * 20,
-        travelY: p.y + Math.sin(angle) * 20
+        travelY: p.y + Math.sin(angle) * 20,
+        voidBatarMotion: Boolean(weapon.voidBatarMotion),
+        voidBatarElapsed: 0,
+        voidBatarInitialSpeed: weapon.speed,
+        directionX: Math.cos(angle),
+        directionY: Math.sin(angle)
       };
       game.bullets.push(bullet);
     }
@@ -1083,7 +1129,24 @@ function randomResource() {
 function dropResource(x, y, amount = 1) { const resource = randomResource(); game.drops.push({ x, y, type: resource.key, amount, life: 24 }); }
 function openChest(node) { node.taken = true; for (let i = 0; i < 3; i++) dropResource(node.x, node.y, 2 + Math.floor(Math.random() * 4)); game.salvage += 2; burst(node.x, node.y, 18, 190); }
 function collectDrop(drop) { game.inventory[drop.type] += drop.amount; drop.life = 0; }
-function reloadAmmo() { if (!game.reloadPending || game.fireTimer > 0) return; const weapon = weaponCatalog[game.weapon]; if (weapon.kind === 'melee') { game.reloadPending = false; return; } const reserve = game.ammoReserve[weapon.ammo] || 0; const needed = weapon.magazine - game.ammo; if (!reserve || needed <= 0) { if (needed <= 0) game.reloadPending = false; return; } game.ammo += Math.min(needed, weapon.magazine); game.ammoReserve[weapon.ammo] = Math.max(0, reserve - 1); game.reloadPending = false; }
+function reloadAmmo() {
+  if (!game.reloadPending || game.fireTimer > 0) return;
+  const weapon = weaponCatalog[game.weapon];
+  if (weapon.kind === 'melee') {
+    game.reloadPending = false;
+    return;
+  }
+  const reserve = game.ammoReserve[weapon.ammo] || 0;
+  const needed = weapon.magazine - game.ammo;
+  if (!reserve || needed <= 0) {
+    if (needed <= 0) game.reloadPending = false;
+    return;
+  }
+  game.ammo += Math.min(needed, weapon.magazine);
+  game.ammoReserve[weapon.ammo] = Math.max(0, reserve - 1);
+  if (game.weapon === 'cosmosGauntlet') releaseCosmosExplosion();
+  game.reloadPending = false;
+}
 function updateAmmoUI() { const weapon = weaponCatalog[game.weapon]; ui.ammo.textContent = weapon.kind === 'melee' ? 'MELEE' : game.ammo; ui.ammoStorage.textContent = weapon.kind === 'melee' ? '-' : game.ammoReserve[weapon.ammo] || 0; ui.medkits.textContent = game.stationItems.medkit || 0; ui.weaponName.textContent = weapon.name; ui.ammoType.textContent = weapon.kind === 'melee' ? 'CLOSE RANGE' : ammoCatalog[weapon.ammo].name; }
 function updateAtlasCrystalUI() { if (atlasCrystalCounter) atlasCrystalCounter.textContent = String(game.atlasCrystals || 0).padStart(2, '0'); }
 const baseUpdateAmmoUI = updateAmmoUI;
@@ -1401,8 +1464,12 @@ function update(dt) {
       b.vx = Math.cos(angle) * speed;
       b.vy = Math.sin(angle) * speed;
     }
-    decelerateBullet(b, dt);
-    vibrateBullet(b, dt);
+    if (b.voidBatarMotion) {
+      updateVoidBatarBullet(b, dt);
+    } else {
+      decelerateBullet(b, dt);
+      vibrateBullet(b, dt);
+    }
     b.life -= dt;
 
     // Trigger AOE explosion if explosive bullet reaches end of life without hitting target
@@ -2163,6 +2230,22 @@ function burst(x, y, amount, force) { for (let i = 0; i < amount; i++) game.spar
 function updateUI(distance, safe, biome) { const sector = safe ? 0 : Math.floor(distance / 3000) + 1; const health = Math.max(0, Math.round(game.health)); if (safe && bankInventory()) updateInventoryUI(); updateStationUI(); ui.wave.textContent = String(sector).padStart(2, '0'); ui.score.textContent = String(game.score).padStart(6, '0'); ui.ammo.textContent = game.ammo; ui.health.style.width = `${health}%`; ui.healthValue.textContent = `${health}%`; ui.threats.textContent = String(game.enemies.length).padStart(2, '0'); ui.distance.textContent = `${String(Math.floor(distance / 10)).padStart(3, '0')}m`; ui.salvage.textContent = String(game.salvage).padStart(2, '0'); ui.relics.textContent = String(game.relics).padStart(2, '0'); ui.objective.textContent = safe ? 'SANCTUARY // SALVAGE BANKED' : 'RETURN TO BEACON // SALVAGE'; }
 function updateInventoryUI() { const armor = getArmorEffects(); ui.inventory.innerHTML = `<span class="inventory-title">ARMOR // ${armor.name || 'NONE'}</span><span class="inventory-title">CARRIED // VAULT</span>${resourceTypes.map(resource => `<span class="inventory-item" title="${resource.name}: carried / stored in sanctuary vault"><span>${resource.name}</span><strong>${game.inventory[resource.key]} / ${game.vault[resource.key] || 0}</strong></span>`).join('')}`; }
 function end() { game.active = false; game.high = Math.max(game.high, game.score); localStorage.setItem('horde-high', game.high); localStorage.setItem('horde-salvage', game.banked + game.salvage); localStorage.setItem('horde-relics', game.relics); localStorage.setItem('horde-atlas-crystals', game.atlasCrystals); ui.final.textContent = String(game.score).padStart(6, '0'); ui.high.textContent = String(game.high).padStart(6, '0'); ui.over.classList.remove('hidden'); }
+function drawVoidBatarProjectile(bullet) {
+  ctx.save();
+  ctx.translate(bullet.x, bullet.y);
+  ctx.rotate(Math.atan2(bullet.directionY, bullet.directionX));
+  ctx.fillStyle = '#b9f4ff';
+  ctx.shadowBlur = 6;
+  ctx.shadowColor = '#8f7cff';
+  ctx.beginPath();
+  ctx.moveTo(7, 0);
+  ctx.lineTo(-4, -1.5);
+  ctx.lineTo(-2, 0);
+  ctx.lineTo(-4, 1.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
 function drawMap() { const w = mapCanvas.width, h = mapCanvas.height, scale = getTacticalMapScale(), visibleRadius = getTacticalMapVisibleRadius(); mapCtx.clearRect(0, 0, w, h); mapCtx.fillStyle = "#100d13"; mapCtx.fillRect(0, 0, w, h); mapCtx.save(); mapCtx.translate(w / 2, h / 2); mapCtx.scale(scale, scale); sectorRegions.forEach((regions, sector) => { const radius = (sector + 1) * 3000; mapCtx.strokeStyle = `${regions[0].color}99`; mapCtx.lineWidth = 3 / scale; mapCtx.beginPath(); mapCtx.arc(0, 0, radius, 0, Math.PI * 2); mapCtx.stroke(); }); mapCtx.strokeStyle = "#f9c779"; mapCtx.lineWidth = 7 / scale; mapCtx.beginPath(); mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2); mapCtx.stroke(); game.nodes.forEach(node => { if (!node.taken) { mapCtx.fillStyle = node.type === "relic" ? "#b9f4ff" : "#ffbe68"; mapCtx.fillRect(node.x - 30, node.y - 30, 60, 60); } }); game.enemies.forEach(enemy => { if (!enemy.voidStalker) { mapCtx.fillStyle = "#ff4d42"; mapCtx.fillRect(enemy.x - 35, enemy.y - 35, 70, 70); } }); mapCtx.fillStyle = "#100d13ee"; mapCtx.fillRect(-visibleRadius, -visibleRadius, visibleRadius * 2, visibleRadius * 2); game.discovered.forEach(key => { if (key === "sanctuary") { mapCtx.fillStyle = "#f9c77933"; mapCtx.beginPath(); mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2); mapCtx.fill(); } else { const sector = Number(key.split("-")[1]); const inner = sector * 3000; const outer = (sector + 1) * 3000; mapCtx.fillStyle = `${sectorRegions[sector][0].color}28`; mapCtx.beginPath(); mapCtx.arc(0, 0, outer, 0, Math.PI * 2); mapCtx.arc(0, 0, inner, 0, Math.PI * 2, true); mapCtx.fill(); } }); game.nodes.forEach(node => { if (!node.taken && game.discovered.has(getDiscoveryKey(node.x, node.y))) { mapCtx.fillStyle = node.type === "relic" ? "#b9f4ff" : "#ffbe68"; mapCtx.fillRect(node.x - 30, node.y - 30, 60, 60); } }); game.enemies.forEach(enemy => { if (!enemy.voidStalker && game.discovered.has(getDiscoveryKey(enemy.x, enemy.y))) { mapCtx.fillStyle = "#ff4d42"; mapCtx.fillRect(enemy.x - 35, enemy.y - 35, 70, 70); } }); mapCtx.fillStyle = "#f9c779"; mapCtx.beginPath(); mapCtx.arc(0, 0, 70, 0, Math.PI * 2); mapCtx.fill(); mapCtx.fillStyle = "#ffffff"; mapCtx.beginPath(); mapCtx.arc(game.player.x, game.player.y, 90, 0, Math.PI * 2); mapCtx.fill(); mapCtx.restore(); }
 function drawStalkerMapMarker() {
   const stalker = game.enemies.find(enemy => enemy.voidStalker && !enemy.defeated);
@@ -2284,10 +2367,14 @@ function draw() {
 
   // Player Bullets
   game.bullets.forEach(b => {
-    ctx.fillStyle = b.burnDuration ? '#ff865c' : '#ffd08a';
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, b.radius || 3, 0, Math.PI * 2);
-    ctx.fill();
+    if (b.voidBatarMotion) {
+      drawVoidBatarProjectile(b);
+    } else {
+      ctx.fillStyle = b.burnDuration ? '#ff865c' : '#ffd08a';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.radius || 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
   });
 
   game.beams.forEach(beam => {
