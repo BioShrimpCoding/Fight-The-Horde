@@ -1870,7 +1870,7 @@ function update(dt) {
     }
     
     // Player collision
-    if (Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
+    if (!proj.frostAura && Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
       game.health -= proj.damage * (1 - (getArmorEffects().voidDamageReduction || 0));
       if (proj.burnDuration) {
         const status = game.enemyStatus || (game.enemyStatus = { burn: 0, acid: 0, bleed: 0, freeze: 0, root: 0 });
@@ -1999,7 +1999,7 @@ function applyEnemyAbilities(dt) {
           frostAura: true,
           frostAuraRadius: frostfallAuraRadius
         });
-        enemy.bossAbilityCooldown = 5;
+        enemy.bossAbilityCooldown = 1;
       }
     } else if (enemy.effect === 'scorched-boss-shot') {
       enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
