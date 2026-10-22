@@ -221,6 +221,13 @@ const sectorOneMiniBossAbilities = [
   { ability: 'ASHEN AURA', effect: 'ashen-boss-aura' }
 ];
 const sectorOneBossAuraRadius = 150;
+const sectorTwoMiniBossAbilities = [
+  { ability: 'THUNDER CHARGE', effect: 'thunder-boss-aura' },
+  { ability: 'IRONWOOD SHIELD', effect: 'ironwood-boss-shield' },
+  { ability: 'MIRAGE EXCHANGE', effect: 'glass-boss-teleport-shot' },
+  { ability: 'FROST AURA SHOT', effect: 'frost-boss-projectile' }
+];
+const sectorTwoBossAuraRadius = 150;
 
 sectorRegions.flat().forEach((biome, index) => { biome.effects = { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { ...biomeHazards[index], visual: hazardVisuals[index], zoneDamagePerSecond: biomeHazards[index].damagePerSecond }, ...biomeEffectProfiles[index] }; });
 sectorRegions.flat().forEach((biome, index) => { const family = enemyFamilies[index]; biome.enemyFamily = { name: family[0], ability: family[1], effect: family[2] }; });
@@ -831,8 +838,12 @@ function createBiomeEnemy(x, y, biome, variant = null) {
   const sectorOneMiniBossAbility = familyIndex < sectorOneMiniBossAbilities.length && enemyVariant.boss
     ? sectorOneMiniBossAbilities[familyIndex]
     : null;
-  const ability = sectorOneMiniBossAbility?.ability ?? family.ability;
-  const effect = sectorOneMiniBossAbility?.effect ?? family.effect;
+  const sectorTwoMiniBossAbility = familyIndex >= 4 && familyIndex < 8 && enemyVariant.boss
+    ? sectorTwoMiniBossAbilities[familyIndex - 4]
+    : null;
+  const miniBossAbility = sectorOneMiniBossAbility || sectorTwoMiniBossAbility;
+  const ability = miniBossAbility?.ability ?? family.ability;
+  const effect = miniBossAbility?.effect ?? family.effect;
 
   const enemy = { 
     x, y, family: family.name, familyIndex, ability, effect,
@@ -857,6 +868,9 @@ function createBiomeEnemy(x, y, biome, variant = null) {
     spinCooldown: Math.random() * 2,
     spinTimer: 0,
     bossAbilityCooldown: effect === 'scorched-boss-shot' ? 3 : 0,
+    thunderAuraTimer: 0,
+    ironwoodShieldHp: effect === 'ironwood-boss-shield' ? scaledHp : 0,
+    ironwoodShieldMaxHp: effect === 'ironwood-boss-shield' ? scaledHp : 0,
     toxicRetaliationCooldown: 0,
     shieldTimer: 0, hitTimer: 0 
   };
@@ -913,6 +927,16 @@ function createToxicBossZone(enemy) {
     maxLife: 1.5,
     damagePerSecond: 8
   });
+}
+
+function teleportNearestGlassEnemy(projectile) {
+  const nearestEnemy = game.enemies
+    .filter(enemy => !enemy.defeated && enemy.familyIndex === 6)
+    .sort((a, b) => Math.hypot(a.x - projectile.x, a.y - projectile.y) - Math.hypot(b.x - projectile.x, b.y - projectile.y))[0];
+  if (!nearestEnemy) return;
+  nearestEnemy.x = projectile.x;
+  nearestEnemy.y = projectile.y;
+  burst(projectile.x, projectile.y, 8, 120);
 }
 
 function attachEmberFireballs(enemy) {
@@ -1406,7 +1430,8 @@ function update(dt) {
   const length = Math.hypot(dx, dy) || 1;
   const movementEffects = getBiome(p.x, p.y).effects;
   const armor = getArmorEffects();
-  const slowedByFrostfallAura = game.enemies.some(enemy => !enemy.defeated && enemy.effect === 'slow-aura' && Math.hypot(p.x - enemy.x, p.y - enemy.y) < frostfallAuraRadius);
+  const slowedByFrostfallAura = game.enemies.some(enemy => !enemy.defeated && enemy.effect === 'slow-aura' && Math.hypot(p.x - enemy.x, p.y - enemy.y) < frostfallAuraRadius)
+    || game.projectiles.some(projectile => projectile.frostAura && projectile.life > 0 && Math.hypot(p.x - projectile.x, p.y - projectile.y) < projectile.frostAuraRadius);
   const inFrozenMiniBossAura = game.enemies.some(enemy => !enemy.defeated && enemy.effect === 'frozen-boss-aura' && Math.hypot(p.x - enemy.x, p.y - enemy.y) < sectorOneBossAuraRadius);
   const enemySlowMultiplier = (slowedByFrostfallAura ? .75 : 1) * (inFrozenMiniBossAura ? .85 : 1) * (slowedByBramble ? .5 : 1) * (game.attackDisabledTimer > 0 ? .5 : 1);
   if (inFrozenMiniBossAura) game.health -= 6 * (1 - (armor.hazardDamageReduction || 0)) * dt;
@@ -1738,7 +1763,21 @@ function update(dt) {
 
   // Bullet Collision & Explosive (AOE) Damage Loop
   game.bullets.forEach(b => game.enemies.forEach(e => {
-    if (b.life <= 0 || e.defeated || e.shieldTimer > 0 || !e.hp || Math.hypot(b.x - e.x, b.y - e.y) >= e.r + 5) return;
+    if (b.life <= 0 || e.defeated || e.shieldTimer > 0 || !e.hp) return;
+    if (e.effect === 'ironwood-boss-shield' && e.ironwoodShieldHp > 0) {
+      const angleToPlayer = Math.atan2(game.player.y - e.y, game.player.x - e.x);
+      const shieldRadius = Math.max(14, e.r * .7);
+      const shieldX = e.x + Math.cos(angleToPlayer) * (e.r + shieldRadius * .35);
+      const shieldY = e.y + Math.sin(angleToPlayer) * (e.r + shieldRadius * .35);
+      const shotAngle = Math.atan2(b.y - e.y, b.x - e.x);
+      const inShieldArc = Math.abs(Math.atan2(Math.sin(shotAngle - angleToPlayer), Math.cos(shotAngle - angleToPlayer))) < .9;
+      if (inShieldArc && Math.hypot(b.x - shieldX, b.y - shieldY) < shieldRadius + 5) {
+        if (Math.random() >= .25) e.ironwoodShieldHp = Math.max(0, e.ironwoodShieldHp - (b.damage || .12));
+        if (!b.pierce) b.life = 0;
+        return;
+      }
+    }
+    if (Math.hypot(b.x - e.x, b.y - e.y) >= e.r + 5) return;
     {
       if (b.hitEnemies && b.hitEnemies.has(e)) return;
       if (b.hitEnemies) b.hitEnemies.add(e);
@@ -1839,6 +1878,10 @@ function update(dt) {
       }
       proj.life = 0; // Destroy on impact
     }
+    if (proj.teleportGlassEnemyOnEnd && proj.life <= 0 && !proj.teleportResolved) {
+      proj.teleportResolved = true;
+      teleportNearestGlassEnemy(proj);
+    }
   });
   game.projectiles = game.projectiles.filter(p => p.life > 0);
 
@@ -1903,7 +1946,62 @@ function applyEnemyAbilities(dt) {
       if (enemy.effect === 'slow') status.freeze = Math.max(status.freeze, 2.5);
       if (enemy.effect === 'root') status.root = Math.max(status.root, 2);
     }
-    if (enemy.effect === 'scorched-boss-shot') {
+    if (enemy.effect === 'thunder-boss-aura') {
+      if (distance < sectorTwoBossAuraRadius) {
+        enemy.thunderAuraTimer += dt;
+        if (enemy.thunderAuraTimer >= 2) {
+          const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+          game.projectiles.push({
+            x: enemy.x,
+            y: enemy.y,
+            vx: Math.cos(angle) * 720,
+            vy: Math.sin(angle) * 720,
+            life: 1.5,
+            radius: 9,
+            damage: 12,
+            color: '#b6f3ff'
+          });
+          enemy.thunderAuraTimer = 0;
+        }
+      } else {
+        enemy.thunderAuraTimer = 0;
+      }
+    } else if (enemy.effect === 'glass-boss-teleport-shot') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (distance < 700 && enemy.bossAbilityCooldown <= 0) {
+        const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+        game.projectiles.push({
+          x: enemy.x,
+          y: enemy.y,
+          vx: Math.cos(angle) * 300,
+          vy: Math.sin(angle) * 300,
+          life: 3,
+          radius: 9,
+          damage: 8,
+          color: '#e9bc78',
+          teleportGlassEnemyOnEnd: true
+        });
+        enemy.bossAbilityCooldown = 3;
+      }
+    } else if (enemy.effect === 'frost-boss-projectile') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (distance < 700 && enemy.bossAbilityCooldown <= 0) {
+        const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+        game.projectiles.push({
+          x: enemy.x,
+          y: enemy.y,
+          vx: Math.cos(angle) * 260,
+          vy: Math.sin(angle) * 260,
+          life: 3,
+          radius: 9,
+          damage: 6,
+          color: '#8bd9f2',
+          frostAura: true,
+          frostAuraRadius: frostfallAuraRadius
+        });
+        enemy.bossAbilityCooldown = 5;
+      }
+    } else if (enemy.effect === 'scorched-boss-shot') {
       enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
       if (distance < 700 && enemy.bossAbilityCooldown <= 0) {
         const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
@@ -2056,6 +2154,17 @@ function renderEnemySystem() {
       ctx.stroke();
       ctx.restore();
     }
+    if (enemy.effect === 'thunder-boss-aura') {
+      ctx.save();
+      ctx.fillStyle = '#8bdff022';
+      ctx.strokeStyle = '#8bdff077';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, sectorTwoBossAuraRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.strokeStyle = enemy.color;
     ctx.fillStyle = `${enemy.color}55`;
     ctx.lineWidth = enemy.boss ? 4 : 2;
@@ -2089,6 +2198,22 @@ function renderEnemySystem() {
     }
     ctx.fill();
     ctx.stroke();
+    if (enemy.effect === 'ironwood-boss-shield' && enemy.ironwoodShieldHp > 0) {
+      ctx.save();
+      ctx.rotate(Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x));
+      ctx.fillStyle = '#7f9a66';
+      ctx.strokeStyle = '#d1dda2';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(enemy.r + 6, -enemy.r * .8);
+      ctx.lineTo(enemy.r + 20, -enemy.r * .6);
+      ctx.lineTo(enemy.r + 20, enemy.r * .6);
+      ctx.lineTo(enemy.r + 6, enemy.r * .8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.restore();
 
     ctx.globalAlpha = 1;
@@ -2101,6 +2226,13 @@ function renderEnemySystem() {
       ctx.fillRect(enemy.x - enemy.r, enemy.y - enemy.r - 9, enemy.r * 2, 3);
       ctx.fillStyle = enemy.boss ? '#ffcf70' : enemy.color;
       ctx.fillRect(enemy.x - enemy.r, enemy.y - enemy.r - 9, enemy.r * 2 * Math.max(0, enemy.hp / enemy.maxHp), 3);
+    }
+    if (enemy.effect === 'ironwood-boss-shield' && enemy.ironwoodShieldMaxHp > 0 && enemy.ironwoodShieldHp > 0) {
+      const shieldBarY = enemy.y - enemy.r - 4;
+      ctx.fillStyle = '#17131a';
+      ctx.fillRect(enemy.x - enemy.r, shieldBarY, enemy.r * 2, 3);
+      ctx.fillStyle = '#b5d68b';
+      ctx.fillRect(enemy.x - enemy.r, shieldBarY, enemy.r * 2 * (enemy.ironwoodShieldHp / enemy.ironwoodShieldMaxHp), 3);
     }
   });
 
@@ -2442,6 +2574,15 @@ function draw() {
   // Enemy Projectiles (Void Walker Shockwaves)
   if (game.projectiles) {
     game.projectiles.forEach(p => {
+      if (p.frostAura) {
+        ctx.fillStyle = '#82c5d733';
+        ctx.strokeStyle = '#82c5d777';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.frostAuraRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
       ctx.fillStyle = p.color || '#9d4edd';
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.radius || p.r || 5, 0, Math.PI * 2);
