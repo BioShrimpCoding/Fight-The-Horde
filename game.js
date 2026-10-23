@@ -228,6 +228,15 @@ const sectorTwoMiniBossAbilities = [
   { ability: 'FROST AURA SHOT', effect: 'frost-boss-projectile' }
 ];
 const sectorTwoBossAuraRadius = 150;
+const sectorThreeMiniBossAbilities = [
+  { ability: 'BONE BURST', effect: 'bone-boss-burst' },
+  { ability: 'EMBER VOLLEY', effect: 'ember-boss-volley' },
+  { ability: 'ORBITING BRAMBLES', effect: 'blackroot-boss-brambles' },
+  { ability: 'GRAVITY AURA', effect: 'gravity-boss-aura' }
+];
+const sectorThreeBossAuraRadius = 250;
+const blackrootBossBrambleLength = 110;
+const blackrootBossBrambleRadius = 14;
 
 sectorRegions.flat().forEach((biome, index) => { biome.effects = { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { ...biomeHazards[index], visual: hazardVisuals[index], zoneDamagePerSecond: biomeHazards[index].damagePerSecond }, ...biomeEffectProfiles[index] }; });
 sectorRegions.flat().forEach((biome, index) => { const family = enemyFamilies[index]; biome.enemyFamily = { name: family[0], ability: family[1], effect: family[2] }; });
@@ -841,7 +850,10 @@ function createBiomeEnemy(x, y, biome, variant = null) {
   const sectorTwoMiniBossAbility = familyIndex >= 4 && familyIndex < 8 && enemyVariant.boss
     ? sectorTwoMiniBossAbilities[familyIndex - 4]
     : null;
-  const miniBossAbility = sectorOneMiniBossAbility || sectorTwoMiniBossAbility;
+  const sectorThreeMiniBossAbility = familyIndex >= 8 && familyIndex < 12 && enemyVariant.boss
+    ? sectorThreeMiniBossAbilities[familyIndex - 8]
+    : null;
+  const miniBossAbility = sectorOneMiniBossAbility || sectorTwoMiniBossAbility || sectorThreeMiniBossAbility;
   const ability = miniBossAbility?.ability ?? family.ability;
   const effect = miniBossAbility?.effect ?? family.effect;
 
@@ -871,6 +883,7 @@ function createBiomeEnemy(x, y, biome, variant = null) {
     thunderAuraTimer: 0,
     ironwoodShieldHp: effect === 'ironwood-boss-shield' ? scaledHp : 0,
     ironwoodShieldMaxHp: effect === 'ironwood-boss-shield' ? scaledHp : 0,
+    brambleOrbitAngle: 0,
     toxicRetaliationCooldown: 0,
     shieldTimer: 0, hitTimer: 0 
   };
@@ -916,6 +929,56 @@ function triggerBoneOrchardHit(enemy) {
       color: '#d7b07a'
     });
   }
+}
+
+function fireBoneMiniBossBurst(enemy) {
+  const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+  game.projectiles.push({
+    x: enemy.x,
+    y: enemy.y,
+    vx: Math.cos(angle) * 150,
+    vy: Math.sin(angle) * 150,
+    life: 3,
+    burstTimer: .75,
+    burstCount: 12,
+    burstSpeed: 250,
+    radius: 9,
+    damage: 6,
+    color: '#d7b07a'
+  });
+}
+
+function fireEmberMiniBossVolley(enemy) {
+  const projectileCount = 8;
+  const ringRadius = enemy.r + 35;
+  for (let i = 0; i < projectileCount; i++) {
+    const angle = i * Math.PI * 2 / projectileCount;
+    game.projectiles.push({
+      x: enemy.x + Math.cos(angle) * ringRadius,
+      y: enemy.y + Math.sin(angle) * ringRadius,
+      vx: 0,
+      vy: 0,
+      life: 4,
+      volleyTimer: .65,
+      volleyOwner: enemy,
+      volleyOffsetX: Math.cos(angle) * ringRadius,
+      volleyOffsetY: Math.sin(angle) * ringRadius,
+      radius: 8,
+      damage: 6,
+      burnDuration: 3,
+      color: '#ff725e'
+    });
+  }
+}
+
+function distanceToSegment(x, y, startX, startY, endX, endY) {
+  const segmentX = endX - startX;
+  const segmentY = endY - startY;
+  const lengthSquared = segmentX * segmentX + segmentY * segmentY;
+  const projection = lengthSquared
+    ? Math.max(0, Math.min(1, ((x - startX) * segmentX + (y - startY) * segmentY) / lengthSquared))
+    : 0;
+  return Math.hypot(x - (startX + projection * segmentX), y - (startY + projection * segmentY));
 }
 
 function createToxicBossZone(enemy) {
@@ -1832,6 +1895,45 @@ function update(dt) {
       }
       launchEmberFireballs(proj.followTarget);
     }
+    if (proj.volleyTimer !== undefined && !proj.volleyLaunched) {
+      if (proj.volleyOwner && !proj.volleyOwner.defeated) {
+        proj.x = proj.volleyOwner.x + proj.volleyOffsetX;
+        proj.y = proj.volleyOwner.y + proj.volleyOffsetY;
+      }
+      proj.volleyTimer -= dt;
+      if (proj.volleyTimer <= 0) {
+        const angle = Math.atan2(game.player.y - proj.y, game.player.x - proj.x);
+        const speed = 320;
+        proj.vx = Math.cos(angle) * speed;
+        proj.vy = Math.sin(angle) * speed;
+        proj.volleyLaunched = true;
+      } else {
+        proj.life -= dt;
+        return;
+      }
+    }
+    if (proj.burstTimer !== undefined && !proj.burstTriggered) {
+      proj.burstTimer -= dt;
+      if (proj.burstTimer <= 0) {
+        proj.burstTriggered = true;
+        for (let i = 0; i < proj.burstCount; i++) {
+          const angle = i * Math.PI * 2 / proj.burstCount;
+          game.projectiles.push({
+            x: proj.x,
+            y: proj.y,
+            vx: Math.cos(angle) * proj.burstSpeed,
+            vy: Math.sin(angle) * proj.burstSpeed,
+            life: 2.5,
+            radius: 7,
+            damage: proj.damage,
+            color: proj.color
+          });
+        }
+        burst(proj.x, proj.y, 12, 150);
+        proj.life = 0;
+        return;
+      }
+    }
     if (proj.redirectTimer !== undefined) {
       proj.redirectTimer -= dt;
       if (proj.redirectTimer <= 0 && !proj.redirected) {
@@ -1870,7 +1972,7 @@ function update(dt) {
     }
     
     // Player collision
-    if (!proj.frostAura && Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
+    if (!proj.frostAura && (proj.volleyTimer === undefined || proj.volleyLaunched) && Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
       game.health -= proj.damage * (1 - (getArmorEffects().voidDamageReduction || 0));
       if (proj.burnDuration) {
         const status = game.enemyStatus || (game.enemyStatus = { burn: 0, acid: 0, bleed: 0, freeze: 0, root: 0 });
@@ -1946,7 +2048,42 @@ function applyEnemyAbilities(dt) {
       if (enemy.effect === 'slow') status.freeze = Math.max(status.freeze, 2.5);
       if (enemy.effect === 'root') status.root = Math.max(status.root, 2);
     }
-    if (enemy.effect === 'thunder-boss-aura') {
+    if (enemy.effect === 'bone-boss-burst') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (distance < 700 && enemy.bossAbilityCooldown <= 0) {
+        fireBoneMiniBossBurst(enemy);
+        enemy.bossAbilityCooldown = 4;
+      }
+    } else if (enemy.effect === 'ember-boss-volley') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (distance < 700 && enemy.bossAbilityCooldown <= 0) {
+        fireEmberMiniBossVolley(enemy);
+        enemy.bossAbilityCooldown = 6;
+      }
+    } else if (enemy.effect === 'blackroot-boss-brambles') {
+      enemy.brambleOrbitAngle = (enemy.brambleOrbitAngle + dt * .8) % (Math.PI * 2);
+      for (let i = 0; i < 3; i++) {
+        const angle = enemy.brambleOrbitAngle + i * Math.PI * 2 / 3;
+        const centerX = enemy.x + Math.cos(angle) * (enemy.r + blackrootBossBrambleLength / 2);
+        const centerY = enemy.y + Math.sin(angle) * (enemy.r + blackrootBossBrambleLength / 2);
+        const tangentAngle = angle + Math.PI / 2;
+        const halfLength = blackrootBossBrambleLength / 2;
+        const startX = centerX - Math.cos(tangentAngle) * halfLength;
+        const startY = centerY - Math.sin(tangentAngle) * halfLength;
+        const endX = centerX + Math.cos(tangentAngle) * halfLength;
+        const endY = centerY + Math.sin(tangentAngle) * halfLength;
+        if (distanceToSegment(game.player.x, game.player.y, startX, startY, endX, endY) < blackrootBossBrambleRadius + 12) {
+          game.health -= 14 * (1 - (getArmorEffects().contactDamageReduction || 0)) * dt;
+          break;
+        }
+      }
+    } else if (enemy.effect === 'gravity-boss-aura') {
+      if (distance < sectorThreeBossAuraRadius && distance > enemy.r) {
+        const pullStrength = 24 * dt;
+        game.player.x -= (game.player.x - enemy.x) / distance * pullStrength;
+        game.player.y -= (game.player.y - enemy.y) / distance * pullStrength;
+      }
+    } else if (enemy.effect === 'thunder-boss-aura') {
       if (distance < sectorTwoBossAuraRadius) {
         enemy.thunderAuraTimer += dt;
         if (enemy.thunderAuraTimer >= 2) {
@@ -2165,6 +2302,17 @@ function renderEnemySystem() {
       ctx.stroke();
       ctx.restore();
     }
+    if (enemy.effect === 'gravity-boss-aura') {
+      ctx.save();
+      ctx.fillStyle = '#9d7be522';
+      ctx.strokeStyle = '#c3a5ff77';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(0, 0, sectorThreeBossAuraRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.strokeStyle = enemy.color;
     ctx.fillStyle = `${enemy.color}55`;
     ctx.lineWidth = enemy.boss ? 4 : 2;
@@ -2198,6 +2346,24 @@ function renderEnemySystem() {
     }
     ctx.fill();
     ctx.stroke();
+    if (enemy.effect === 'blackroot-boss-brambles') {
+      ctx.save();
+      ctx.strokeStyle = '#9bbf55';
+      ctx.lineWidth = blackrootBossBrambleRadius * 2;
+      ctx.lineCap = 'round';
+      for (let i = 0; i < 3; i++) {
+        const angle = enemy.brambleOrbitAngle + i * Math.PI * 2 / 3;
+        const centerX = Math.cos(angle) * (enemy.r + blackrootBossBrambleLength / 2);
+        const centerY = Math.sin(angle) * (enemy.r + blackrootBossBrambleLength / 2);
+        const tangentAngle = angle + Math.PI / 2;
+        const halfLength = blackrootBossBrambleLength / 2;
+        ctx.beginPath();
+        ctx.moveTo(centerX - Math.cos(tangentAngle) * halfLength, centerY - Math.sin(tangentAngle) * halfLength);
+        ctx.lineTo(centerX + Math.cos(tangentAngle) * halfLength, centerY + Math.sin(tangentAngle) * halfLength);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
     if (enemy.effect === 'ironwood-boss-shield' && enemy.ironwoodShieldHp > 0) {
       ctx.save();
       ctx.rotate(Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x));
