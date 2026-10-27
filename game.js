@@ -901,8 +901,10 @@ function createBiomeEnemy(x, y, biome, variant = null) {
     nullLaneAngle: 0,
     nullAttackCooldown: 0,
     wraithGuards: [],
+    wraithPests: [],
     wraithGuardOrbitAngle: 0,
     wraithGuardRespawnCooldown: 0,
+    wraithBossPestCooldown: 2,
     toxicRetaliationCooldown: 0,
     shieldTimer: 0, hitTimer: 0 
   };
@@ -1062,7 +1064,7 @@ function triggerNullIceExplosion(enemy) {
   }
 }
 
-function createWraithPest(owner) {
+function createWraithPest(owner, bossSpawn = false) {
   const angle = Math.random() * Math.PI * 2;
   const pest = {
     x: owner.x + Math.cos(angle) * (owner.r + 18),
@@ -1074,6 +1076,7 @@ function createWraithPest(owner) {
     variant: 'PEST',
     boss: false,
     wraithPest: true,
+    wraithBossPest: bossSpawn,
     pestOwner: owner,
     color: '#a88fd0',
     r: 7,
@@ -1087,7 +1090,11 @@ function createWraithPest(owner) {
     shieldTimer: 0,
     hitTimer: 0
   };
-  owner.pest = pest;
+  if (bossSpawn) {
+    owner.wraithPests.push(pest);
+  } else {
+    owner.pest = pest;
+  }
   game.enemies.push(pest);
 }
 
@@ -1139,6 +1146,11 @@ function updateWraithBossGuards(dt) {
       enemy.wraithGuardRespawnCooldown = 20;
       enemy.wraithGuardOrbitAngle = (enemy.wraithGuardOrbitAngle + dt * 1.2) % (Math.PI * 2);
       return;
+    }
+    enemy.wraithBossPestCooldown = Math.max(0, enemy.wraithBossPestCooldown - dt);
+    if (enemy.wraithBossPestCooldown <= 0) {
+      createWraithPest(enemy, true);
+      enemy.wraithBossPestCooldown = 2;
     }
     enemy.wraithGuardRespawnCooldown = Math.max(0, enemy.wraithGuardRespawnCooldown - dt);
     if (enemy.wraithGuardRespawnCooldown <= 0) spawnWraithBossGuards(enemy);
@@ -1316,8 +1328,12 @@ function defeatEnemy(enemy, bonus = 0) {
   if (enemy.effect === 'dead-star-explosion') triggerDeadStarExplosion(enemy);
   if (enemy.nebulaMissile) triggerNebulaMissileDeath(enemy);
   if (enemy.wraithPest && enemy.pestOwner && !enemy.pestOwner.defeated) {
-    enemy.pestOwner.pest = null;
-    enemy.pestOwner.pestCooldown = 7;
+    if (enemy.wraithBossPest) {
+      enemy.pestOwner.wraithPests = enemy.pestOwner.wraithPests.filter(pest => pest !== enemy);
+    } else {
+      enemy.pestOwner.pest = null;
+      enemy.pestOwner.pestCooldown = 7;
+    }
   }
   if (enemy.voidWorm) {
     if (Math.random() < .33) game.atlasCrystals++;
@@ -1745,6 +1761,7 @@ function update(dt) {
     .map(enemy => ({ x: enemy.x, y: enemy.y }));
   game.enemies.forEach(e => {
     const localEnemySpeedMultiplier = effects.enemySpeedMultiplier * (ashenAuras.some(aura => Math.hypot(e.x - aura.x, e.y - aura.y) < sectorOneBossAuraRadius) ? 1.1 : 1);
+    const wraithShieldDown = e.effect === 'wraith-boss-guards' && !e.wraithGuards.some(guard => !guard.defeated);
     if (e.burnTimer > 0) {
       const burnTime = Math.min(dt, e.burnTimer);
       e.burnTimer = Math.max(0, e.burnTimer - dt);
@@ -1771,7 +1788,10 @@ function update(dt) {
     e.previousY = e.y;
 
     // Movement calculation
-    if (e.effect === 'null-boss-lane' && (e.nullLaneTimer > 0 || e.nullSpikesTimer > 0)) {
+    if (wraithShieldDown) {
+      e.x = e.previousX;
+      e.y = e.previousY;
+    } else if (e.effect === 'null-boss-lane' && (e.nullLaneTimer > 0 || e.nullSpikesTimer > 0)) {
       e.facingAngle = e.nullLaneAngle;
     } else if (e.wraithGuard && e.guardOwner && !e.guardOwner.defeated) {
       const owner = e.guardOwner;
@@ -1914,7 +1934,7 @@ function update(dt) {
       e.x = e.previousX;
       e.y = e.previousY;
     }
-    if (e.knockbackX || e.knockbackY) {
+    if ((e.knockbackX || e.knockbackY) && !wraithShieldDown) {
       e.x += e.knockbackX * dt;
       e.y += e.knockbackY * dt;
       const knockbackDecay = Math.exp(-5 * dt);
