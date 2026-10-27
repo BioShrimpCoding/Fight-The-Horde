@@ -237,6 +237,14 @@ const sectorThreeMiniBossAbilities = [
 const sectorThreeBossAuraRadius = 250;
 const blackrootBossBrambleLength = 110;
 const blackrootBossBrambleRadius = 14;
+const sectorFourMiniBossAbilities = [
+  { ability: 'STORM STRIKE', effect: 'storm-boss-strikes' },
+  { ability: 'CRIMSON TRAIL SHOTS', effect: 'crimson-boss-trails' },
+  { ability: 'NULL ICE LANE', effect: 'null-boss-lane' },
+  { ability: 'WRAITH GUARD', effect: 'wraith-boss-guards' }
+];
+const nullBossLaneLength = 250;
+const nullBossLaneWidth = 50;
 
 sectorRegions.flat().forEach((biome, index) => { biome.effects = { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { ...biomeHazards[index], visual: hazardVisuals[index], zoneDamagePerSecond: biomeHazards[index].damagePerSecond }, ...biomeEffectProfiles[index] }; });
 sectorRegions.flat().forEach((biome, index) => { const family = enemyFamilies[index]; biome.enemyFamily = { name: family[0], ability: family[1], effect: family[2] }; });
@@ -286,6 +294,7 @@ function freshGame() {
     nodes: [], 
     hazardZones: [],
     brambleZones: [],
+    lightningStrikes: [],
     discovered: new Set(['sanctuary']), 
     player: { x: 0, y: 0, angle: 0 }, 
     spawnTimer: 0, 
@@ -853,7 +862,10 @@ function createBiomeEnemy(x, y, biome, variant = null) {
   const sectorThreeMiniBossAbility = familyIndex >= 8 && familyIndex < 12 && enemyVariant.boss
     ? sectorThreeMiniBossAbilities[familyIndex - 8]
     : null;
-  const miniBossAbility = sectorOneMiniBossAbility || sectorTwoMiniBossAbility || sectorThreeMiniBossAbility;
+  const sectorFourMiniBossAbility = familyIndex >= 12 && familyIndex < 16 && enemyVariant.boss
+    ? sectorFourMiniBossAbilities[familyIndex - 12]
+    : null;
+  const miniBossAbility = sectorOneMiniBossAbility || sectorTwoMiniBossAbility || sectorThreeMiniBossAbility || sectorFourMiniBossAbility;
   const ability = miniBossAbility?.ability ?? family.ability;
   const effect = miniBossAbility?.effect ?? family.effect;
 
@@ -884,6 +896,13 @@ function createBiomeEnemy(x, y, biome, variant = null) {
     ironwoodShieldHp: effect === 'ironwood-boss-shield' ? scaledHp : 0,
     ironwoodShieldMaxHp: effect === 'ironwood-boss-shield' ? scaledHp : 0,
     brambleOrbitAngle: 0,
+    nullLaneTimer: 0,
+    nullSpikesTimer: 0,
+    nullLaneAngle: 0,
+    nullAttackCooldown: 0,
+    wraithGuards: [],
+    wraithGuardOrbitAngle: 0,
+    wraithGuardRespawnCooldown: 0,
     toxicRetaliationCooldown: 0,
     shieldTimer: 0, hitTimer: 0 
   };
@@ -894,6 +913,7 @@ function createBiomeEnemy(x, y, biome, variant = null) {
     get: () => health,
     set: value => {
       const attemptedDamage = health - value;
+      if (attemptedDamage > 0 && enemy.effect === 'wraith-boss-guards' && enemy.wraithGuards.some(guard => !guard.defeated)) return;
       if (attemptedDamage > 0 && enemy.effect === 'damage-ignore' && Math.random() < .05) return;
       const weapon = weaponCatalog[game.weapon];
       const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y);
@@ -910,6 +930,7 @@ function createBiomeEnemy(x, y, biome, variant = null) {
 
   game.enemies.push(enemy);
   if (enemy.effect === 'death-fireballs') attachEmberFireballs(enemy);
+  if (enemy.effect === 'wraith-boss-guards') spawnWraithBossGuards(enemy);
   return enemy;
 }
 
@@ -1078,6 +1099,71 @@ function updateWraithPestSpawns(dt) {
   });
 }
 
+function spawnWraithBossGuards(owner) {
+  owner.wraithGuards = [];
+  for (let i = 0; i < 3; i++) {
+    const guard = {
+      x: owner.x,
+      y: owner.y,
+      family: 'WRAITH GUARD',
+      familyIndex: owner.familyIndex,
+      ability: null,
+      effect: null,
+      variant: 'GUARD',
+      boss: false,
+      wraithGuard: true,
+      guardOwner: owner,
+      guardIndex: i,
+      color: '#b8a1e8',
+      r: 8,
+      speed: 0,
+      hp: 1,
+      maxHp: 1,
+      damage: 0,
+      contactDamage: 0,
+      score: 10,
+      drops: 0,
+      shieldTimer: 0,
+      hitTimer: 0
+    };
+    owner.wraithGuards.push(guard);
+    game.enemies.push(guard);
+  }
+}
+
+function updateWraithBossGuards(dt) {
+  game.enemies.forEach(enemy => {
+    if (enemy.effect !== 'wraith-boss-guards' || enemy.defeated) return;
+    const guardsAlive = enemy.wraithGuards.some(guard => !guard.defeated);
+    if (guardsAlive) {
+      enemy.wraithGuardRespawnCooldown = 20;
+      enemy.wraithGuardOrbitAngle = (enemy.wraithGuardOrbitAngle + dt * 1.2) % (Math.PI * 2);
+      return;
+    }
+    enemy.wraithGuardRespawnCooldown = Math.max(0, enemy.wraithGuardRespawnCooldown - dt);
+    if (enemy.wraithGuardRespawnCooldown <= 0) spawnWraithBossGuards(enemy);
+  });
+}
+
+function updateLightningStrikes(dt) {
+  game.lightningStrikes.forEach(strike => {
+    if (!strike.struck) {
+      strike.warningTimer -= dt;
+      if (strike.warningTimer <= 0) {
+        strike.struck = true;
+        strike.flashTimer = .25;
+        if (Math.hypot(game.player.x - strike.x, game.player.y - strike.y) < strike.radius) {
+          game.health -= strike.damage * (1 - (getArmorEffects().hazardDamageReduction || 0));
+        }
+        burst(strike.x, strike.y, 12, 180);
+      }
+    } else {
+      strike.flashTimer -= dt;
+    }
+  });
+  game.lightningStrikes = game.lightningStrikes.filter(strike => !strike.struck || strike.flashTimer > 0);
+}
+
 function spawnNebulaMissile(owner) {
   const missile = {
     x: owner.x,
@@ -1213,6 +1299,16 @@ function triggerGlassDesertDeath(enemy) {
 function defeatEnemy(enemy, bonus = 0) {
   if (!enemy || enemy.defeated || enemy.hp > 0) return;
   enemy.defeated = true;
+  if (enemy.wraithGuard && enemy.guardOwner && !enemy.guardOwner.defeated
+      && enemy.guardOwner.wraithGuards.every(guard => guard.defeated)) {
+    enemy.guardOwner.wraithGuardRespawnCooldown = 20;
+  }
+  if (enemy.effect === 'wraith-boss-guards') {
+    enemy.wraithGuards.forEach(guard => {
+      guard.defeated = true;
+      guard.hp = 0;
+    });
+  }
   if (enemy.effect === 'death-burn') triggerGlassDesertDeath(enemy);
   if (enemy.effect === 'death-fireballs') launchEmberFireballs(enemy);
   if (enemy.effect === 'death-explosion') triggerNullIceExplosion(enemy);
@@ -1231,7 +1327,7 @@ function defeatEnemy(enemy, bonus = 0) {
       for (let i = 0; i < splitCount; i++) game.enemies.push(createVoidWorm(enemy.x + (i ? 26 : -26), enemy.y, false));
     }
   }
-  if (!enemy.wraithPest && !enemy.nebulaMissile) dropResource(enemy.x, enemy.y, enemy.drops || 1);
+  if (!enemy.wraithPest && !enemy.nebulaMissile && !enemy.wraithGuard) dropResource(enemy.x, enemy.y, enemy.drops || 1);
   game.score += (enemy.score || 100) + bonus;
   if (enemy.boss && Math.random() < .5) game.relics++;
   if (Math.random() > (enemy.boss ? .35 : .72)) game.gems.push({ x: enemy.x, y: enemy.y, life: 18 });
@@ -1361,6 +1457,32 @@ function drawSectorFourEffects() {
   const camY = game.camera.y - canvas.clientHeight / 2;
   ctx.save();
   ctx.translate(-camX, -camY);
+  game.lightningStrikes.forEach(strike => {
+    ctx.save();
+    if (strike.struck) {
+      ctx.globalAlpha = Math.max(0, strike.flashTimer / .25);
+      ctx.strokeStyle = '#d9faff';
+      ctx.shadowBlur = 18;
+      ctx.shadowColor = '#8bdff0';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(strike.x, strike.y - 180);
+      ctx.lineTo(strike.x - 12, strike.y - 95);
+      ctx.lineTo(strike.x + 10, strike.y - 35);
+      ctx.lineTo(strike.x, strike.y);
+      ctx.stroke();
+    } else {
+      ctx.globalAlpha = .65;
+      ctx.fillStyle = '#f6ed9833';
+      ctx.strokeStyle = '#f6ed98';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(strike.x, strike.y, strike.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  });
   game.portals.forEach(portal => {
     ctx.save();
     ctx.globalAlpha = Math.min(1, portal.timer);
@@ -1472,6 +1594,8 @@ function update(dt) {
   if (game.decayTimer > 0) game.health -= 4 * (1 - (getArmorEffects().statusDamageReduction || 0)) * dt;
   updateRiftPortals(dt);
   updateWraithPestSpawns(dt);
+  updateWraithBossGuards(dt);
+  updateLightningStrikes(dt);
   game.enemyTrails.forEach(trail => {
     trail.life -= dt;
     if (Math.hypot(game.player.x - trail.x, game.player.y - trail.y) < trail.radius) {
@@ -1647,7 +1771,15 @@ function update(dt) {
     e.previousY = e.y;
 
     // Movement calculation
-    if (e.voidStalker && !e.isAggroed) {
+    if (e.effect === 'null-boss-lane' && (e.nullLaneTimer > 0 || e.nullSpikesTimer > 0)) {
+      e.facingAngle = e.nullLaneAngle;
+    } else if (e.wraithGuard && e.guardOwner && !e.guardOwner.defeated) {
+      const owner = e.guardOwner;
+      const angle = owner.wraithGuardOrbitAngle + e.guardIndex * Math.PI * 2 / 3;
+      const orbitRadius = owner.r + 58;
+      e.x = owner.x + Math.cos(angle) * orbitRadius;
+      e.y = owner.y + Math.sin(angle) * orbitRadius;
+    } else if (e.voidStalker && !e.isAggroed) {
       const playerDistance = Math.hypot(p.x, p.y);
       if (Math.hypot(p.x - e.x, p.y - e.y) <= 250 || playerDistance >= 30000) {
         e.isAggroed = true;
@@ -1948,6 +2080,21 @@ function update(dt) {
     proj.x += proj.vx * dt;
     proj.y += proj.vy * dt;
     proj.life -= dt;
+    if (proj.damageTrail) {
+      proj.trailTimer -= dt;
+      if (proj.trailTimer <= 0) {
+        game.enemyTrails.push({
+          x: proj.x,
+          y: proj.y,
+          radius: 24,
+          life: 2,
+          maxLife: 2,
+          damagePerSecond: 12,
+          color: proj.color
+        });
+        proj.trailTimer = .1;
+      }
+    }
     if (proj.grows) {
       const growth = 1 - Math.max(0, proj.life) / 2.5;
       proj.radius = 8 + (proj.maxRadius - 8) * growth;
@@ -1972,7 +2119,7 @@ function update(dt) {
     }
     
     // Player collision
-    if (!proj.frostAura && (proj.volleyTimer === undefined || proj.volleyLaunched) && Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
+    if (!proj.frostAura && !proj.damageTrail && (proj.volleyTimer === undefined || proj.volleyLaunched) && Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
       game.health -= proj.damage * (1 - (getArmorEffects().voidDamageReduction || 0));
       if (proj.burnDuration) {
         const status = game.enemyStatus || (game.enemyStatus = { burn: 0, acid: 0, bleed: 0, freeze: 0, root: 0 });
@@ -2048,7 +2195,67 @@ function applyEnemyAbilities(dt) {
       if (enemy.effect === 'slow') status.freeze = Math.max(status.freeze, 2.5);
       if (enemy.effect === 'root') status.root = Math.max(status.root, 2);
     }
-    if (enemy.effect === 'bone-boss-burst') {
+    if (enemy.effect === 'null-boss-lane') {
+      enemy.nullAttackCooldown = Math.max(0, enemy.nullAttackCooldown - dt);
+      if (enemy.nullLaneTimer > 0) {
+        enemy.nullLaneTimer = Math.max(0, enemy.nullLaneTimer - dt);
+        if (enemy.nullLaneTimer === 0) enemy.nullSpikesTimer = 1;
+      } else if (enemy.nullSpikesTimer > 0) {
+        enemy.nullSpikesTimer = Math.max(0, enemy.nullSpikesTimer - dt);
+        const relativeX = game.player.x - enemy.x;
+        const relativeY = game.player.y - enemy.y;
+        const forward = relativeX * Math.cos(enemy.nullLaneAngle) + relativeY * Math.sin(enemy.nullLaneAngle);
+        const side = -relativeX * Math.sin(enemy.nullLaneAngle) + relativeY * Math.cos(enemy.nullLaneAngle);
+        if (forward >= 0 && forward <= nullBossLaneLength && Math.abs(side) <= nullBossLaneWidth / 2) {
+          game.health -= 12 * (1 - (getArmorEffects().statusDamageReduction || 0)) * dt;
+          game.attackDisabledTimer = Math.max(game.attackDisabledTimer, 4);
+        }
+      } else if (distance < 850 && enemy.nullAttackCooldown <= 0) {
+        enemy.nullLaneAngle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+        enemy.nullLaneTimer = .75;
+        enemy.nullAttackCooldown = 8;
+      }
+    } else if (enemy.effect === 'storm-boss-strikes') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (enemy.bossAbilityCooldown <= 0) {
+        for (let i = 0; i < 3; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const distanceFromBoss = Math.sqrt(Math.random()) * 250;
+          game.lightningStrikes.push({
+            x: enemy.x + Math.cos(angle) * distanceFromBoss,
+            y: enemy.y + Math.sin(angle) * distanceFromBoss,
+            radius: 45,
+            warningTimer: 1,
+            struck: false,
+            flashTimer: 0,
+            damage: 15
+          });
+        }
+        enemy.bossAbilityCooldown = 2;
+      }
+    } else if (enemy.effect === 'crimson-boss-trails') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (distance < 800 && enemy.bossAbilityCooldown <= 0) {
+        const targetAngle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+        for (let i = 0; i < 3; i++) {
+          const angle = targetAngle + (Math.random() - .5) * .8;
+          const speed = 300 + Math.random() * 400;
+          game.projectiles.push({
+            x: enemy.x,
+            y: enemy.y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 3.5,
+            radius: 8,
+            damage: 0,
+            color: '#ef6672',
+            damageTrail: true,
+            trailTimer: 0
+          });
+        }
+        enemy.bossAbilityCooldown = 3;
+      }
+    } else if (enemy.effect === 'bone-boss-burst') {
       enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
       if (distance < 700 && enemy.bossAbilityCooldown <= 0) {
         fireBoneMiniBossBurst(enemy);
@@ -2280,6 +2487,32 @@ function renderEnemySystem() {
     const shape = (enemy.familyIndex + enemy.variant.length) % 6;
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
+    if (enemy.effect === 'null-boss-lane' && (enemy.nullLaneTimer > 0 || enemy.nullSpikesTimer > 0)) {
+      ctx.save();
+      ctx.rotate(enemy.nullLaneAngle);
+      ctx.globalAlpha = enemy.nullSpikesTimer > 0 ? .9 : .5;
+      ctx.fillStyle = enemy.nullSpikesTimer > 0 ? '#b9f4ff99' : '#f7e5c566';
+      ctx.strokeStyle = enemy.nullSpikesTimer > 0 ? '#e5fcff' : '#f7e5c5';
+      ctx.lineWidth = 3;
+      ctx.fillRect(0, -nullBossLaneWidth / 2, nullBossLaneLength, nullBossLaneWidth);
+      ctx.strokeRect(0, -nullBossLaneWidth / 2, nullBossLaneLength, nullBossLaneWidth);
+      if (enemy.nullSpikesTimer > 0) {
+        ctx.fillStyle = '#e5fcff';
+        for (let x = 14; x < nullBossLaneLength; x += 28) {
+          ctx.beginPath();
+          ctx.moveTo(x - 9, -nullBossLaneWidth / 2);
+          ctx.lineTo(x, -nullBossLaneWidth / 2 - 16);
+          ctx.lineTo(x + 9, -nullBossLaneWidth / 2);
+          ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(x - 9, nullBossLaneWidth / 2);
+          ctx.lineTo(x, nullBossLaneWidth / 2 + 16);
+          ctx.lineTo(x + 9, nullBossLaneWidth / 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
     if (enemy.effect === 'slow-aura') {
       ctx.save();
       ctx.fillStyle = '#82c5d733';
@@ -2346,6 +2579,18 @@ function renderEnemySystem() {
     }
     ctx.fill();
     ctx.stroke();
+    if (enemy.effect === 'wraith-boss-guards' && enemy.wraithGuards.some(guard => !guard.defeated)) {
+      ctx.save();
+      ctx.globalAlpha = .35;
+      ctx.strokeStyle = '#c9b8ff';
+      ctx.fillStyle = '#c9b8ff22';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, enemy.r + 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     if (enemy.effect === 'blackroot-boss-brambles') {
       ctx.save();
       ctx.strokeStyle = '#9bbf55';
