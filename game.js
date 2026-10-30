@@ -82,6 +82,7 @@ const weaponCatalog = {
   laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 4.80, range: 115, meleeDuration: .36, meleeSweep: 2.5, meleeStyle: 'laserBlade', kind: 'melee' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 100, damage: 1.30, speed: 440, life: .50, pellets: 1, spread: .50, kind: 'gun', oscillating: true, coneSize: .20 },
   railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 1, cooldown: 1200, damage: 18.00, speed: 1600, life: 1, pellets: 1, spread: 0, beam: true, kind: 'gun' },
+  radBeam: { name: 'RAD BEAM', ammo: 'radCells', magazine: 8, range: 600, damage: 0.05, radiationDamage: .5, radiationTickInterval: .5, radiationDuration: 2, radiationSlowChance: .05, radiationSlowMultiplier: .85, kind: 'gun', continuousBeam: true },
   cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 16, cooldown: 100, damage: 1.60, speed: 450, life: 0.8, pellets: 2, spread: .60, kind: 'gun', oscillating: true, coneSize: .25 }
 };
 
@@ -99,6 +100,7 @@ const ammoCatalog = {
   fuelCells: { name: 'FLAME FUEL', amount: 8, cost: { fuel: 8, rawIron: 2 } }, 
   pulseCells: { name: 'PULSE CELLS', amount: 10, cost: { crystal: 4, steel: 2 } }, 
   voidChains: {name:`VOID CHAINS`, amount:4, cost: {steel:6 , fuel:4 , crystal:3 } },
+  radCells: { name: 'RAD CELLS', amount: 8, cost: { crystal: 2, fuel: 2, steel: 2 } },
   magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 14, cost: {} },
   cosmosGauntletAmmo: { name: 'COSMOS GAUNTLET CLIPS', amount: 12, cost: {} }
 };
@@ -137,7 +139,8 @@ const weaponRecipes = {
   
   voidBatar: { name: 'VOID BATAR', time: 18 , cost: { steel: 18, crystal: 20, relic: 2, atlasCrystal: 1, minigun: 1}, weapon: 'voidBatar' }, //void batar is going to have a special crafting component dropped by void rift mini bosses
   magicGauntlet: { name: 'MAGIC GAUNTLET', time: 15, cost: { crystal: 12, steel: 6, relic: 1 }, weapon: 'magicGauntlet' },
-  railgun: { name: 'RAILGUN', time: 18, cost: { steel: 16, crystal: 8, relic: 2 }, weapon: 'railgun' },
+  railgun: { name: 'RAILGUN', time: 0, cost: { steel: 16, crystal: 8, relic: 2 }, weapon: 'railgun' },
+  radBeam: { name: 'RAD BEAM', time: 0, cost: { steel: 4, fuel: 4, crystal: 8, railgun: 1, atlasCrystal: 1, relic: 2 }, weapon: 'radBeam' },
   cosmosGauntlet: { name: 'COSMOS GAUNTLET', time: 20, cost: { crystal: 16, steel: 8, relic: 2, atlasCrystal: 1, magicGauntlet: 1 }, weapon: 'cosmosGauntlet' }
 };
 const armorCatalog = {
@@ -245,9 +248,27 @@ const sectorFourMiniBossAbilities = [
 ];
 const nullBossLaneLength = 250;
 const nullBossLaneWidth = 50;
+const sectorFiveMiniBossAbilities = [
+  { ability: 'DECAY VOLLEY', effect: 'sunless-boss-volley' },
+  { ability: 'STARFIRE PIERCE', effect: 'starfire-boss-pierce' },
+  { ability: 'NEBULA SALVO', effect: 'nebula-boss-salvo' },
+  { ability: 'ABYSSAL WAVE', effect: 'abyssal-boss-wave' }
+];
+const abyssalBossWaveMaxRadius = 240;
+const sectorSixMiniBossAbilities = [
+  { ability: 'RIFT SPAWN VOLLEY', effect: 'rift-boss-volley' },
+  { ability: 'SINGULARITY SHOT', effect: 'horizon-boss-singularity' },
+  { ability: 'DEAD STAR AURA', effect: 'dead-star-boss-aura' },
+  { ability: 'INFINITE CHARGE', effect: 'dark-boss-charge' }
+];
+const deadStarBossAuraRadius = 250;
+const darkBossDashCircleRadius = 38;
 
 sectorRegions.flat().forEach((biome, index) => { biome.effects = { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { ...biomeHazards[index], visual: hazardVisuals[index], zoneDamagePerSecond: biomeHazards[index].damagePerSecond }, ...biomeEffectProfiles[index] }; });
 sectorRegions.flat().forEach((biome, index) => { const family = enemyFamilies[index]; biome.enemyFamily = { name: family[0], ability: family[1], effect: family[2] }; });
+function hasEnemyEffect(enemy, effect) {
+  return enemy.effect === effect || enemy.familyEffect === effect;
+}
 function seededRandom(seed) { let value = seed >>> 0; return () => { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; }; }
 function randomizeBiomeData(seed) { const random = seededRandom(seed); const positives = [() => ({ healthRegen: 3 + random() * 3 }), () => ({ moveMultiplier: 1.15 + random() * .25 }), () => ({ fireCooldownMultiplier: .55 + random() * .2 }), () => ({ pulseCooldownMultiplier: .35 + random() * .2 }), () => ({ salvageMultiplier: 1.75 + random() * 1.25 }), () => ({ enemySpeedMultiplier: .55 + random() * .2 })]; const negatives = [() => ({ damageMultiplier: 1.05 + random() * .1 }), () => ({ enemySpeedMultiplier: 1.05 + random() * .1 }), () => ({ moveMultiplier: .88 + random() * .07 }), () => ({ fireCooldownMultiplier: 1.05 + random() * .1 }), () => ({ pulseCooldownMultiplier: 1.05 + random() * .1 })]; sectorRegions.flat().forEach((biome, index) => { const positive = positives[Math.floor(random() * positives.length)](); const firstNegative = negatives[Math.floor(random() * negatives.length)](); const secondNegative = negatives[Math.floor(random() * negatives.length)](); const hazard = biome.effects.hazard; const sectorHazardMultiplier = .35 + Math.floor(index / 4) * .23; biome.effects = { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { ...hazard, damagePerSecond: biomeHazards[index].damagePerSecond * sectorHazardMultiplier, zoneDamagePerSecond: 3.5 + random() * 3 }, ...positive, ...firstNegative, ...secondNegative }; Object.assign(biome.effects, positive); if (index % 2 === 0) biome.effects.hazard.zoneDamagePerSecond += 1; }); }
 let game = freshGame();
@@ -266,6 +287,8 @@ function freshGame() {
     health: 100, 
     ammo: clipSize, 
     ammoReserve: { pistolAmmo: startingAmmoReserve * clipSize, magicGauntletAmmo: 6, cosmosGauntletAmmo: 6 }, 
+    radBeamActive: false,
+    radBeamDrainTimer: 0,
     weapon: 'sidearm',
     weaponSlots: ['sidearm', null, null, null],
     armor: null,
@@ -288,6 +311,8 @@ function freshGame() {
     portals: [],
     enemyTrails: [],
     toxicBossZones: [],
+    abyssalBossWaves: [],
+    darkBossDashCircles: [],
     sparks: [], 
     gems: [], 
     drops: [], 
@@ -316,7 +341,7 @@ renderWeaponBar();
 function resize() { const ratio = window.devicePixelRatio || 1; canvas.width = canvas.clientWidth * ratio; canvas.height = canvas.clientHeight * ratio; ctx.setTransform(ratio, 0, 0, ratio, 0, 0); if (!game.active) game.player = { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2, angle: 0 }; }
 window.addEventListener('resize', resize); resize();
 window.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); togglePause(); return; } keys[event.key.toLowerCase()] = true; if (event.key === adminUnlockSequence[adminUnlockIndex]) { adminUnlockIndex++; if (adminUnlockIndex === adminUnlockSequence.length) { adminUnlockIndex = 0; const code = window.prompt('ADMIN ACCESS CODE'); if (code === 'iAmAdmin') { adminMode = true; adminPanel.hidden = false; gameLog('INFO', 'Admin panel unlocked'); } else { gameLog('WARN', 'Admin access denied'); } } } else { adminUnlockIndex = event.key === adminUnlockSequence[0] ? 1 : 0; } if (event.key.toLowerCase() === 'j' && game.active && !game.paused && !event.repeat) cycleTacticalMapZoom(); if (event.key.toLowerCase() === 'e' && game.active && !game.paused && !event.repeat) toggleStation(); if (event.key === ' ' && game.active && !game.paused) shoot(); if (event.key.toLowerCase() === 'h' && game.active && !game.paused && !event.repeat) useMedkit(); if (event.key.toLowerCase() === 'q' && game.active && !game.paused) pulse(); if (game.active && !game.paused && !event.repeat && /^[0-9]$/.test(event.key)) switchWeapon(Number(event.key)); }); window.addEventListener('keyup', event => keys[event.key.toLowerCase()] = false);
-canvas.addEventListener('pointermove', event => { const box = canvas.getBoundingClientRect(); pointer.x = event.clientX - box.left; pointer.y = event.clientY - box.top; crosshair.style.left = `${pointer.x}px`; crosshair.style.top = `${pointer.y}px`; }); canvas.addEventListener('pointerdown', () => { pointer.down = true; if (game.active && !game.paused) shoot(); }); window.addEventListener('pointerup', () => pointer.down = false);
+canvas.addEventListener('pointermove', event => { const box = canvas.getBoundingClientRect(); pointer.x = event.clientX - box.left; pointer.y = event.clientY - box.top; crosshair.style.left = `${pointer.x}px`; crosshair.style.top = `${pointer.y}px`; }); canvas.addEventListener('pointerdown', () => { pointer.down = true; if (game.active && !game.paused) shoot(); }); window.addEventListener('pointerup', () => { pointer.down = false; game.radBeamActive = false; });
 document.querySelector('#start-button').onclick = start; document.querySelector('#restart-button').onclick = start; adminPanel.hidden = !adminMode; adminPanel.querySelectorAll('[data-admin]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); adminAction(button.dataset.admin, button.dataset.value); })); document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const quantityButton = event.target.closest('[data-craft-quantity]'); if (quantityButton) { event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(quantityButton.dataset.craftQuantity), Number(ui.craftDetails.dataset.weaponSlot || 0)); return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm, Number(ui.craftDetails.dataset.quantity || 1), Number(ui.craftDetails.dataset.weaponSlot || 0)); } });
 ui.weaponBar?.addEventListener('click', event => { const slotButton = event.target.closest('[data-weapon-slot]'); if (!slotButton) return; switchWeapon(Number(slotButton.dataset.weaponSlot)); });
 ui.craftDetails.addEventListener('click', event => { const slotButton = event.target.closest('[data-craft-slot]'); if (!slotButton) return; event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(ui.craftDetails.dataset.quantity || 1), Number(slotButton.dataset.craftSlot)); });
@@ -338,8 +363,8 @@ adminAction = function(action, value) {
 function teleportToSector(sector) { teleportPlayer((sector - .5) * 3000, 0); game.currentSector = sector; game.biomeKey = null; game.discovered.add(getSectorKey(sector - 1)); }
 function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camera.x = x; game.camera.y = y; }
 function start() { game = freshGame(); game.active = true; randomizeBiomeData(game.seed); game.hazardZones = generateHazardZones(); game.enemies.push(createVoidStalker()); const random = seededRandom(game.seed + 17); updateInventoryUI(); updateStationButtons(); for (let i = 0; i < 140; i++) { const roll = random(); game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: roll < .08 ? 'relic' : roll < .54 ? 'chest' : 'scrap', taken: false }); } gameShell.classList.remove('menu-state'); resize(); ui.start.classList.add('hidden'); ui.over.classList.add('hidden'); ui.pause.classList.add('hidden'); lastTime = performance.now(); cancelAnimationFrame(animation); animation = requestAnimationFrame(loop); }
-function togglePause() { if (!game.active) return; game.paused = !game.paused; keys.w = false; keys.a = false; keys.s = false; keys.d = false; pointer.down = false; ui.pause.classList.toggle('hidden', !game.paused); }
-function switchWeapon(index) { const weaponId = game.weaponSlots[index - 1]; if (!weaponId || !game.unlockedWeapons[weaponId]) return; game.weapon = weaponId; game.ammo = 0; game.reloadPending = weaponCatalog[weaponId].kind !== 'melee'; updateAmmoUI(); renderWeaponBar(); }
+function togglePause() { if (!game.active) return; game.paused = !game.paused; keys.w = false; keys.a = false; keys.s = false; keys.d = false; pointer.down = false; game.radBeamActive = false; ui.pause.classList.toggle('hidden', !game.paused); }
+function switchWeapon(index) { const weaponId = game.weaponSlots[index - 1]; if (!weaponId || !game.unlockedWeapons[weaponId]) return; game.weapon = weaponId; game.ammo = 0; game.reloadPending = weaponCatalog[weaponId].kind !== 'melee'; game.radBeamActive = false; game.radBeamDrainTimer = 0; updateAmmoUI(); renderWeaponBar(); }
 function renderWeaponBar() { if (!ui.weaponBar) return; ui.weaponBar.innerHTML = game.weaponSlots.map((weaponId, index) => { const weapon = weaponId ? weaponCatalog[weaponId] : null; return `<button type="button" class="weapon-slot ${weaponId === game.weapon ? 'selected' : ''}" data-weapon-slot="${index + 1}" title="${weapon ? weapon.name : 'EMPTY SLOT'}"><b>${index + 1}</b><span>${weapon ? weapon.name : 'EMPTY'}</span></button>`; }).join(''); }
 function addExplosion(x, y, radius, color = '#ff725e') {
   game.explosions.push({
@@ -508,6 +533,54 @@ function fireBeam(weapon) {
     if (enemy.hp <= 0) defeatEnemy(enemy);
   });
 }
+function updateRadBeam(dt) {
+  const weapon = weaponCatalog.radBeam;
+  if (game.attackDisabledTimer > 0 || game.weapon !== 'radBeam' || game.ammo <= 0) {
+    game.radBeamActive = false;
+    return;
+  }
+
+  const firingTime = Math.min(dt, game.ammo - game.radBeamDrainTimer);
+  if (firingTime <= 0) {
+    game.radBeamActive = false;
+    return;
+  }
+  game.radBeamActive = true;
+
+  const { x, y, angle } = game.player;
+  const directionX = Math.cos(angle);
+  const directionY = Math.sin(angle);
+  const startX = x + directionX * 20;
+  const startY = y + directionY * 20;
+  const length = weapon.range;
+
+  game.enemies.forEach(enemy => {
+    if (enemy.defeated || enemy.shieldTimer > 0 || !enemy.hp) return;
+
+    const relativeX = enemy.x - startX;
+    const relativeY = enemy.y - startY;
+    const alongBeam = Math.max(0, Math.min(length, relativeX * directionX + relativeY * directionY));
+    const closestX = startX + directionX * alongBeam;
+    const closestY = startY + directionY * alongBeam;
+    if (Math.hypot(enemy.x - closestX, enemy.y - closestY) >= enemy.r + 4) return;
+
+    enemy.hp = Math.max(0, enemy.hp - weapon.damage * firingTime);
+    if (!(enemy.radiationTimer > 0)) enemy.radiationTickTimer = weapon.radiationTickInterval;
+    enemy.radiationTimer = weapon.radiationDuration;
+    if (enemy.hp <= 0) defeatEnemy(enemy);
+  });
+
+  game.radBeamDrainTimer += firingTime;
+  while (game.radBeamDrainTimer >= 1 && game.ammo > 0) {
+    game.ammo--;
+    game.radBeamDrainTimer--;
+  }
+  if (game.ammo <= 0) {
+    game.ammo = 0;
+    game.reloadPending = true;
+    game.radBeamActive = false;
+  }
+}
 function releaseCosmosExplosion() {
   const { x, y } = game.player;
   const radius = 12 * 10;
@@ -616,8 +689,13 @@ function updateVoidBatarBullet(bullet, dt) {
   bullet.vy = bullet.directionY * speed;
 }
 function shoot() { 
-  if (!game.active || game.attackDisabledTimer > 0 || game.fireTimer > 0) return;
+  if (!game.active || game.attackDisabledTimer > 0) return;
   const weapon = weaponCatalog[game.weapon]; 
+  if (weapon.continuousBeam) {
+    game.radBeamActive = game.ammo > 0;
+    return;
+  }
+  if (game.fireTimer > 0) return;
   const p = game.player; 
   const effects = getBiome(p.x, p.y).effects; 
 
@@ -865,12 +943,19 @@ function createBiomeEnemy(x, y, biome, variant = null) {
   const sectorFourMiniBossAbility = familyIndex >= 12 && familyIndex < 16 && enemyVariant.boss
     ? sectorFourMiniBossAbilities[familyIndex - 12]
     : null;
-  const miniBossAbility = sectorOneMiniBossAbility || sectorTwoMiniBossAbility || sectorThreeMiniBossAbility || sectorFourMiniBossAbility;
+  const sectorFiveMiniBossAbility = familyIndex >= 16 && familyIndex < 20 && enemyVariant.boss
+    ? sectorFiveMiniBossAbilities[familyIndex - 16]
+    : null;
+  const sectorSixMiniBossAbility = familyIndex >= 20 && familyIndex < 24 && enemyVariant.boss
+    ? sectorSixMiniBossAbilities[familyIndex - 20]
+    : null;
+  const miniBossAbility = sectorOneMiniBossAbility || sectorTwoMiniBossAbility || sectorThreeMiniBossAbility || sectorFourMiniBossAbility || sectorFiveMiniBossAbility || sectorSixMiniBossAbility;
   const ability = miniBossAbility?.ability ?? family.ability;
   const effect = miniBossAbility?.effect ?? family.effect;
+  const familyEffect = enemyVariant.boss && familyIndex >= 4 && familyIndex < 24 ? family.effect : null;
 
   const enemy = { 
-    x, y, family: family.name, familyIndex, ability, effect,
+    x, y, family: family.name, familyIndex, ability, effect, familyEffect,
     variant: enemyVariant.name, boss: Boolean(enemyVariant.boss), color: biome.color,
     r: (10 + Math.random() * 6) * enemyVariant.radius, speed: baseSpeed * enemyVariant.speed * (family.effect === 'nebula-missiles' ? .65 : family.effect === 'spin-attack' ? 1.5 : 1),
     hp: scaledHp, maxHp: scaledHp, damage: enemyVariant.damage, contactDamage: enemyVariant.contactDamage,
@@ -886,6 +971,7 @@ function createBiomeEnemy(x, y, biome, variant = null) {
     pest: null,
     decayApplied: false,
     fireExplosionCooldown: 0,
+    familyAbilityTimer: 1 + Math.random() * 2,
     missileCooldown: family.effect === 'nebula-missiles' ? 10 : 0,
     arcProjectileCooldown: 0,
     teleportCooldown: 0,
@@ -905,6 +991,15 @@ function createBiomeEnemy(x, y, biome, variant = null) {
     wraithGuardOrbitAngle: 0,
     wraithGuardRespawnCooldown: 0,
     wraithBossPestCooldown: 2,
+    nebulaBurstPairsRemaining: 0,
+    nebulaBurstTimer: 0,
+    darkDashCooldown: 0,
+    darkDashPauseTimer: 0,
+    darkDashTimer: 0,
+    darkDashAngle: 0,
+    darkDashTrailTimer: 0,
+    deadStarSpeedBuffTimer: 0,
+    deadStarAuraTimer: 0,
     toxicRetaliationCooldown: 0,
     shieldTimer: 0, hitTimer: 0 
   };
@@ -915,15 +1010,15 @@ function createBiomeEnemy(x, y, biome, variant = null) {
     get: () => health,
     set: value => {
       const attemptedDamage = health - value;
-      if (attemptedDamage > 0 && enemy.effect === 'wraith-boss-guards' && enemy.wraithGuards.some(guard => !guard.defeated)) return;
-      if (attemptedDamage > 0 && enemy.effect === 'damage-ignore' && Math.random() < .05) return;
+      if (attemptedDamage > 0 && hasEnemyEffect(enemy, 'wraith-boss-guards') && enemy.wraithGuards.some(guard => !guard.defeated)) return;
+      if (attemptedDamage > 0 && hasEnemyEffect(enemy, 'damage-ignore') && Math.random() < .05) return;
       const weapon = weaponCatalog[game.weapon];
       const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y);
       const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12;
       const previousHealth = health;
       health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
-      if (health < previousHealth && enemy.effect === 'damage-burst' && Math.random() < .5) triggerBoneOrchardHit(enemy);
-      if (health < previousHealth && enemy.effect === 'toxic-boss-burst' && enemy.toxicRetaliationCooldown <= 0) {
+      if (health < previousHealth && hasEnemyEffect(enemy, 'damage-burst') && Math.random() < .5) triggerBoneOrchardHit(enemy);
+      if (health < previousHealth && hasEnemyEffect(enemy, 'toxic-boss-burst') && enemy.toxicRetaliationCooldown <= 0) {
         createToxicBossZone(enemy);
         enemy.toxicRetaliationCooldown = 1;
       }
@@ -931,9 +1026,180 @@ function createBiomeEnemy(x, y, biome, variant = null) {
   });
 
   game.enemies.push(enemy);
-  if (enemy.effect === 'death-fireballs') attachEmberFireballs(enemy);
+  if (hasEnemyEffect(enemy, 'death-fireballs')) attachEmberFireballs(enemy);
   if (enemy.effect === 'wraith-boss-guards') spawnWraithBossGuards(enemy);
   return enemy;
+}
+
+function spawnRandomBiomeElites(x, y, count) {
+  const radius = Math.hypot(x, y);
+  if (getBiome(x, y).key === 'void') {
+    const safeRadius = Math.max(0, mapRadius - 150);
+    x = radius > 0 ? x / radius * safeRadius : 0;
+    y = radius > 0 ? y / radius * safeRadius : 0;
+  }
+  for (let i = 0; i < count; i++) {
+    const familyIndex = Math.floor(Math.random() * 20);
+    const sectorIndex = Math.floor(familyIndex / 4);
+    const biomeIndex = familyIndex % 4;
+    const angle = Math.PI * 2 * i / count;
+    const spawnRadius = 45 + Math.random() * 25;
+    const biome = {
+      ...sectorRegions[sectorIndex][biomeIndex],
+      key: `sector-${sectorIndex}-${biomeIndex}`,
+      sector: sectorIndex + 1
+    };
+    createBiomeEnemy(
+      x + Math.cos(angle) * spawnRadius,
+      y + Math.sin(angle) * spawnRadius,
+      biome,
+      enemyVariants[3]
+    );
+  }
+}
+
+function fireVoidRiftMiniBossVolley(enemy) {
+  const targetAngle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+  for (let i = 0; i < 4; i++) {
+    const angle = targetAngle + (i - 1.5) * .2;
+    game.projectiles.push({
+      x: enemy.x,
+      y: enemy.y,
+      vx: Math.cos(angle) * 145,
+      vy: Math.sin(angle) * 145,
+      life: 5,
+      radius: 11,
+      damage: 8,
+      color: '#ca8bea',
+      spawnElitesOnHit: true
+    });
+  }
+}
+
+function fireEventHorizonMiniBossProjectile(enemy) {
+  const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+  game.projectiles.push({
+    x: enemy.x,
+    y: enemy.y,
+    vx: Math.cos(angle) * 180,
+    vy: Math.sin(angle) * 180,
+    life: 5,
+    radius: 14,
+    damage: 30,
+    color: '#ec7dc4',
+    singularity: true,
+    singularityRadius: 135,
+    pullSpeed: 85,
+    damagePerSecond: 24
+  });
+}
+
+function triggerDeadStarMiniBossAura(enemy) {
+  game.enemies.forEach(target => {
+    if (target.defeated || target.familyIndex !== 22 || Math.hypot(target.x - enemy.x, target.y - enemy.y) > deadStarBossAuraRadius) return;
+    const angle = Math.atan2(game.player.y - target.y, game.player.x - target.x);
+    const targetX = target.x + Math.cos(angle) * 50;
+    const targetY = target.y + Math.sin(angle) * 50;
+    const destinationBiome = getBiome(targetX, targetY).key;
+    if (destinationBiome !== 'sanctuary' && (destinationBiome !== 'void' || target.voidWorm || target.voidWalker || target.voidStalker)) {
+      target.x = targetX;
+      target.y = targetY;
+    }
+    target.deadStarSpeedBuffTimer = 5;
+  });
+  enemy.deadStarAuraTimer = .75;
+}
+
+function createDarkBossDashCircle(enemy) {
+  game.darkBossDashCircles.push({
+    x: enemy.x,
+    y: enemy.y,
+    radius: darkBossDashCircleRadius,
+    life: 1,
+    maxLife: 1,
+    damage: 8,
+    hit: false
+  });
+}
+
+function fireDarkBossPerpendicularProjectiles(enemy) {
+  for (const offset of [-Math.PI / 2, Math.PI / 2]) {
+    const angle = enemy.darkDashAngle + offset;
+    game.projectiles.push({
+      x: enemy.x,
+      y: enemy.y,
+      vx: Math.cos(angle) * 300,
+      vy: Math.sin(angle) * 300,
+      life: 1.8,
+      radius: 8,
+      damage: 6,
+      color: '#809eea'
+    });
+  }
+}
+
+function updateDarkBossDashCircles(dt) {
+  game.darkBossDashCircles.forEach(circle => {
+    circle.life -= dt;
+    if (!circle.hit && Math.hypot(game.player.x - circle.x, game.player.y - circle.y) < circle.radius + 13) {
+      circle.hit = true;
+      game.health -= circle.damage * (1 - (getArmorEffects().contactDamageReduction || 0));
+    }
+  });
+  game.darkBossDashCircles = game.darkBossDashCircles.filter(circle => circle.life > 0);
+}
+
+function applyMinibossFamilyAbility(enemy, dt, distance) {
+  if (enemy.familyEffect === 'bramble') {
+    enemy.brambleCooldown = Math.max(0, enemy.brambleCooldown - dt);
+    if (distance < 550 && enemy.brambleCooldown <= 0) {
+      game.brambleZones.push({
+        x: game.player.x,
+        y: game.player.y,
+        radius: 52,
+        telegraphTimer: 1.5,
+        active: false,
+        life: 0
+      });
+      enemy.brambleCooldown = 10;
+    }
+  } else if (enemy.familyEffect === 'gravity-fields-pull') {
+    enemy.familyAbilityTimer -= dt;
+    if (enemy.familyAbilityTimer <= 0) {
+      if (distance < 260 && Math.random() >= .75) {
+        const angle = Math.atan2(enemy.y - game.player.y, enemy.x - game.player.x);
+        game.player.x += Math.cos(angle) * 35;
+        game.player.y += Math.sin(angle) * 35;
+      }
+      enemy.familyAbilityTimer = enemy.boss ? 1.4 : 2.8;
+    }
+  } else if (enemy.familyEffect === 'fire-explosion') {
+    enemy.fireExplosionCooldown = Math.max(0, enemy.fireExplosionCooldown - dt);
+    if (distance < 380 && enemy.fireExplosionCooldown <= 0) {
+      triggerStarfireExplosion(enemy);
+      enemy.fireExplosionCooldown = 6;
+    }
+  } else if (enemy.familyEffect === 'nebula-missiles') {
+    enemy.missileCooldown = Math.max(0, enemy.missileCooldown - dt);
+    if (distance < 650 && enemy.missileCooldown <= 0) {
+      fireNebulaMissiles(enemy);
+      enemy.missileCooldown = 10;
+    }
+  } else if (enemy.familyEffect === 'arc-projectiles') {
+    enemy.arcProjectileCooldown = Math.max(0, enemy.arcProjectileCooldown - dt);
+    if (distance < 600 && enemy.arcProjectileCooldown <= 0) {
+      fireAbyssalProjectile(enemy);
+      enemy.arcProjectileCooldown = 6;
+    }
+  } else if (enemy.familyEffect === 'spin-attack') {
+    enemy.spinCooldown = Math.max(0, enemy.spinCooldown - dt);
+    enemy.spinTimer = Math.max(0, enemy.spinTimer - dt);
+    if (distance < 80 && enemy.spinCooldown <= 0) {
+      game.health -= (enemy.contactDamage || 8) * (1 - (getArmorEffects().contactDamageReduction || 0));
+      enemy.spinTimer = .5;
+      enemy.spinCooldown = 3;
+    }
+  }
 }
 
 function triggerBoneOrchardHit(enemy) {
@@ -992,6 +1258,87 @@ function fireEmberMiniBossVolley(enemy) {
       color: '#ff725e'
     });
   }
+}
+
+function fireSunlessMiniBossVolley(enemy) {
+  const targetAngle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+  const spreadAngles = [-.36, -.12, .12, .36];
+  spreadAngles.forEach(offset => {
+    const angle = targetAngle + offset;
+    game.projectiles.push({
+      x: enemy.x,
+      y: enemy.y,
+      vx: Math.cos(angle) * 340,
+      vy: Math.sin(angle) * 340,
+      life: 3,
+      radius: 8,
+      damage: 6,
+      decayDuration: 3,
+      color: '#b7a56a'
+    });
+  });
+}
+
+function fireStarfireMiniBossProjectile(enemy) {
+  const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
+  game.projectiles.push({
+    x: enemy.x,
+    y: enemy.y,
+    vx: Math.cos(angle) * 360,
+    vy: Math.sin(angle) * 360,
+    life: 3,
+    radius: enemy.r,
+    damage: 10,
+    burnDuration: 3,
+    color: '#ff9b62',
+    piercePlayer: true
+  });
+}
+
+function fireDyingNebulaMiniBossPair(enemy) {
+  const awayAngle = Math.atan2(enemy.y - game.player.y, enemy.x - game.player.x);
+  const halfGap = 25 * Math.PI / 180;
+  for (const offset of [-halfGap, halfGap]) {
+    const angle = awayAngle + offset;
+    game.projectiles.push({
+      x: enemy.x,
+      y: enemy.y,
+      vx: Math.cos(angle) * 120,
+      vy: Math.sin(angle) * 120,
+      life: 4,
+      radius: 8,
+      damage: 8,
+      color: '#d58ee0',
+      redirectTimer: 1.5,
+      redirectSpeed: 700
+    });
+  }
+}
+
+function createAbyssalBossWave(enemy) {
+  game.abyssalBossWaves.push({
+    owner: enemy,
+    x: enemy.x,
+    y: enemy.y,
+    radius: 20,
+    life: 4,
+    maxLife: 4,
+    damagePerSecond: 12
+  });
+}
+
+function updateAbyssalBossWaves(dt) {
+  game.abyssalBossWaves.forEach(wave => {
+    wave.life -= dt;
+    wave.x = wave.owner.defeated ? wave.x : wave.owner.x;
+    wave.y = wave.owner.defeated ? wave.y : wave.owner.y;
+    const growth = 1 - Math.max(0, wave.life) / wave.maxLife;
+    wave.radius = 20 + (abyssalBossWaveMaxRadius - 20) * growth;
+    if (Math.hypot(game.player.x - wave.x, game.player.y - wave.y) < wave.radius) {
+      game.health -= wave.damagePerSecond * dt;
+    }
+  });
+  game.abyssalBossWaves = game.abyssalBossWaves.filter(wave => wave.life > 0);
 }
 
 function distanceToSegment(x, y, startX, startY, endX, endY) {
@@ -1100,7 +1447,7 @@ function createWraithPest(owner, bossSpawn = false) {
 
 function updateWraithPestSpawns(dt) {
   game.enemies.forEach(enemy => {
-    if (enemy.effect !== 'spawn-pest' || enemy.defeated) return;
+    if (!hasEnemyEffect(enemy, 'spawn-pest') || enemy.defeated) return;
     enemy.pestCooldown = Math.max(0, enemy.pestCooldown - dt);
     if ((!enemy.pest || enemy.pest.defeated) && enemy.pestCooldown === 0) createWraithPest(enemy);
   });
@@ -1280,7 +1627,7 @@ function triggerDeadStarExplosion(enemy) {
     game.health -= damage;
   }
   game.enemies.forEach(target => {
-    if (target === enemy || target.defeated || target.effect !== 'dead-star-explosion') return;
+    if (target === enemy || target.defeated || !hasEnemyEffect(target, 'dead-star-explosion')) return;
     if (Math.hypot(target.x - enemy.x, target.y - enemy.y) > radius) return;
     target.hp = Math.max(0, target.hp - damage);
     if (target.hp <= 0) defeatEnemy(target);
@@ -1321,11 +1668,11 @@ function defeatEnemy(enemy, bonus = 0) {
       guard.hp = 0;
     });
   }
-  if (enemy.effect === 'death-burn') triggerGlassDesertDeath(enemy);
-  if (enemy.effect === 'death-fireballs') launchEmberFireballs(enemy);
-  if (enemy.effect === 'death-explosion') triggerNullIceExplosion(enemy);
-  if (enemy.effect === 'rift-portal' && Math.random() < .05) createRiftPortal(enemy);
-  if (enemy.effect === 'dead-star-explosion') triggerDeadStarExplosion(enemy);
+  if (hasEnemyEffect(enemy, 'death-burn')) triggerGlassDesertDeath(enemy);
+  if (hasEnemyEffect(enemy, 'death-fireballs')) launchEmberFireballs(enemy);
+  if (hasEnemyEffect(enemy, 'death-explosion')) triggerNullIceExplosion(enemy);
+  if (hasEnemyEffect(enemy, 'rift-portal') && Math.random() < .05) createRiftPortal(enemy);
+  if (hasEnemyEffect(enemy, 'dead-star-explosion')) triggerDeadStarExplosion(enemy);
   if (enemy.nebulaMissile) triggerNebulaMissileDeath(enemy);
   if (enemy.wraithPest && enemy.pestOwner && !enemy.pestOwner.defeated) {
     if (enemy.wraithBossPest) {
@@ -1532,7 +1879,69 @@ function drawSectorFourEffects() {
     ctx.stroke();
     ctx.restore();
   });
+  game.abyssalBossWaves.forEach(wave => {
+    ctx.save();
+    ctx.globalAlpha = .32 * wave.life / wave.maxLife;
+    ctx.fillStyle = '#709ed0';
+    ctx.strokeStyle = '#b9d5f2';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(wave.x, wave.y, wave.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  });
+  game.darkBossDashCircles.forEach(circle => {
+    ctx.save();
+    ctx.globalAlpha = .6 * circle.life / circle.maxLife;
+    ctx.fillStyle = '#809eea55';
+    ctx.strokeStyle = '#a9bdff';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(circle.x, circle.y, circle.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  });
+  game.projectiles.filter(projectile => projectile.singularity).forEach(projectile => {
+    ctx.save();
+    ctx.globalAlpha = .22;
+    ctx.fillStyle = '#ec7dc4';
+    ctx.strokeStyle = '#f3a5dc';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(projectile.x, projectile.y, projectile.singularityRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.globalAlpha = .9;
+    ctx.beginPath();
+    ctx.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  });
   game.enemies.forEach(enemy => {
+    if (enemy.effect === 'dead-star-boss-aura' && enemy.deadStarAuraTimer > 0) {
+      ctx.save();
+      ctx.globalAlpha = .22 * enemy.deadStarAuraTimer / .75;
+      ctx.fillStyle = '#ffb067';
+      ctx.strokeStyle = '#ffdf91';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, deadStarBossAuraRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (enemy.effect === 'dark-boss-charge' && enemy.darkDashPauseTimer > 0) {
+      ctx.save();
+      ctx.globalAlpha = .65;
+      ctx.strokeStyle = '#a9bdff';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, enemy.r + 18, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     if (enemy.effect === 'frozen-boss-aura' || enemy.effect === 'ashen-boss-aura') {
       ctx.save();
       ctx.globalAlpha = .2 + Math.sin(performance.now() / 180) * .04;
@@ -1545,7 +1954,7 @@ function drawSectorFourEffects() {
       ctx.stroke();
       ctx.restore();
     }
-    if (enemy.effect === 'spin-attack' && enemy.spinTimer > 0) {
+    if (hasEnemyEffect(enemy, 'spin-attack') && enemy.spinTimer > 0) {
       ctx.save();
       ctx.globalAlpha = enemy.spinTimer / .5;
       ctx.strokeStyle = '#809eea';
@@ -1555,7 +1964,7 @@ function drawSectorFourEffects() {
       ctx.stroke();
       ctx.restore();
     }
-    if (enemy.effect !== 'storm-sword' || enemy.stormSwingTimer <= 0) return;
+    if (!hasEnemyEffect(enemy, 'storm-sword') || enemy.stormSwingTimer <= 0) return;
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
     ctx.rotate(enemy.facingAngle);
@@ -1626,6 +2035,7 @@ function update(dt) {
     }
   });
   game.toxicBossZones = game.toxicBossZones.filter(zone => zone.life > 0);
+  updateAbyssalBossWaves(dt);
   const slowedByBramble = updateBrambleZones(dt);
   const p = game.player;
   const dx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
@@ -1633,7 +2043,7 @@ function update(dt) {
   const length = Math.hypot(dx, dy) || 1;
   const movementEffects = getBiome(p.x, p.y).effects;
   const armor = getArmorEffects();
-  const slowedByFrostfallAura = game.enemies.some(enemy => !enemy.defeated && enemy.effect === 'slow-aura' && Math.hypot(p.x - enemy.x, p.y - enemy.y) < frostfallAuraRadius)
+  const slowedByFrostfallAura = game.enemies.some(enemy => !enemy.defeated && hasEnemyEffect(enemy, 'slow-aura') && Math.hypot(p.x - enemy.x, p.y - enemy.y) < frostfallAuraRadius)
     || game.projectiles.some(projectile => projectile.frostAura && projectile.life > 0 && Math.hypot(p.x - projectile.x, p.y - projectile.y) < projectile.frostAuraRadius);
   const inFrozenMiniBossAura = game.enemies.some(enemy => !enemy.defeated && enemy.effect === 'frozen-boss-aura' && Math.hypot(p.x - enemy.x, p.y - enemy.y) < sectorOneBossAuraRadius);
   const enemySlowMultiplier = (slowedByFrostfallAura ? .75 : 1) * (inFrozenMiniBossAura ? .85 : 1) * (slowedByBramble ? .5 : 1) * (game.attackDisabledTimer > 0 ? .5 : 1);
@@ -1670,7 +2080,11 @@ function update(dt) {
     game.cosmosGauntletRechargeTimer = 6;
   }
 
-  if (pointer.down) shoot();
+  if ((pointer.down || keys[' ']) && game.weapon === 'radBeam') updateRadBeam(dt);
+  else {
+    game.radBeamActive = false;
+    if (pointer.down || keys[' ']) shoot();
+  }
 
   const insideGlassDesertHazard = game.hazardZones.some(zone => (zone.hazard?.name === 'MIRAGE BURN' || getBiome(zone.x, zone.y).name === 'GLASS DESERT') && Math.hypot(p.x - zone.x, p.y - zone.y) < zone.radius);
 
@@ -1760,7 +2174,10 @@ function update(dt) {
     .filter(enemy => !enemy.defeated && enemy.effect === 'ashen-boss-aura')
     .map(enemy => ({ x: enemy.x, y: enemy.y }));
   game.enemies.forEach(e => {
-    const localEnemySpeedMultiplier = effects.enemySpeedMultiplier * (ashenAuras.some(aura => Math.hypot(e.x - aura.x, e.y - aura.y) < sectorOneBossAuraRadius) ? 1.1 : 1);
+    e.deadStarSpeedBuffTimer = Math.max(0, (e.deadStarSpeedBuffTimer || 0) - dt);
+    const localEnemySpeedMultiplier = effects.enemySpeedMultiplier
+      * (ashenAuras.some(aura => Math.hypot(e.x - aura.x, e.y - aura.y) < sectorOneBossAuraRadius) ? 1.1 : 1)
+      * (e.deadStarSpeedBuffTimer > 0 ? 1.75 : 1);
     const wraithShieldDown = e.effect === 'wraith-boss-guards' && !e.wraithGuards.some(guard => !guard.defeated);
     if (e.burnTimer > 0) {
       const burnTime = Math.min(dt, e.burnTimer);
@@ -1774,6 +2191,22 @@ function update(dt) {
             defeatEnemy(e);
             return;
           }
+        }
+      }
+    }
+    if (!e.defeated && e.radiationTimer > 0) {
+      const radiationTime = Math.min(dt, e.radiationTimer);
+      e.radiationTimer = Math.max(0, e.radiationTimer - dt);
+      e.radiationTickTimer -= radiationTime;
+      while (e.radiationTickTimer <= 0 && e.hp > 0) {
+        e.hp = Math.max(0, e.hp - weaponCatalog.radBeam.radiationDamage);
+        e.radiationTickTimer += weaponCatalog.radBeam.radiationTickInterval;
+        if (typeof e.speed === 'number' && Math.random() < weaponCatalog.radBeam.radiationSlowChance) {
+          e.speed *= weaponCatalog.radBeam.radiationSlowMultiplier;
+        }
+        if (e.hp <= 0) {
+          defeatEnemy(e);
+          return;
         }
       }
     }
@@ -1843,7 +2276,7 @@ function update(dt) {
           defeatEnemy(e);
         }
       }
-    } else if (e.effect === 'projectile-teleport') {
+    } else if (hasEnemyEffect(e, 'projectile-teleport')) {
       e.teleportCooldown = Math.max(0, e.teleportCooldown - dt);
       const nearbyProjectile = [...game.bullets, ...game.projectiles].some(projectile => Math.hypot(projectile.x - e.x, projectile.y - e.y) < 20);
       if (nearbyProjectile && e.teleportCooldown <= 0) {
@@ -1860,7 +2293,7 @@ function update(dt) {
         e.x += Math.cos(angle) * e.speed * localEnemySpeedMultiplier * dt;
         e.y += Math.sin(angle) * e.speed * localEnemySpeedMultiplier * dt;
       }
-    } else if (e.effect === 'decay-dash') {
+    } else if (hasEnemyEffect(e, 'decay-dash')) {
       e.dashCooldown = Math.max(0, e.dashCooldown - dt);
       if (e.dashTimer > 0) {
         const dashTime = Math.min(dt, e.dashTimer);
@@ -1885,7 +2318,47 @@ function update(dt) {
           e.y += Math.sin(angle) * e.speed * localEnemySpeedMultiplier * dt;
         }
       }
-    } else if (e.effect === 'storm-sword') {
+    } else if (e.effect === 'dark-boss-charge') {
+      e.darkDashCooldown = Math.max(0, (e.darkDashCooldown || 0) - dt);
+      if (e.darkDashPauseTimer > 0) {
+        e.darkDashPauseTimer = Math.max(0, e.darkDashPauseTimer - dt);
+      } else if (e.darkDashTimer > 0) {
+        const dashTime = Math.min(dt, e.darkDashTimer);
+        const targetAngle = Math.atan2(p.y - e.y, p.x - e.x);
+        const angleDelta = Math.atan2(
+          Math.sin(targetAngle - e.darkDashAngle),
+          Math.cos(targetAngle - e.darkDashAngle)
+        );
+        e.darkDashAngle += Math.max(-.8 * dashTime, Math.min(.8 * dashTime, angleDelta));
+        e.facingAngle = e.darkDashAngle;
+        e.x += Math.cos(e.darkDashAngle) * e.speed * 2.5 * localEnemySpeedMultiplier * dashTime;
+        e.y += Math.sin(e.darkDashAngle) * e.speed * 2.5 * localEnemySpeedMultiplier * dashTime;
+        e.darkDashTrailTimer += dashTime;
+        while (e.darkDashTrailTimer >= .25) {
+          createDarkBossDashCircle(e);
+          fireDarkBossPerpendicularProjectiles(e);
+          e.darkDashTrailTimer -= .25;
+        }
+        e.darkDashTimer = Math.max(0, e.darkDashTimer - dashTime);
+        if (e.darkDashTimer === 0) {
+          e.darkDashCooldown = 10;
+          e.darkDashTrailTimer = 0;
+        }
+      } else {
+        const angle = Math.atan2(p.y - e.y, p.x - e.x);
+        const playerDistance = Math.hypot(p.x - e.x, p.y - e.y);
+        if (playerDistance < 700 && e.darkDashCooldown <= 0) {
+          e.darkDashAngle = angle;
+          e.darkDashPauseTimer = .3;
+          e.darkDashTimer = 2;
+          e.darkDashTrailTimer = 0;
+        } else {
+          e.facingAngle = angle;
+          e.x += Math.cos(angle) * e.speed * localEnemySpeedMultiplier * dt;
+          e.y += Math.sin(angle) * e.speed * localEnemySpeedMultiplier * dt;
+        }
+      }
+    } else if (hasEnemyEffect(e, 'storm-sword')) {
       const angle = Math.atan2(p.y - e.y, p.x - e.x);
       const distance = Math.hypot(p.x - e.x, p.y - e.y);
       if (e.stormRecovery <= 0 && distance < 230 && e.stormAttackCooldown <= 0 && Math.abs(Math.atan2(Math.sin(angle - e.facingAngle), Math.cos(angle - e.facingAngle))) < .7) {
@@ -1902,7 +2375,7 @@ function update(dt) {
         e.x += Math.cos(angle) * e.speed * localEnemySpeedMultiplier * dt;
         e.y += Math.sin(angle) * e.speed * localEnemySpeedMultiplier * dt;
       }
-    } else if (e.effect === 'dash') {
+    } else if (hasEnemyEffect(e, 'dash')) {
       e.dashCooldown = Math.max(0, e.dashCooldown - dt);
       if (e.dashTimer > 0 || e.dashCooldown === 0) {
         if (e.dashTimer <= 0) {
@@ -1942,7 +2415,7 @@ function update(dt) {
       e.knockbackY *= knockbackDecay;
     }
 
-    if (e.effect === 'damage-trail' && Math.hypot(e.x - e.previousX, e.y - e.previousY) > 1) {
+    if (hasEnemyEffect(e, 'damage-trail') && Math.hypot(e.x - e.previousX, e.y - e.previousY) > 1) {
       e.trailTimer -= dt;
       if (e.trailTimer <= 0) {
         game.enemyTrails.push({ x: e.previousX, y: e.previousY, radius: 22, life: 2, maxLife: 2, damagePerSecond: 12 });
@@ -1973,13 +2446,14 @@ function update(dt) {
       game.health -= (e.contactDamage || 0) * effects.damageMultiplier * (1 - (armor.contactDamageReduction || 0)) * dt;
     }
   });
+  updateDarkBossDashCircles(dt);
 
   updateMeleeAttack(dt);
 
   // Bullet Collision & Explosive (AOE) Damage Loop
   game.bullets.forEach(b => game.enemies.forEach(e => {
     if (b.life <= 0 || e.defeated || e.shieldTimer > 0 || !e.hp) return;
-    if (e.effect === 'ironwood-boss-shield' && e.ironwoodShieldHp > 0) {
+    if (hasEnemyEffect(e, 'ironwood-boss-shield') && e.ironwoodShieldHp > 0) {
       const angleToPlayer = Math.atan2(game.player.y - e.y, game.player.x - e.x);
       const shieldRadius = Math.max(14, e.r * .7);
       const shieldX = e.x + Math.cos(angleToPlayer) * (e.r + shieldRadius * .35);
@@ -2089,8 +2563,9 @@ function update(dt) {
     if (proj.redirectTimer !== undefined) {
       proj.redirectTimer -= dt;
       if (proj.redirectTimer <= 0 && !proj.redirected) {
-        const angle = Math.atan2(game.player.y - proj.y, game.player.x - proj.x) + (Math.random() - .5) * .25;
-        const speed = Math.hypot(proj.vx, proj.vy);
+        const redirectSpread = proj.redirectSpeed ? 0 : (Math.random() - .5) * .25;
+        const angle = Math.atan2(game.player.y - proj.y, game.player.x - proj.x) + redirectSpread;
+        const speed = proj.redirectSpeed || Math.hypot(proj.vx, proj.vy);
         proj.vx = Math.cos(angle) * speed;
         proj.vy = Math.sin(angle) * speed;
         proj.redirected = true;
@@ -2100,6 +2575,19 @@ function update(dt) {
     proj.x += proj.vx * dt;
     proj.y += proj.vy * dt;
     proj.life -= dt;
+    if (proj.singularity) {
+      const distanceToPlayer = Math.hypot(game.player.x - proj.x, game.player.y - proj.y);
+      if (distanceToPlayer < proj.singularityRadius) {
+        if (distanceToPlayer > 0) {
+          const pullDistance = Math.min(proj.pullSpeed * dt, distanceToPlayer);
+          game.player.x += (proj.x - game.player.x) / distanceToPlayer * pullDistance;
+          game.player.y += (proj.y - game.player.y) / distanceToPlayer * pullDistance;
+        }
+        if (Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
+          game.health -= proj.damagePerSecond * dt * (1 - (getArmorEffects().voidDamageReduction || 0));
+        }
+      }
+    }
     if (proj.damageTrail) {
       proj.trailTimer -= dt;
       if (proj.trailTimer <= 0) {
@@ -2139,13 +2627,22 @@ function update(dt) {
     }
     
     // Player collision
-    if (!proj.frostAura && !proj.damageTrail && (proj.volleyTimer === undefined || proj.volleyLaunched) && Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
+    if (!proj.frostAura && !proj.damageTrail && !proj.singularity && !proj.playerHit && (proj.volleyTimer === undefined || proj.volleyLaunched) && Math.hypot(game.player.x - proj.x, game.player.y - proj.y) < proj.radius + 13) {
       game.health -= proj.damage * (1 - (getArmorEffects().voidDamageReduction || 0));
-      if (proj.burnDuration) {
+      if (proj.burnDuration || proj.decayDuration) {
         const status = game.enemyStatus || (game.enemyStatus = { burn: 0, acid: 0, bleed: 0, freeze: 0, root: 0 });
-        status.burn = Math.max(status.burn, proj.burnDuration);
+        if (proj.burnDuration) status.burn = Math.max(status.burn, proj.burnDuration);
       }
-      proj.life = 0; // Destroy on impact
+      if (proj.decayDuration) game.decayTimer = Math.max(game.decayTimer, proj.decayDuration);
+      if (proj.spawnElitesOnHit && !proj.elitesSpawned) {
+        proj.elitesSpawned = true;
+        spawnRandomBiomeElites(proj.x, proj.y, 3);
+      }
+      if (proj.piercePlayer) {
+        proj.playerHit = true;
+      } else {
+        proj.life = 0;
+      }
     }
     if (proj.teleportGlassEnemyOnEnd && proj.life <= 0 && !proj.teleportResolved) {
       proj.teleportResolved = true;
@@ -2209,13 +2706,70 @@ function applyEnemyAbilities(dt) {
     const contact = distance < enemy.r + 18;
     enemy.abilityTimer -= dt;
     if (contact) {
-      if (enemy.effect === 'burn') status.burn = Math.max(status.burn, enemy.boss ? 5 : 3);
-      if (enemy.effect === 'acid') status.acid = Math.max(status.acid, 4);
-      if (enemy.effect === 'bleed') status.bleed = Math.max(status.bleed, 4);
-      if (enemy.effect === 'slow') status.freeze = Math.max(status.freeze, 2.5);
-      if (enemy.effect === 'root') status.root = Math.max(status.root, 2);
+      if (hasEnemyEffect(enemy, 'burn')) status.burn = Math.max(status.burn, enemy.boss ? 5 : 3);
+      if (hasEnemyEffect(enemy, 'acid')) status.acid = Math.max(status.acid, 4);
+      if (hasEnemyEffect(enemy, 'bleed')) status.bleed = Math.max(status.bleed, 4);
+      if (hasEnemyEffect(enemy, 'slow')) status.freeze = Math.max(status.freeze, 2.5);
+      if (hasEnemyEffect(enemy, 'root')) status.root = Math.max(status.root, 2);
     }
-    if (enemy.effect === 'null-boss-lane') {
+    if (enemy.effect === 'rift-boss-volley') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (distance < 800 && enemy.bossAbilityCooldown <= 0) {
+        fireVoidRiftMiniBossVolley(enemy);
+        enemy.bossAbilityCooldown = 8;
+      }
+    } else if (enemy.effect === 'horizon-boss-singularity') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (distance < 850 && enemy.bossAbilityCooldown <= 0) {
+        fireEventHorizonMiniBossProjectile(enemy);
+        enemy.bossAbilityCooldown = 5;
+      }
+    } else if (enemy.effect === 'dead-star-boss-aura') {
+      enemy.deadStarAuraTimer = Math.max(0, enemy.deadStarAuraTimer - dt);
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (enemy.bossAbilityCooldown <= 0) {
+        triggerDeadStarMiniBossAura(enemy);
+        enemy.bossAbilityCooldown = 12;
+      }
+    } else if (enemy.effect === 'sunless-boss-volley') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (distance < 800 && enemy.bossAbilityCooldown <= 0) {
+        fireSunlessMiniBossVolley(enemy);
+        enemy.bossAbilityCooldown = 3;
+      }
+    } else if (enemy.effect === 'starfire-boss-pierce') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (distance < 800 && enemy.bossAbilityCooldown <= 0) {
+        fireStarfireMiniBossProjectile(enemy);
+        enemy.bossAbilityCooldown = 6;
+      }
+    } else if (enemy.effect === 'nebula-boss-salvo') {
+      if (enemy.nebulaBurstPairsRemaining > 0) {
+        enemy.nebulaBurstTimer -= dt;
+        if (enemy.nebulaBurstTimer <= 0) {
+          fireDyingNebulaMiniBossPair(enemy);
+          enemy.nebulaBurstPairsRemaining--;
+          if (enemy.nebulaBurstPairsRemaining > 0) {
+            enemy.nebulaBurstTimer = .3;
+          } else {
+            enemy.bossAbilityCooldown = 8;
+          }
+        }
+      } else {
+        enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+        if (distance < 800 && enemy.bossAbilityCooldown <= 0) {
+          fireDyingNebulaMiniBossPair(enemy);
+          enemy.nebulaBurstPairsRemaining = 3;
+          enemy.nebulaBurstTimer = .3;
+        }
+      }
+    } else if (enemy.effect === 'abyssal-boss-wave') {
+      enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
+      if (enemy.bossAbilityCooldown <= 0) {
+        createAbyssalBossWave(enemy);
+        enemy.bossAbilityCooldown = 8;
+      }
+    } else if (enemy.effect === 'null-boss-lane') {
       enemy.nullAttackCooldown = Math.max(0, enemy.nullAttackCooldown - dt);
       if (enemy.nullLaneTimer > 0) {
         enemy.nullLaneTimer = Math.max(0, enemy.nullLaneTimer - dt);
@@ -2443,6 +2997,7 @@ function applyEnemyAbilities(dt) {
       }
       enemy.abilityTimer = enemy.boss ? 1.4 : 2.8;
     }
+    if (enemy.familyEffect) applyMinibossFamilyAbility(enemy, dt, distance);
   });
   status.burn = Math.max(0, status.burn - dt);
   status.acid = Math.max(0, status.acid - dt);
@@ -2533,7 +3088,7 @@ function renderEnemySystem() {
       }
       ctx.restore();
     }
-    if (enemy.effect === 'slow-aura') {
+    if (hasEnemyEffect(enemy, 'slow-aura')) {
       ctx.save();
       ctx.fillStyle = '#82c5d733';
       ctx.strokeStyle = '#82c5d777';
@@ -2826,6 +3381,15 @@ function renderEnemySystem() {
     ctx.arc(enemy.x, enemy.y, enemy.r + 10, 0, Math.PI * 2);
     ctx.stroke();
   });
+  game.enemies.forEach(enemy => {
+    if (!(enemy.radiationTimer > 0) || enemy.defeated) return;
+    ctx.strokeStyle = '#ff263f';
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = .8;
+    ctx.beginPath();
+    ctx.arc(enemy.x, enemy.y, enemy.r + 14, 0, Math.PI * 2);
+    ctx.stroke();
+  });
   ctx.globalAlpha = 1;
 
   ctx.restore();
@@ -3001,6 +3565,23 @@ function draw() {
     ctx.stroke();
     ctx.restore();
   });
+  if (game.radBeamActive && game.weapon === 'radBeam' && game.ammo > 0) {
+    const directionX = Math.cos(game.player.angle);
+    const directionY = Math.sin(game.player.angle);
+    const startX = game.player.x + directionX * 20;
+    const startY = game.player.y + directionY * 20;
+    const length = weaponCatalog.radBeam.range;
+    ctx.save();
+    ctx.strokeStyle = '#ff263f';
+    ctx.lineWidth = 6;
+    ctx.shadowBlur = 18;
+    ctx.shadowColor = '#ff263f';
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(startX + directionX * length, startY + directionY * length);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   // Enemy Projectiles (Void Walker Shockwaves)
   if (game.projectiles) {
