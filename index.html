@@ -28,7 +28,7 @@
           <h1>FIGHT<br><span>THE HORDE</span></h1>
           <p class="intro">Hold the line. Clear every wave.<br>Nothing gets past you.</p>
           <button class="primary-button" id="start-button">ENTER THE FIGHT <span>→</span></button>
-          <p class="controls-hint"><kbd>WASD</kbd> MOVE <i></i> <kbd>MOUSE</kbd> AIM + FIRE</p>
+          <p class="controls-hint"><kbd>WASD</kbd> MOVE <i></i> <kbd>MOUSE</kbd> AIM + FIRE <i></i> <kbd>E</kbd> STATIONS</p>
         </div>
         <div class="overlay hidden" id="game-over">
           <p class="eyebrow">SIGNAL LOST</p>
@@ -65,6 +65,7 @@
           <span class="station-title">SANCTUARY // WORKSHOPS</span>
           <div class="station-card" data-station="crafting"><strong>CRAFTING TABLE</strong><button type="button" data-craft="medkit">MEDKIT <small>4 FIBER + 2 CRYSTAL</small></button><button type="button" data-craft="steelPlate">STEEL PLATE <small>5 STEEL + 2 STONE</small></button><div class="arsenal-list" id="arsenal-list"></div></div>
           <div class="station-card" data-station="furnace"><strong>FURNACE</strong><button type="button" data-craft="smeltIron">SMELT IRON <small>3 RAW IRON + 10 FUEL</small></button><button type="button" data-craft="makeSteel">MAKE STEEL <small>2 IRON + 3 STONE + 10 FUEL</small></button><button type="button" data-craft="refineFuel">REFINE FUEL <small>2 WOOD + 2 FIBER + 10 FUEL</small></button></div>
+          <div class="station-card" data-station="beacon-repair"><strong>RUINED BEACON STATION</strong><button type="button" data-craft="repairBeacon:sector4-0">REPAIR STATION <small>HIGH RESOURCE COST</small></button></div>
           <div class="craft-details" id="craft-details" hidden></div>
           <span class="station-output" id="station-output" aria-live="polite"></span>
         </div>
