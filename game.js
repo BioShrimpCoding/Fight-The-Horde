@@ -37,6 +37,7 @@ const beaconTurretWeapons = {
 };
 const beaconRegionRadius = 1200;
 const mapRadius = 18000;
+const biomeBoundaries = [3000, 6000, 9500, 13000, 16000];
 const tacticalMapZoomLevels = [.4, .6, .8, 1, 1.25, 1.5, 2];
 let tacticalMapZoomIndex = 3;
 function cycleTacticalMapZoom() {
@@ -355,6 +356,7 @@ function freshGame() {
     currentSector: 0, 
     health: 100, 
     ammo: clipSize, 
+    weaponAmmo: { sidearm: clipSize },
     ammoReserve: { pistolAmmo: startingAmmoReserve * clipSize, magicGauntletAmmo: 6, cosmosGauntletAmmo: 6 }, 
     radBeamActive: false,
     radBeamDrainTimer: 0,
@@ -363,6 +365,7 @@ function freshGame() {
     armor: null,
     unlockedWeapons: { sidearm: true }, 
     reloadPending: false, 
+    weaponReloadPending: {},
     salvage: storedSalvage, 
     relics: Number(localStorage.getItem('horde-relics') || 0), 
     atlasCrystals: Number(localStorage.getItem('horde-atlas-crystals') || 0), 
@@ -403,6 +406,7 @@ function freshGame() {
     magicGauntletRechargeTimer: 5, 
     cosmosGauntletRechargeTimer: 6, 
     biomeKey: null, 
+    biomeName: null,
     announcementTimer: 0, 
     camera: { x: 0, y: 0 } 
   };
@@ -506,11 +510,28 @@ adminAction = function(action, value) {
   updateAmmoUI();
   ui.stationOutput.textContent = 'ADMIN GRANT // MATERIALS +100 // RELICS +10 // ATLAS +5';
 };
-function teleportToSector(sector) { teleportPlayer((sector - .5) * 3000, 0); game.currentSector = sector; game.biomeKey = null; game.discovered.add(getSectorKey(sector - 1)); }
-function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camera.x = x; game.camera.y = y; }
+function getBiomeSector(distance) { return biomeBoundaries.findIndex(boundary => distance < boundary) === -1 ? sectorRegions.length - 1 : biomeBoundaries.findIndex(boundary => distance < boundary); }
+function teleportToSector(sector) { const start = sector > 1 ? biomeBoundaries[sector - 2] : 0; const end = biomeBoundaries[sector - 1] || mapRadius; teleportPlayer((start + end) / 2, 0); game.currentSector = sector; game.discovered.add(getSectorKey(sector - 1)); }
+function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camera.x = x; game.camera.y = y; game.biomeKey = null; game.biomeName = null; }
 function start() { setMapOpen(false); game = freshGame(); game.active = true; randomizeBiomeData(game.seed); game.hazardZones = generateHazardZones(); game.enemies.push(createVoidStalker()); const random = seededRandom(game.seed + 17); updateInventoryUI(); updateStationButtons(); for (let i = 0; i < 140; i++) { const roll = random(); game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: roll < .08 ? 'relic' : roll < .54 ? 'chest' : 'scrap', taken: false }); } gameShell.classList.remove('menu-state'); resize(); ui.start.classList.add('hidden'); ui.over.classList.add('hidden'); ui.pause.classList.add('hidden'); lastTime = performance.now(); cancelAnimationFrame(animation); animation = requestAnimationFrame(loop); }
 function togglePause() { if (!game.active) return; game.paused = !game.paused; keys.w = false; keys.a = false; keys.s = false; keys.d = false; pointer.down = false; game.radBeamActive = false; ui.pause.classList.toggle('hidden', !game.paused); }
-function switchWeapon(index) { const weaponId = game.weaponSlots[index - 1]; if (!weaponId || !game.unlockedWeapons[weaponId]) return; game.weapon = weaponId; game.ammo = 0; game.reloadPending = weaponCatalog[weaponId].kind !== 'melee'; game.radBeamActive = false; game.radBeamDrainTimer = 0; updateAmmoUI(); renderWeaponBar(); }
+function switchWeapon(index) {
+  const weaponId = game.weaponSlots[index - 1];
+  if (!weaponId || !game.unlockedWeapons[weaponId]) return;
+
+  if (game.weapon !== weaponId) {
+    game.weaponAmmo[game.weapon] = game.ammo;
+    game.weaponReloadPending[game.weapon] = game.reloadPending;
+    game.weapon = weaponId;
+    game.ammo = game.weaponAmmo[weaponId] ?? 0;
+    game.reloadPending = game.weaponReloadPending[weaponId] ?? (weaponCatalog[weaponId].kind !== 'melee');
+  }
+
+  game.radBeamActive = false;
+  game.radBeamDrainTimer = 0;
+  updateAmmoUI();
+  renderWeaponBar();
+}
 function renderWeaponBar() { if (!ui.weaponBar) return; ui.weaponBar.innerHTML = game.weaponSlots.map((weaponId, index) => { const weapon = weaponId ? weaponCatalog[weaponId] : null; return `<button type="button" class="weapon-slot ${weaponId === game.weapon ? 'selected' : ''}" data-weapon-slot="${index + 1}" title="${weapon ? weapon.name : 'EMPTY SLOT'}"><b>${index + 1}</b><span>${weapon ? weapon.name : 'EMPTY'}</span></button>`; }).join(''); }
 function addExplosion(x, y, radius, color = '#ff725e') {
   game.explosions.push({
@@ -2111,9 +2132,13 @@ function updateCrafting(dt) {
   } else if (recipe.weapon) {
     game.unlockedWeapons[recipe.weapon] = true;
     game.weaponSlots[game.crafting.weaponSlot] = recipe.weapon;
+    game.weaponAmmo[game.weapon] = game.ammo;
+    game.weaponReloadPending[game.weapon] = game.reloadPending;
     game.weapon = recipe.weapon;
     game.ammo = 0;
     game.reloadPending = weaponCatalog[recipe.weapon].kind !== 'melee';
+    game.weaponAmmo[recipe.weapon] = game.ammo;
+    game.weaponReloadPending[recipe.weapon] = game.reloadPending;
   } else if (recipe.armor) {
     game.armor = recipe.armor;
   } else if (recipe.ammo) {
@@ -2517,7 +2542,7 @@ function loop(now) {
   drawMap(); drawHazardMap(); drawBeaconStationMapMarkers(); drawStalkerMapMarker();
   if (game.active) animation = requestAnimationFrame(loop);
 }
-function updateBiomeAnnouncement(dt) { const biome = getBiome(game.player.x, game.player.y); game.discovered.add(getDiscoveryKey(game.player.x, game.player.y)); game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(Math.min(sectorRegions.length - 1, Math.floor(Math.hypot(game.player.x, game.player.y) / 3000)))); if (biome.key !== game.biomeKey) { game.biomeKey = biome.key; game.announcementTimer = 3; announceBiome(biome); updateBiomeEffects(biome); updateBiomeHazard(biome); } game.announcementTimer = Math.max(0, game.announcementTimer - dt); if (game.announcementTimer === 0) ui.announcement.classList.remove('show'); }
+function updateBiomeAnnouncement(dt) { const biome = getBiome(game.player.x, game.player.y); game.discovered.add(getDiscoveryKey(game.player.x, game.player.y)); game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(getBiomeSector(Math.hypot(game.player.x, game.player.y)))); if (biome.key !== game.biomeKey || biome.name !== game.biomeName) { game.biomeKey = biome.key; game.biomeName = biome.name; game.announcementTimer = 3; announceBiome(biome); updateBiomeEffects(biome); updateBiomeHazard(biome); } game.announcementTimer = Math.max(0, game.announcementTimer - dt); if (game.announcementTimer === 0) ui.announcement.classList.remove('show'); }
 function updateBiomeHazard(biome) { const hazard = biome.effects.hazard; ui.effects.querySelector('.biome-hazard-effect')?.remove(); ui.effects.insertAdjacentHTML('beforeend', `<span class="biome-effect negative biome-hazard-effect" title="${hazard.description}"><b>!</b>${hazard.name}</span>`); }
 function updateBiomeEffects(biome) { const effects = biome.effects; const conditions = []; if (effects.healthRegen) conditions.push({ positive: true, text: `REGEN +${effects.healthRegen}/SEC`, detail: biome.key.startsWith('beacon-') ? `Restores ${effects.healthRegen} health per second inside this beacon station.` : `Restores ${effects.healthRegen} health per second while outside the beacon.` }); if (effects.moveMultiplier !== 1) conditions.push({ positive: effects.moveMultiplier > 1, text: `MOVE ${effects.moveMultiplier > 1 ? '+' : ''}${Math.round((effects.moveMultiplier - 1) * 100)}%`, detail: `${effects.moveMultiplier > 1 ? 'Increases' : 'Reduces'} player movement speed by ${Math.abs(Math.round((effects.moveMultiplier - 1) * 100))}%.` }); if (effects.fireCooldownMultiplier !== 1) conditions.push({ positive: effects.fireCooldownMultiplier < 1, text: `FIRE ${effects.fireCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%`, detail: `${effects.fireCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the delay between shots by ${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%.` }); if (effects.pulseCooldownMultiplier !== 1) conditions.push({ positive: effects.pulseCooldownMultiplier < 1, text: `PULSE ${effects.pulseCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%`, detail: `${effects.pulseCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the pulse cooldown by ${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%.` }); if (effects.salvageMultiplier !== 1) conditions.push({ positive: effects.salvageMultiplier > 1, text: `SALVAGE +${Math.round((effects.salvageMultiplier - 1) * 100)}%`, detail: `Collected salvage is multiplied by ${effects.salvageMultiplier}x.` }); if (effects.enemySpeedMultiplier !== 1) conditions.push({ positive: effects.enemySpeedMultiplier < 1, text: `HORDE ${effects.enemySpeedMultiplier < 1 ? '-' : '+'}${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}% SPEED`, detail: `Enemies move ${effects.enemySpeedMultiplier < 1 ? 'slower' : 'faster'} by ${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}%.` }); if (effects.damageMultiplier !== 1) conditions.push({ positive: false, text: `DAMAGE +${Math.round((effects.damageMultiplier - 1) * 100)}%`, detail: `Enemy contact damage is increased by ${Math.round((effects.damageMultiplier - 1) * 100)}%.` }); ui.effects.innerHTML = `<span class="biome-effects-title">${biome.name} // CONDITIONS</span>${conditions.map(condition => `<span class="biome-effect ${condition.positive ? 'positive' : 'negative'}" title="${condition.detail}"><b>${condition.positive ? '+' : '-'}</b>${condition.text}</span>`).join('')}`; }
 function updateBrambleZones(dt) {
@@ -2590,7 +2615,7 @@ function update(dt) {
 
   const distance = Math.hypot(p.x, p.y);
   const safe = distance < beaconRegionRadius;
-  game.currentSector = safe ? 0 : Math.min(sectorRegions.length, Math.floor(distance / 3000) + 1);
+  game.currentSector = safe ? 0 : getBiomeSector(distance) + 1;
 
   const biome = getBiome(p.x, p.y);
   const effects = biome.effects;
@@ -3947,7 +3972,7 @@ function getBiome(x, y) {
   if (distance > mapRadius) return getVoidBiome();
   const angle = (Math.atan2(y, x) + Math.PI * 2) % (Math.PI * 2);
   const index = Math.floor(angle / (Math.PI / 2));
-  const sector = Math.min(sectorRegions.length - 1, Math.floor(distance / 3000));
+  const sector = getBiomeSector(distance);
   const biome = sectorRegions[sector][index];
   const beaconStation = getBeaconStationAt(x, y);
   if (beaconStation) {
@@ -3988,9 +4013,15 @@ function getDiscoveryKey(x, y) {
   const biomeIndex = Math.floor(angle / (Math.PI / 2));
   return `${biome.sectorKey}-${biomeIndex}`;
 }
-function announceBiome(biome) { ui.announcement.textContent = biome.name; ui.announcement.style.color = biome.color; ui.announcement.className = `biome-announcement show ${biome.animationKey}`; }
+function announceBiome(biome) {
+  ui.announcement.textContent = biome.name;
+  ui.announcement.style.color = biome.color;
+  ui.announcement.className = 'biome-announcement';
+  void ui.announcement.offsetWidth;
+  ui.announcement.className = `biome-announcement show ${biome.animationKey}`;
+}
 function burst(x, y, amount, force) { for (let i = 0; i < amount; i++) game.sparks.push({ x, y, life: .45, vx: (Math.random() - .5) * force, vy: (Math.random() - .5) * force }); }
-function updateUI(distance, safe, biome) { const sector = safe ? 0 : Math.floor(distance / 3000) + 1; const health = Math.max(0, Math.round(game.health)); if (safe && bankInventory()) updateInventoryUI(); updateStationUI(); ui.wave.textContent = String(sector).padStart(2, '0'); ui.score.textContent = String(game.score).padStart(6, '0'); ui.ammo.textContent = game.ammo; ui.health.style.width = `${health}%`; ui.healthValue.textContent = `${health}%`; ui.threats.textContent = String(game.enemies.length).padStart(2, '0'); ui.distance.textContent = `${String(Math.floor(distance / 10)).padStart(3, '0')}m`; ui.salvage.textContent = String(game.salvage).padStart(2, '0'); ui.relics.textContent = String(game.relics).padStart(2, '0'); ui.objective.textContent = safe ? 'SANCTUARY // SALVAGE BANKED' : 'RETURN TO BEACON // SALVAGE'; }
+function updateUI(distance, safe, biome) { const sector = safe ? 0 : getBiomeSector(distance) + 1; const health = Math.max(0, Math.round(game.health)); if (safe && bankInventory()) updateInventoryUI(); updateStationUI(); ui.wave.textContent = String(sector).padStart(2, '0'); ui.score.textContent = String(game.score).padStart(6, '0'); ui.ammo.textContent = game.ammo; ui.health.style.width = `${health}%`; ui.healthValue.textContent = `${health}%`; ui.threats.textContent = String(game.enemies.length).padStart(2, '0'); ui.distance.textContent = `${String(Math.floor(distance / 10)).padStart(3, '0')}m`; ui.salvage.textContent = String(game.salvage).padStart(2, '0'); ui.relics.textContent = String(game.relics).padStart(2, '0'); ui.objective.textContent = safe ? 'SANCTUARY // SALVAGE BANKED' : 'RETURN TO BEACON // SALVAGE'; }
 function updateInventoryUI() { const armor = getArmorEffects(); ui.inventory.innerHTML = `<span class="inventory-title">ARMOR // ${armor.name || 'NONE'}</span><span class="inventory-title">CARRIED // VAULT</span>${resourceTypes.map(resource => `<span class="inventory-item" title="${resource.name}: carried / stored in sanctuary vault"><span>${resource.name}</span><strong>${game.inventory[resource.key]} / ${game.vault[resource.key] || 0}</strong></span>`).join('')}`; }
 function end() { game.active = false; game.high = Math.max(game.high, game.score); localStorage.setItem('horde-high', game.high); localStorage.setItem('horde-salvage', game.banked + game.salvage); localStorage.setItem('horde-relics', game.relics); localStorage.setItem('horde-atlas-crystals', game.atlasCrystals); ui.final.textContent = String(game.score).padStart(6, '0'); ui.high.textContent = String(game.high).padStart(6, '0'); ui.over.classList.remove('hidden'); }
 function drawVoidBatarProjectile(bullet) {
@@ -4127,9 +4158,9 @@ function draw() {
   }
 
   // Beacon Rings
-  [beaconRegionRadius, 3000, 6000, 9500, 13000].forEach((radius, i) => {
+  [beaconRegionRadius, ...biomeBoundaries].forEach((radius, i) => {
     ctx.strokeStyle = i === 0 ? '#f9c77999' : `${biome.color}28`;
-    ctx.setLineDash(i ? [12, 20] : []);
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.arc(0, 0, radius, 0, Math.PI * 2);
     ctx.stroke();
