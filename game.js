@@ -35,6 +35,13 @@ const beaconTurretWeapons = {
   grenadeLauncher: { type: 'grenade', damage: 1.25, cooldown: 1.25, radius: 105, speed: 700, color: '#ff865c' },
   shotgun: { type: 'shotgun', damage: .42, pellets: 6, spread: .55, cooldown: .82, speed: 1000, life: .65, color: '#ffd08a' }
 };
+const beaconModuleDefinitions = {
+  pulse: { name: 'PULSE MODULE', description: 'Periodically blasts nearby enemies away from this station.' },
+  drain: { name: 'DRAIN MODULE', description: 'Continuously damages enemies around this station.' },
+  support: { name: 'SUPPORT MODULE', description: '+3 HP/s, +10% player damage, and +10% attack speed per module while inside.' }
+};
+const beaconModuleInteractionRadius = 45;
+const beaconModuleBenchOffset = 55;
 const beaconRegionRadius = 1200;
 const mapRadius = 18000;
 const biomeBoundaries = [3000, 6000, 9500, 13000, 16000];
@@ -336,7 +343,21 @@ function createBeaconStations() {
       stone: 25 + Math.floor(random() * 51),
       iron: 50 + Math.floor(random() * 26)
     };
-    const station = { id, x, y, radius: beaconStationRadius, repairCost, repaired: Boolean(savedState.repaired), turrets: [] };
+    const savedModules = savedState.modules || {};
+    const station = {
+      id,
+      x,
+      y,
+      radius: beaconStationRadius,
+      repairCost,
+      repaired: Boolean(savedState.repaired),
+      turrets: [],
+      modules: Object.fromEntries(Object.keys(beaconModuleDefinitions).map(key => [
+        key,
+        Math.max(0, Math.floor(Number(savedModules[key]) || 0))
+      ])),
+      pulseTimer: 3,
+    };
     if (station.repaired) createBeaconTurrets(station, savedState.weapons);
     return station;
    });
@@ -609,7 +630,7 @@ function updateMeleeAttack(dt) {
 
     if (!hit) return;
     attack.hitEnemies.add(enemy);
-    enemy.hp = Math.max(0, enemy.hp - weapon.damage);
+    enemy.hp = Math.max(0, enemy.hp - weapon.damage * getPlayerDamageMultiplier());
     if (enemy.hp <= 0) defeatEnemy(enemy);
     burst(enemy.x, enemy.y, 5, 100);
   });
@@ -696,7 +717,7 @@ function fireBeam(weapon) {
     const closestY = startY + directionY * alongBeam;
     if (Math.hypot(enemy.x - closestX, enemy.y - closestY) >= enemy.r + 5) return;
 
-    enemy.hp = Math.max(0, enemy.hp - weapon.damage);
+    enemy.hp = Math.max(0, enemy.hp - weapon.damage * getPlayerDamageMultiplier());
     if (enemy.hp <= 0) defeatEnemy(enemy);
   });
 }
@@ -731,7 +752,7 @@ function updateRadBeam(dt) {
     const closestY = startY + directionY * alongBeam;
     if (Math.hypot(enemy.x - closestX, enemy.y - closestY) >= enemy.r + 4) return;
 
-    enemy.hp = Math.max(0, enemy.hp - weapon.damage * firingTime);
+    enemy.hp = Math.max(0, enemy.hp - weapon.damage * firingTime * getPlayerDamageMultiplier());
     if (!(enemy.radiationTimer > 0)) enemy.radiationTickTimer = weapon.radiationTickInterval;
     enemy.radiationTimer = weapon.radiationDuration;
     if (enemy.hp <= 0) defeatEnemy(enemy);
@@ -755,7 +776,7 @@ function releaseCosmosExplosion() {
   game.enemies.forEach(enemy => {
     if (enemy.defeated || enemy.shieldTimer > 0 || !enemy.hp || Math.hypot(enemy.x - x, enemy.y - y) > radius) return;
 
-    enemy.hp = Math.max(0, enemy.hp - 5);
+    enemy.hp = Math.max(0, enemy.hp - 5 * getPlayerDamageMultiplier());
     if (enemy.hp <= 0) defeatEnemy(enemy);
   });
 }
@@ -900,7 +921,7 @@ function shoot() {
         vx: Math.cos(angle) * weapon.speed,
         vy: Math.sin(angle) * weapon.speed,
         life: weapon.life,
-        damage: weapon.damage,
+        damage: weapon.damage * (effects.playerDamageMultiplier || 1),
         blast: weapon.blast || 0,
         falloff: weapon.falloff,
         baseAngle: angle,
@@ -915,7 +936,7 @@ function shoot() {
           : weapon.deceleration || 0,
         decelerationInterval: weapon.decelerationInterval || 0,
         burnDuration: weapon.burnDuration || 0,
-        burnDamage: weapon.burnDamage || 0,
+        burnDamage: (weapon.burnDamage || 0) * (effects.playerDamageMultiplier || 1),
         burnInterval: weapon.burnInterval || 0,
         vibrationAmplitude: weapon.vibrationAmplitude || 0,
         vibrationFrequency: weapon.vibrationFrequency || 0,
@@ -945,7 +966,7 @@ function shoot() {
   }
 }
 function useMedkit() { if (!game.active || !game.stationItems.medkit || game.health >= 100) return; game.stationItems.medkit = Math.max(0, (game.stationItems.medkit || 0) - 1); game.health = Math.min(100, game.health + 45); localStorage.setItem('horde-station-items', JSON.stringify(game.stationItems)); updateAmmoUI(); ui.stationOutput.textContent = 'MEDKIT USED // +45% VITALITY'; }
-function pulse() { if (game.attackDisabledTimer > 0 || game.pulseTimer > 0) return; game.pulseTimer = 7 * getBiome(game.player.x, game.player.y).effects.pulseCooldownMultiplier; game.enemies.forEach(e => { if (!e.defeated && e.shieldTimer <= 0 && e.hp && Math.hypot(e.x - game.player.x, e.y - game.player.y) < 170) { e.hp -= 2; if (e.hp <= 0) defeatEnemy(e, 50); burst(e.x, e.y, 8, 180); } }); burst(game.player.x, game.player.y, 35, 260); }
+function pulse() { if (game.attackDisabledTimer > 0 || game.pulseTimer > 0) return; game.pulseTimer = 7 * getBiome(game.player.x, game.player.y).effects.pulseCooldownMultiplier; game.enemies.forEach(e => { if (!e.defeated && e.shieldTimer <= 0 && e.hp && Math.hypot(e.x - game.player.x, e.y - game.player.y) < 170) { e.hp -= 2 * getPlayerDamageMultiplier(); if (e.hp <= 0) defeatEnemy(e, 50); burst(e.x, e.y, 8, 180); } }); burst(game.player.x, game.player.y, 35, 260); }
 function createVoidWorm(x, y, canSplit = true) {
   const maxHp = 120.0;
   const enemy = { 
@@ -963,7 +984,7 @@ function createVoidWorm(x, y, canSplit = true) {
       const attemptedDamage = health - value;
       const weapon = weaponCatalog[game.weapon];
       const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y);
-      const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12;
+      const weaponDamage = (weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12) * getPlayerDamageMultiplier();
       health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
     }
   });
@@ -1001,7 +1022,7 @@ function createVoidWalker(x, y) {
       const attemptedDamage = health - value;
       const weapon = weaponCatalog[game.weapon];
       const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y);
-      const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12;
+      const weaponDamage = (weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12) * getPlayerDamageMultiplier();
       
       // Become aggressive when damaged
       if (attemptedDamage > 0) enemy.isAggroed = true;
@@ -1049,7 +1070,7 @@ function createVoidStalker() {
       const attemptedDamage = health - value;
       const weapon = weaponCatalog[game.weapon];
       const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y);
-      const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12;
+      const weaponDamage = (weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12) * getPlayerDamageMultiplier();
       if (attemptedDamage > 0) enemy.isAggroed = true;
       health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
     }
@@ -1192,7 +1213,7 @@ function createBiomeEnemy(x, y, biome, variant = null) {
       if (attemptedDamage > 0 && hasEnemyEffect(enemy, 'damage-ignore') && Math.random() < .05) return;
       const weapon = weaponCatalog[game.weapon];
       const distance = Math.hypot(enemy.x - game.player.x, enemy.y - game.player.y);
-      const weaponDamage = weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12;
+      const weaponDamage = (weapon?.falloff ? weapon.damage * Math.max(.25, 1 - distance / 550) : weapon?.damage || .12) * getPlayerDamageMultiplier();
       const previousHealth = health;
       health = attemptedDamage > 0 && attemptedDamage <= .120001 ? Math.max(0, health - weaponDamage) : value;
       if (health < previousHealth && hasEnemyEffect(enemy, 'damage-burst') && Math.random() < .5) triggerBoneOrchardHit(enemy);
@@ -1915,6 +1936,17 @@ updateAmmoUI = function() { baseUpdateAmmoUI(); updateAtlasCrystalUI(); };
 function getNearbyStation() { return Object.entries(stationPositions).find(([, position]) => Math.hypot(game.player.x - position.x, game.player.y - position.y) <= stationInteractionRadius)?.[0] || null; }
 function getBeaconStationAt(x, y) { return game.beaconStations.find(station => Math.hypot(x - station.x, y - station.y) <= station.radius) || null; }
 function getNearbyBeaconStation() { return getBeaconStationAt(game.player.x, game.player.y); }
+function getNearbyBeaconBench() {
+  return game.beaconStations
+    .filter(station => station.repaired)
+    .flatMap(station => [
+      { station, type: 'crafting', x: station.x - beaconModuleBenchOffset, y: station.y },
+      { station, type: 'beacon-modules', x: station.x + beaconModuleBenchOffset, y: station.y }
+    ])
+    .map(bench => ({ ...bench, distance: Math.hypot(game.player.x - bench.x, game.player.y - bench.y) }))
+    .filter(bench => bench.distance <= beaconModuleInteractionRadius)
+    .sort((a, b) => a.distance - b.distance)[0] || null;
+}
 function toggleStation() {
   const nearbyStation = getNearbyStation();
   if (nearbyStation) {
@@ -1924,9 +1956,10 @@ function toggleStation() {
     const beaconStation = getNearbyBeaconStation();
     if (!beaconStation) return;
     game.activeBeaconStationId = beaconStation.id;
-    game.stationOpen = game.stationOpen === (beaconStation.repaired ? 'crafting' : 'beacon-repair')
-      ? null
-      : beaconStation.repaired ? 'crafting' : 'beacon-repair';
+    const bench = beaconStation.repaired ? getNearbyBeaconBench() : null;
+    if (beaconStation.repaired && (!bench || bench.station !== beaconStation)) return;
+    const nextMenu = beaconStation.repaired ? bench.type : 'beacon-repair';
+    game.stationOpen = game.stationOpen === nextMenu ? null : nextMenu;
   }
   if (!game.stationOpen) game.activeBeaconStationId = null;
   updateStationUI();
@@ -1935,24 +1968,33 @@ function updateStationUI() {
   const activeBeaconStation = game.beaconStations.find(station => station.id === game.activeBeaconStationId);
   const nearbyBeaconStation = getNearbyBeaconStation();
   const beaconMenuOpen = game.stationOpen === 'beacon-repair'
-    || (game.stationOpen === 'crafting' && activeBeaconStation);
+    || (['crafting', 'beacon-modules'].includes(game.stationOpen) && activeBeaconStation);
   if (beaconMenuOpen && (!activeBeaconStation || activeBeaconStation !== nearbyBeaconStation)) {
     game.stationOpen = null;
     game.activeBeaconStationId = null;
   } else if (game.stationOpen === 'beacon-repair' && activeBeaconStation?.repaired) {
     game.stationOpen = 'crafting';
+  } else if (activeBeaconStation && (game.stationOpen === 'crafting' || game.stationOpen === 'beacon-modules')) {
+    const bench = getNearbyBeaconBench();
+    if (!bench || bench.station !== activeBeaconStation || bench.type !== game.stationOpen) {
+      game.stationOpen = null;
+      game.activeBeaconStationId = null;
+    }
   }
   const nearbyStation = getNearbyStation();
   if (game.stationOpen && !beaconMenuOpen && nearbyStation !== game.stationOpen) game.stationOpen = null;
   const repairButton = document.querySelector('[data-station="beacon-repair"] [data-craft]');
   if (activeBeaconStation && repairButton) repairButton.dataset.craft = `repairBeacon:${activeBeaconStation.id}`;
   ui.stations.hidden = !game.stationOpen;
+  ui.stations.classList.toggle('beacon-menu', Boolean(game.activeBeaconStationId));
   adminPanel.hidden = !adminMode || Boolean(game.stationOpen);
   document.querySelectorAll('[data-station]').forEach(card => { card.hidden = card.dataset.station !== game.stationOpen; });
   const title = ui.stations.querySelector('.station-title');
   if (title) title.textContent = game.stationOpen === 'beacon-repair'
     ? 'BEACON STATION // REPAIR'
-    : game.activeBeaconStationId ? 'BEACON STATION // CRAFTING TABLE' : 'SANCTUARY // WORKSHOPS';
+    : game.stationOpen === 'beacon-modules'
+      ? 'BEACON STATION // MODULE STATION'
+      : game.activeBeaconStationId ? 'BEACON STATION // CRAFTING TABLE' : 'SANCTUARY // WORKSHOPS';
 }
 function bankInventory() { let deposited = false; resourceTypes.forEach(resource => { const amount = game.inventory[resource.key]; if (!amount) return; game.vault[resource.key] = (game.vault[resource.key] || 0) + amount; game.inventory[resource.key] = 0; deposited = true; }); if (deposited) localStorage.setItem('horde-vault', JSON.stringify(game.vault)); return deposited; }
 function getCraftResourceAmount(key) { if (weaponCatalog[key]) return game.unlockedWeapons[key] ? 1 : 0; if (key === 'relic') return game.relics; if (key === 'atlasCrystal') return game.atlasCrystals; if (key === 'steelPlate') return game.stationItems.steelPlate || 0; return game.vault[key] || 0; }
@@ -1985,15 +2027,37 @@ function openCraftDetails(recipeKey, requestedQuantity = 1) { const recipe = sta
   `; ui.craftDetails.hidden = false; }
 function craftItem(recipeKey, requestedQuantity = 1) { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary' || game.crafting) return; const recipe = stationRecipes[recipeKey]; const repeatable = !recipe.weapon && !recipe.armor; const quantity = repeatable ? Math.max(1, Math.min(5, requestedQuantity)) : 1; if (recipe.output?.medkit && (game.stationItems.medkit || 0) + quantity > 5) { ui.stationOutput.textContent = 'MEDKIT STORAGE FULL'; return; } const missing = Object.entries(recipe.cost).find(([key, amount]) => getCraftResourceAmount(key) < amount * quantity); if (missing) { const shortage = missing[1] * quantity - getCraftResourceAmount(missing[0]); ui.stationOutput.textContent = `NEED ${shortage} MORE ${missing[0].toUpperCase()}`; return; } Object.entries(recipe.cost).forEach(([key, amount]) => { spendCraftResource(key, amount * quantity); }); game.crafting = { recipeKey, quantity, remaining: recipe.time * quantity, total: recipe.time * quantity }; localStorage.setItem('horde-vault', JSON.stringify(game.vault)); updateInventoryUI(); updateStationButtons(); ui.stationOutput.textContent = `CRAFTING ${recipe.name} x${quantity} // ${recipe.time * quantity}s`; openCraftDetails(recipeKey, quantity); }
 function getStationRecipe(recipeKey) {
-  if (!recipeKey.startsWith('repairBeacon:')) return stationRecipes[recipeKey] || null;
-  const stationId = recipeKey.slice('repairBeacon:'.length);
-  const station = game.beaconStations.find(candidate => candidate.id === stationId && !candidate.repaired);
-  return station ? { name: 'BEACON STATION REPAIR', time: 20, cost: station.repairCost, beaconRepairId: station.id } : null;
+  if (recipeKey.startsWith('repairBeacon:')) {
+    const stationId = recipeKey.slice('repairBeacon:'.length);
+    const station = game.beaconStations.find(candidate => candidate.id === stationId && !candidate.repaired);
+    return station ? { name: 'BEACON STATION REPAIR', time: 20, cost: station.repairCost, beaconRepairId: station.id } : null;
+  }
+  if (recipeKey.startsWith('beaconModule:')) {
+    const moduleKey = recipeKey.slice('beaconModule:'.length);
+    const station = game.beaconStations.find(candidate => candidate.id === game.activeBeaconStationId && candidate.repaired);
+    const definition = beaconModuleDefinitions[moduleKey];
+    if (!station || !definition) return null;
+    const craftedCount = Object.values(station.modules).reduce((total, count) => total + count, 0);
+    return {
+      name: definition.name,
+      description: definition.description,
+      time: 0,
+      cost: { steel: 150 + craftedCount * 75, crystal: 75 + craftedCount * 40 },
+      beaconModule: true,
+      beaconStationId: station.id,
+      moduleKey
+    };
+  }
+  return stationRecipes[recipeKey] || null;
 }
 function saveBeaconStations() {
   const savedStates = Object.fromEntries(game.beaconStations.map(station => [
     station.id,
-    { repaired: station.repaired, weapons: station.turrets.map(turret => turret.weapon) }
+    {
+      repaired: station.repaired,
+      weapons: station.turrets.map(turret => turret.weapon),
+      modules: station.modules
+    }
   ]));
   localStorage.setItem('horde-beacon-stations', JSON.stringify(savedStates));
 }
@@ -2109,6 +2173,32 @@ function updateBeaconTurretProjectiles(dt) {
     }
   });
 }
+function updateBeaconStationModules(dt) {
+  game.beaconStations.forEach(station => {
+    if (!station.repaired) return;
+    const pulseCount = station.modules.pulse || 0;
+    if (pulseCount > 0) {
+      station.pulseTimer -= dt;
+      if (station.pulseTimer <= 0) {
+        const radius = station.radius + 100 + (pulseCount - 1) * 25;
+        const fallbackAngle = Math.random() * Math.PI * 2;
+        applyPulseBlast(station.x, station.y, radius, 500 * pulseCount, Math.cos(fallbackAngle), Math.sin(fallbackAngle));
+        station.pulseTimer = Math.max(2, 5 - (pulseCount - 1) * .5);
+      }
+    }
+
+    const drainCount = station.modules.drain || 0;
+    if (drainCount > 0) {
+      const radius = station.radius + 100;
+      game.enemies.forEach(enemy => {
+        if (enemy.defeated || enemy.shieldTimer > 0 || enemy.hp <= 0
+            || Math.hypot(enemy.x - station.x, enemy.y - station.y) > radius) return;
+        enemy.hp = Math.max(0, enemy.hp - 2 * drainCount * dt);
+        if (enemy.hp <= 0) defeatEnemy(enemy);
+      });
+    }
+  });
+}
 function updateCrafting(dt) {
   if (!game.crafting) return;
   game.crafting.remaining -= dt;
@@ -2169,16 +2259,22 @@ function updateCrafting(dt) {
 }
 function getWeaponPrerequisite(recipe) { return recipe.weapon ? Object.keys(recipe.cost || {}).find(key => weaponCatalog[key]) || null : null; }
 function getWeaponTargetSlot(recipe, requestedSlot = 0) { const prerequisite = getWeaponPrerequisite(recipe); if (prerequisite) return game.weaponSlots.indexOf(prerequisite); if (requestedSlot >= 0 && requestedSlot < game.weaponSlots.length) return requestedSlot; return game.weaponSlots.findIndex(slot => !slot); }
-function openCraftDetails(recipeKey, requestedQuantity = 1, requestedSlot = 0) { const recipe = getStationRecipe(recipeKey); if (!recipe) return; const repeatable = !recipe.weapon && !recipe.armor && !recipe.beaconRepairId; const quantity = repeatable ? Math.max(1, Math.min(5, requestedQuantity)) : 1; const targetSlot = getWeaponTargetSlot(recipe, requestedSlot); const costEntries = Object.entries(recipe.cost || {}); const materialRows = costEntries.map(([key, amount]) => { const resource = resourceTypes.find(item => item.key === key) || { name: key === 'steelPlate' ? 'STEEL PLATE' : key.toUpperCase() }; const required = amount * quantity; const owned = getCraftResourceAmount(key); return `<li class="${owned >= required ? 'ready' : 'missing'}"><span>${resource.name}</span><strong>${owned} / ${required}</strong></li>`; }).join(''); const missing = costEntries.find(([key, amount]) => getCraftResourceAmount(key) < amount * quantity); const capacityExceeded = recipe.output?.medkit && (game.stationItems.medkit || 0) + quantity > 5; const canCraft = !missing && !capacityExceeded && !game.crafting && (!recipe.weapon || targetSlot >= 0); const quantityControls = repeatable ? `<div class="craft-quantity-controls"><span>QUANTITY</span>${[1, 2, 3, 4, 5].map(value => `<button type="button" data-craft-quantity="${value}" class="${value === quantity ? 'selected' : ''}" ${game.crafting ? 'disabled' : ''}>${value}</button>`).join('')}</div>` : ''; const slotControls = recipe.weapon ? `<div class="craft-slot-controls"><span>SLOT</span>${game.weaponSlots.map((slot, index) => { const prerequisite = getWeaponPrerequisite(recipe); const locked = Boolean(slot) && slot !== prerequisite; const selected = targetSlot === index; return `<button type="button" data-craft-slot="${index}" class="${selected ? 'selected' : ''}" ${locked || game.crafting ? 'disabled' : ''}>${index + 1}${slot ? ` ${weaponCatalog[slot].name}` : ' EMPTY'}</button>`; }).join('')}</div>` : ''; const actionLabel = game.crafting ? 'CRAFTING' : capacityExceeded ? 'STORAGE FULL' : !recipe.weapon || targetSlot >= 0 ? (canCraft ? `CRAFT x${quantity}` : 'NEED MATERIALS') : 'NO EMPTY SLOT'; ui.craftDetails.dataset.recipeKey = recipeKey; ui.craftDetails.dataset.quantity = quantity; ui.craftDetails.dataset.weaponSlot = targetSlot; ui.craftDetails.innerHTML = `<div class="craft-details-header"><strong>${recipe.name}</strong><button type="button" class="detail-close" data-close-details>✕</button></div><div class="craft-details-body"><div class="craft-detail-title">REQUIRED MATERIALS</div><ul class="craft-detail-list">${materialRows}</ul><div class="craft-detail-actions">${slotControls}${quantityControls}<button type="button" data-craft-confirm="${recipeKey}" ${canCraft ? '' : 'disabled'}>${actionLabel}</button></div></div>`; ui.craftDetails.hidden = false; }
+function openCraftDetails(recipeKey, requestedQuantity = 1, requestedSlot = 0) { const recipe = getStationRecipe(recipeKey); if (!recipe) return; const repeatable = !recipe.weapon && !recipe.armor && !recipe.beaconRepairId && !recipe.beaconModule; const quantity = repeatable ? Math.max(1, Math.min(5, requestedQuantity)) : 1; const targetSlot = getWeaponTargetSlot(recipe, requestedSlot); const costEntries = Object.entries(recipe.cost || {}); const materialRows = costEntries.map(([key, amount]) => { const resource = resourceTypes.find(item => item.key === key) || { name: key === 'steelPlate' ? 'STEEL PLATE' : key.toUpperCase() }; const required = amount * quantity; const owned = getCraftResourceAmount(key); return `<li class="${owned >= required ? 'ready' : 'missing'}"><span>${resource.name}</span><strong>${owned} / ${required}</strong></li>`; }).join(''); const missing = costEntries.find(([key, amount]) => getCraftResourceAmount(key) < amount * quantity); const capacityExceeded = recipe.output?.medkit && (game.stationItems.medkit || 0) + quantity > 5; const canCraft = !missing && !capacityExceeded && !game.crafting && (!recipe.weapon || targetSlot >= 0); const quantityControls = repeatable ? `<div class="craft-quantity-controls"><span>QUANTITY</span>${[1, 2, 3, 4, 5].map(value => `<button type="button" data-craft-quantity="${value}" class="${value === quantity ? 'selected' : ''}" ${game.crafting ? 'disabled' : ''}>${value}</button>`).join('')}</div>` : ''; const slotControls = recipe.weapon ? `<div class="craft-slot-controls"><span>SLOT</span>${game.weaponSlots.map((slot, index) => { const prerequisite = getWeaponPrerequisite(recipe); const locked = Boolean(slot) && slot !== prerequisite; const selected = targetSlot === index; return `<button type="button" data-craft-slot="${index}" class="${selected ? 'selected' : ''}" ${locked || game.crafting ? 'disabled' : ''}>${index + 1}${slot ? ` ${weaponCatalog[slot].name}` : ' EMPTY'}</button>`; }).join('')}</div>` : ''; const actionLabel = game.crafting ? 'CRAFTING' : capacityExceeded ? 'STORAGE FULL' : !recipe.weapon || targetSlot >= 0 ? (canCraft ? `CRAFT x${quantity}` : 'NEED MATERIALS') : 'NO EMPTY SLOT'; ui.craftDetails.dataset.recipeKey = recipeKey; ui.craftDetails.dataset.quantity = quantity; ui.craftDetails.dataset.weaponSlot = targetSlot; ui.craftDetails.innerHTML = `<div class="craft-details-header"><strong>${recipe.name}</strong><button type="button" class="detail-close" data-close-details>✕</button></div><div class="craft-details-body"><div class="craft-detail-title">REQUIRED MATERIALS</div><ul class="craft-detail-list">${materialRows}</ul><div class="craft-detail-actions">${slotControls}${quantityControls}<button type="button" data-craft-confirm="${recipeKey}" ${canCraft ? '' : 'disabled'}>${actionLabel}</button></div></div>`; ui.craftDetails.hidden = false; }
 function craftItem(recipeKey, requestedQuantity = 1, requestedSlot = Number(ui.craftDetails.dataset.weaponSlot || 0)) {
   const recipe = getStationRecipe(recipeKey);
   if (!recipe || game.crafting) return;
   const beaconStation = game.beaconStations.find(station => station.id === game.activeBeaconStationId);
-  const atBeaconTable = game.stationOpen === 'crafting' && beaconStation?.repaired && getNearbyBeaconStation() === beaconStation;
+  const nearbyBeaconBench = getNearbyBeaconBench();
+  const atBeaconTable = game.stationOpen === 'crafting' && beaconStation?.repaired
+    && nearbyBeaconBench?.station === beaconStation && nearbyBeaconBench.type === 'crafting';
+  const atBeaconModuleStation = game.stationOpen === 'beacon-modules' && beaconStation?.repaired
+    && nearbyBeaconBench?.station === beaconStation && nearbyBeaconBench.type === 'beacon-modules';
   const atBeaconRepair = recipe.beaconRepairId && game.stationOpen === 'beacon-repair'
     && getNearbyBeaconStation()?.id === recipe.beaconRepairId;
-  if (getBiome(game.player.x, game.player.y).key !== 'sanctuary' && !atBeaconTable && !atBeaconRepair) return;
-  const repeatable = !recipe.weapon && !recipe.armor && !recipe.beaconRepairId;
+  if (getBiome(game.player.x, game.player.y).key !== 'sanctuary'
+      && !atBeaconTable && !atBeaconModuleStation && !atBeaconRepair) return;
+  if (recipe.beaconModule && (!atBeaconModuleStation || recipe.beaconStationId !== beaconStation.id)) return;
+  const repeatable = !recipe.weapon && !recipe.armor && !recipe.beaconRepairId && !recipe.beaconModule;
   const quantity = repeatable ? Math.max(1, Math.min(5, requestedQuantity)) : 1;
   const weaponSlot = recipe.weapon ? getWeaponTargetSlot(recipe, requestedSlot) : -1;
   if (recipe.weapon && weaponSlot < 0) {
@@ -2196,6 +2292,20 @@ function craftItem(recipeKey, requestedQuantity = 1, requestedSlot = Number(ui.c
     return;
   }
   Object.entries(recipe.cost).forEach(([key, amount]) => spendCraftResource(key, amount * quantity));
+  if (recipe.beaconModule) {
+    beaconStation.modules[recipe.moduleKey]++;
+    saveBeaconStations();
+    localStorage.setItem('horde-vault', JSON.stringify(game.vault));
+    updateInventoryUI();
+    updateStationButtons();
+    ui.stationOutput.textContent = `INSTALLED // ${recipe.name} x${beaconStation.modules[recipe.moduleKey]}`;
+    const biome = getBiome(game.player.x, game.player.y);
+    updateBiomeEffects(biome);
+    updateBiomeHazard(biome);
+    ui.craftDetails.hidden = true;
+    ui.craftDetails.innerHTML = '';
+    return;
+  }
   game.crafting = { recipeKey, quantity, weaponSlot, remaining: recipe.time * quantity, total: recipe.time * quantity };
   localStorage.setItem('horde-vault', JSON.stringify(game.vault));
   updateInventoryUI();
@@ -2213,6 +2323,14 @@ openCraftDetails = function(recipeKey, requestedQuantity = 1, requestedSlot = 0)
   const recipe = stationRecipes[recipeKey];
   if (!recipe?.weapon || getWeaponPrerequisite(recipe)) return;
   ui.craftDetails.querySelectorAll('[data-craft-slot]').forEach(button => button.disabled = Boolean(game.crafting));
+};
+const renderModuleCraftDetails = openCraftDetails;
+openCraftDetails = function(recipeKey, requestedQuantity = 1, requestedSlot = 0) {
+  renderModuleCraftDetails(recipeKey, requestedQuantity, requestedSlot);
+  const recipe = getStationRecipe(recipeKey);
+  if (!recipe?.beaconModule) return;
+  const title = ui.craftDetails.querySelector('.craft-detail-title');
+  title?.insertAdjacentHTML('beforebegin', `<div class="module-description">${recipe.description}<br>INSTALLED: ${game.beaconStations.find(station => station.id === recipe.beaconStationId).modules[recipe.moduleKey]}</div>`);
 };
 function drawBiomeHazard(biome, width, height) { if (biome.key === 'sanctuary' || biome.key.startsWith('beacon-')) return; const hazard = biome.effects.hazard; const time = performance.now() / 1000; const name = hazard.name; ctx.save(); ctx.globalAlpha = .2; if (name.includes('MIST') || name.includes('ASH') || name.includes('SPORES') || name.includes('RAIN')) { ctx.fillStyle = biome.color; for (let i = 0; i < 28; i++) { const x = (i * 97 + time * 18) % width; const y = (i * 53 + time * 11) % height; ctx.beginPath(); ctx.arc(x, y, 3 + (i % 4), 0, Math.PI * 2); ctx.fill(); } } else if (name.includes('HEAT') || name.includes('EMBER') || name.includes('FIRE') || name.includes('BURN')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 2; for (let i = 0; i < 18; i++) { const x = (i * 131 + time * 35) % width; const y = (i * 71 + time * 24) % height; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 12, y + 28); ctx.stroke(); } } else if (name.includes('FREEZE') || name.includes('FROST') || name.includes('COLD')) { ctx.fillStyle = biome.color; for (let i = 0; i < 24; i++) { const x = (i * 83 + time * 12) % width; const y = (i * 61 + time * 30) % height; ctx.fillRect(x, y, 2, 8); } } else if (name.includes('LIGHTNING') || name.includes('THUNDER')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 3; for (let i = 0; i < 3; i++) { const x = (i * 211 + time * 7) % width; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x - 14, height * .25); ctx.lineTo(x + 8, height * .5); ctx.lineTo(x - 12, height * .78); ctx.stroke(); } } else if (name.includes('ROOT') || name.includes('BONE')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 4; for (let i = 0; i < 8; i++) { const x = i * width / 7; ctx.beginPath(); ctx.moveTo(x, height); ctx.quadraticCurveTo(x + 20, height * .7, x - 8, height * .42); ctx.stroke(); } } else if (name.includes('GRAVITY') || name.includes('PRESSURE') || name.includes('HORIZON')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 2; for (let radius = 70; radius < Math.max(width, height); radius += 100) { ctx.beginPath(); ctx.arc(width / 2, height / 2, radius + Math.sin(time * 2 + radius) * 8, 0, Math.PI * 2); ctx.stroke(); } } else { ctx.fillStyle = biome.color; for (let i = 0; i < 18; i++) { const x = (i * 113 + time * 20) % width; const y = (i * 67 + time * 14) % height; ctx.beginPath(); ctx.arc(x, y, 2 + i % 3, 0, Math.PI * 2); ctx.fill(); } } ctx.restore(); }
 function generateHazardZones() { const zones = []; const random = seededRandom(game.seed + 71); for (let i = 0; i < 110; i++) { const x = (random() - .5) * mapRadius * 2; const y = (random() - .5) * mapRadius * 1.5; const biome = getBiome(x, y); if (biome.key === 'sanctuary' || biome.key === 'void' || biome.key.startsWith('beacon-')) continue; zones.push({ x, y, radius: 90 + random() * 150, biomeKey: biome.key, color: biome.color, damagePerSecond: biome.effects.hazard.zoneDamagePerSecond * 1.6, hazard: biome.effects.hazard }); } return zones; }
@@ -2468,8 +2586,18 @@ function drawBeaconStations() {
       ctx.fillStyle = '#8b5a3c';
       ctx.strokeStyle = '#f9c779';
       ctx.lineWidth = 3;
-      ctx.fillRect(station.x - 24, station.y - 20, 48, 40);
-      ctx.strokeRect(station.x - 24, station.y - 20, 48, 40);
+      ctx.fillRect(station.x - beaconModuleBenchOffset - 20, station.y - 16, 40, 32);
+      ctx.strokeRect(station.x - beaconModuleBenchOffset - 20, station.y - 16, 40, 32);
+      ctx.fillStyle = '#c88968';
+      ctx.fillRect(station.x - beaconModuleBenchOffset - 17, station.y - 20, 34, 7);
+      ctx.fillStyle = '#8b5a3c';
+      ctx.strokeStyle = '#8fe0ad';
+      ctx.fillRect(station.x + beaconModuleBenchOffset - 20, station.y - 16, 40, 32);
+      ctx.strokeRect(station.x + beaconModuleBenchOffset - 20, station.y - 16, 40, 32);
+      ctx.fillStyle = '#8fe0ad';
+      ctx.beginPath();
+      ctx.arc(station.x + beaconModuleBenchOffset, station.y - 2, 8, 0, Math.PI * 2);
+      ctx.fill();
       station.turrets.forEach(turret => {
         const color = beaconTurretWeapons[turret.weapon].color;
         ctx.fillStyle = '#17131a';
@@ -2484,7 +2612,9 @@ function drawBeaconStations() {
       });
       ctx.fillStyle = '#f9c779';
       ctx.font = 'bold 9px Space Mono';
-      ctx.fillText('CRAFTING TABLE', station.x, station.y + 38);
+      ctx.fillText('CRAFTING TABLE', station.x - beaconModuleBenchOffset, station.y + 31);
+      ctx.fillStyle = '#8fe0ad';
+      ctx.fillText('MODULE STATION', station.x + beaconModuleBenchOffset, station.y + 31);
     } else {
       ctx.strokeStyle = '#ff865c';
       ctx.lineWidth = 5;
@@ -2494,10 +2624,17 @@ function drawBeaconStations() {
       ctx.fillStyle = '#c88968';
       ctx.fillRect(station.x - 14, station.y - 12, 24, 24);
     }
-    if (getNearbyBeaconStation() === station) {
+    if (!station.repaired && getNearbyBeaconStation() === station) {
       ctx.fillStyle = '#f4eee5';
       ctx.font = 'bold 10px Space Mono';
-      ctx.fillText(`E // ${station.repaired ? 'CRAFT' : 'REPAIR'}`, station.x, station.y + station.radius + 22);
+      ctx.fillText('E // REPAIR', station.x, station.y + station.radius + 22);
+    } else if (station.repaired) {
+      const nearbyBench = getNearbyBeaconBench();
+      if (nearbyBench?.station === station) {
+        ctx.fillStyle = '#f4eee5';
+        ctx.font = 'bold 10px Space Mono';
+        ctx.fillText(`E // ${nearbyBench.type === 'crafting' ? 'CRAFT' : 'MODULES'}`, nearbyBench.x, nearbyBench.y + 48);
+      }
     }
     ctx.restore();
   });
@@ -2545,6 +2682,15 @@ function loop(now) {
 function updateBiomeAnnouncement(dt) { const biome = getBiome(game.player.x, game.player.y); game.discovered.add(getDiscoveryKey(game.player.x, game.player.y)); game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(getBiomeSector(Math.hypot(game.player.x, game.player.y)))); if (biome.key !== game.biomeKey || biome.name !== game.biomeName) { game.biomeKey = biome.key; game.biomeName = biome.name; game.announcementTimer = 3; announceBiome(biome); updateBiomeEffects(biome); updateBiomeHazard(biome); } game.announcementTimer = Math.max(0, game.announcementTimer - dt); if (game.announcementTimer === 0) ui.announcement.classList.remove('show'); }
 function updateBiomeHazard(biome) { const hazard = biome.effects.hazard; ui.effects.querySelector('.biome-hazard-effect')?.remove(); ui.effects.insertAdjacentHTML('beforeend', `<span class="biome-effect negative biome-hazard-effect" title="${hazard.description}"><b>!</b>${hazard.name}</span>`); }
 function updateBiomeEffects(biome) { const effects = biome.effects; const conditions = []; if (effects.healthRegen) conditions.push({ positive: true, text: `REGEN +${effects.healthRegen}/SEC`, detail: biome.key.startsWith('beacon-') ? `Restores ${effects.healthRegen} health per second inside this beacon station.` : `Restores ${effects.healthRegen} health per second while outside the beacon.` }); if (effects.moveMultiplier !== 1) conditions.push({ positive: effects.moveMultiplier > 1, text: `MOVE ${effects.moveMultiplier > 1 ? '+' : ''}${Math.round((effects.moveMultiplier - 1) * 100)}%`, detail: `${effects.moveMultiplier > 1 ? 'Increases' : 'Reduces'} player movement speed by ${Math.abs(Math.round((effects.moveMultiplier - 1) * 100))}%.` }); if (effects.fireCooldownMultiplier !== 1) conditions.push({ positive: effects.fireCooldownMultiplier < 1, text: `FIRE ${effects.fireCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%`, detail: `${effects.fireCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the delay between shots by ${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%.` }); if (effects.pulseCooldownMultiplier !== 1) conditions.push({ positive: effects.pulseCooldownMultiplier < 1, text: `PULSE ${effects.pulseCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%`, detail: `${effects.pulseCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the pulse cooldown by ${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%.` }); if (effects.salvageMultiplier !== 1) conditions.push({ positive: effects.salvageMultiplier > 1, text: `SALVAGE +${Math.round((effects.salvageMultiplier - 1) * 100)}%`, detail: `Collected salvage is multiplied by ${effects.salvageMultiplier}x.` }); if (effects.enemySpeedMultiplier !== 1) conditions.push({ positive: effects.enemySpeedMultiplier < 1, text: `HORDE ${effects.enemySpeedMultiplier < 1 ? '-' : '+'}${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}% SPEED`, detail: `Enemies move ${effects.enemySpeedMultiplier < 1 ? 'slower' : 'faster'} by ${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}%.` }); if (effects.damageMultiplier !== 1) conditions.push({ positive: false, text: `DAMAGE +${Math.round((effects.damageMultiplier - 1) * 100)}%`, detail: `Enemy contact damage is increased by ${Math.round((effects.damageMultiplier - 1) * 100)}%.` }); ui.effects.innerHTML = `<span class="biome-effects-title">${biome.name} // CONDITIONS</span>${conditions.map(condition => `<span class="biome-effect ${condition.positive ? 'positive' : 'negative'}" title="${condition.detail}"><b>${condition.positive ? '+' : '-'}</b>${condition.text}</span>`).join('')}`; }
+const renderBiomeEffects = updateBiomeEffects;
+updateBiomeEffects = function(biome) {
+  renderBiomeEffects(biome);
+  const damageBonus = biome.effects.playerDamageMultiplier || 1;
+  if (damageBonus > 1) {
+    const percent = Math.round((damageBonus - 1) * 100);
+    ui.effects.insertAdjacentHTML('beforeend', `<span class="biome-effect positive" title="Increases player attack damage by ${percent}% while inside this beacon station."><b>+</b>PLAYER DAMAGE +${percent}%</span>`);
+  }
+};
 function updateBrambleZones(dt) {
   let slowsPlayer = false;
   game.brambleZones.forEach(zone => {
@@ -3213,6 +3359,7 @@ function update(dt) {
   game.projectiles = game.projectiles.filter(p => p.life > 0);
 
   updateBeaconTurrets(dt);
+  updateBeaconStationModules(dt);
   game.enemies = game.enemies.filter(e => e.hp > 0);
 
   game.gems.forEach(g => {
@@ -3961,6 +4108,9 @@ draw = function() { const radii = game.enemies.map(enemy => enemy.r); game.enemi
 function getSectorKey(sector) { return `sector-${sector}`; }
 function getVoidBiome() { return { name: 'THE VOID', color: '#0a4f44', dark: '#03040e', key: 'void', sector: sectorRegions.length + 1, animationKey: 'void', effects: { moveMultiplier: .82, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { name: 'NO HAZARD', description: 'The Void is silent and empty.', damagePerSecond: 0, visual: null, zoneDamagePerSecond: 0 } } }; }
 function isInsideBeaconStation(x, y) { return Boolean(getBeaconStationAt(x, y)); }
+function getPlayerDamageMultiplier() {
+  return getBiome(game.player.x, game.player.y).effects.playerDamageMultiplier || 1;
+}
 function addEnemy(enemy) {
   if (!enemy || isInsideBeaconStation(enemy.x, enemy.y)) return null;
   game.enemies.push(enemy);
@@ -3976,6 +4126,7 @@ function getBiome(x, y) {
   const biome = sectorRegions[sector][index];
   const beaconStation = getBeaconStationAt(x, y);
   if (beaconStation) {
+    const supportModules = beaconStation.repaired ? beaconStation.modules.support || 0 : 0;
     return {
       ...biome,
       name: beaconStation.repaired ? 'BEACON STATION' : 'RUINED BEACON STATION',
@@ -3990,9 +4141,10 @@ function getBiome(x, y) {
         moveMultiplier: 1,
         damageMultiplier: 1,
         enemySpeedMultiplier: 1,
-        fireCooldownMultiplier: 1,
+        fireCooldownMultiplier: 1 / (1 + supportModules * .1),
         pulseCooldownMultiplier: 1,
-        healthRegen: 1.5,
+        healthRegen: 1.5 + supportModules * 3,
+        playerDamageMultiplier: 1 + supportModules * .1,
         salvageMultiplier: 1,
         hazard: {
           ...biome.effects.hazard,
