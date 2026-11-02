@@ -22,13 +22,20 @@
       <div class="arena-frame">
         <canvas id="arena" aria-label="Top-down Fight the Horde game"></canvas>
         <div class="crosshair" aria-hidden="true"></div>
-        <div class="map-panel"><span>TACTICAL MAP</span><canvas id="map" width="220" height="180" aria-label="Tactical map"></canvas></div>
+        <div class="map-panel" id="map-panel" role="dialog" aria-modal="false" aria-label="Tactical map">
+          <div class="map-heading">
+            <span>TACTICAL MAP</span>
+            <span id="map-biome-name" class="map-hover-name" aria-live="polite"></span>
+            <span class="map-close-hint" id="map-instructions">PRESS M OR ESC TO CLOSE</span>
+          </div>
+          <canvas id="map" width="220" height="180" aria-label="Tactical map"></canvas>
+        </div>
         <div class="overlay" id="start-screen">
           <p class="eyebrow">NIGHT SHIFT // SECTOR 07</p>
           <h1>FIGHT<br><span>THE HORDE</span></h1>
           <p class="intro">Hold the line. Clear every wave.<br>Nothing gets past you.</p>
           <button class="primary-button" id="start-button">ENTER THE FIGHT <span>→</span></button>
-          <p class="controls-hint"><kbd>WASD</kbd> MOVE <i></i> <kbd>MOUSE</kbd> AIM + FIRE <i></i> <kbd>E</kbd> STATIONS</p>
+          <p class="controls-hint"><kbd>WASD</kbd> MOVE <i></i> <kbd>MOUSE</kbd> AIM + FIRE <i></i> <kbd>E</kbd> STATIONS <i></i> <kbd>M</kbd> MAP</p>
         </div>
         <div class="overlay hidden" id="game-over">
           <p class="eyebrow">SIGNAL LOST</p>

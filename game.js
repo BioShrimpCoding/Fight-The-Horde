@@ -2,6 +2,9 @@ const canvas = document.querySelector('#arena');
 const ctx = canvas.getContext('2d');
 const mapCanvas = document.querySelector('#map');
 const mapCtx = mapCanvas.getContext('2d');
+const mapPanel = document.querySelector('#map-panel');
+const mapBiomeName = document.querySelector('#map-biome-name');
+const mapInstructions = document.querySelector('#map-instructions');
 const crosshair = document.querySelector('.crosshair');
 const gameShell = document.querySelector('.game-shell');
 const adminPanel = document.querySelector('#admin-panel');
@@ -15,6 +18,7 @@ window.addEventListener('unhandledrejection', event => { const reason = event.re
 clearConsoleButton?.addEventListener('click', () => { debugConsoleOutput.innerHTML = ''; gameLog('INFO', 'Diagnostic console cleared'); });
 gameLog('INFO', 'Diagnostic console online');
 const keys = {}; const pointer = { x: 0, y: 0, down: false }; let animation; let lastTime = 0; let adminMode = false;
+let mapOpen = false;
 const adminUnlockSequence = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'Enter'];
 let adminUnlockIndex = 0;
 const clipSize = 12;
@@ -38,11 +42,45 @@ let tacticalMapZoomIndex = 3;
 function cycleTacticalMapZoom() {
   tacticalMapZoomIndex = (tacticalMapZoomIndex + 1) % tacticalMapZoomLevels.length;
 }
+function getTacticalMapZoom() {
+  if (!mapOpen) return tacticalMapZoomLevels[tacticalMapZoomIndex];
+  return Math.min(1, mapRadius / (mapRadius + Math.hypot(game.player.x, game.player.y)));
+}
 function getTacticalMapScale() {
-  return mapCanvas.width / (mapRadius * 2) * tacticalMapZoomLevels[tacticalMapZoomIndex];
+  const mapDimension = mapOpen ? Math.min(mapCanvas.width, mapCanvas.height) : mapCanvas.width;
+  return mapDimension / (mapRadius * 2) * getTacticalMapZoom();
 }
 function getTacticalMapVisibleRadius() {
-  return mapRadius / tacticalMapZoomLevels[tacticalMapZoomIndex];
+  return mapRadius / getTacticalMapZoom();
+}
+function getMapCenter() { return mapOpen ? game.player : { x: 0, y: 0 }; }
+function applyMapTransform(scale) {
+  const center = getMapCenter();
+  mapCtx.translate(mapCanvas.width / 2 - center.x * scale, mapCanvas.height / 2 - center.y * scale);
+  mapCtx.scale(scale, scale);
+}
+function resizeMapCanvas() {
+  const width = Math.max(220, Math.floor(mapCanvas.clientWidth));
+  const height = Math.max(180, Math.floor(mapCanvas.clientHeight));
+  if (mapCanvas.width !== width) mapCanvas.width = width;
+  if (mapCanvas.height !== height) mapCanvas.height = height;
+}
+function setMapOpen(open) {
+  if (mapOpen === open) return;
+  mapOpen = open;
+  mapPanel.classList.toggle('expanded', open);
+  const canFastTravel = isAtFastTravelHub();
+  mapPanel.classList.toggle('fast-travel-enabled', open && canFastTravel);
+  mapInstructions.textContent = canFastTravel
+    ? 'CLICK A BEACON TO TRAVEL // M OR ESC TO CLOSE'
+    : 'M OR ESC TO CLOSE';
+  document.body.classList.toggle('map-open', open);
+  mapPanel.setAttribute('aria-modal', String(open));
+  mapBiomeName.textContent = '';
+  Object.keys(keys).forEach(key => { keys[key] = false; });
+  pointer.down = false;
+  game.radBeamActive = false;
+  resizeMapCanvas();
 }
 const sectorRegions = [
   [{ name: 'TOXIC MARSH', color: '#65b49a', dark: '#172d2d' }, { name: 'SCORCHED WASTES', color: '#ff865c', dark: '#3b211d' }, { name: 'FROZEN PEAKS', color: '#9fd8e3', dark: '#1b2a3c' }, { name: 'ASHEN LOWLANDS', color: '#c88968', dark: '#322522' }],
@@ -91,7 +129,7 @@ const weaponCatalog = {
   laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 4.80, range: 115, meleeDuration: .36, meleeSweep: 2.5, meleeStyle: 'laserBlade', kind: 'melee' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 100, damage: 1.30, speed: 440, life: .50, pellets: 1, spread: .50, kind: 'gun', oscillating: true, coneSize: .20 },
   railgun: { name: 'RAILGUN', ammo: 'slugs', magazine: 1, cooldown: 1200, damage: 18.00, speed: 1600, life: 1, pellets: 1, spread: 0, beam: true, kind: 'gun' },
-  radBeam: { name: 'RAD BEAM', ammo: 'radCells', magazine: 8, range: 600, damage: 0.05, radiationDamage: .5, radiationTickInterval: .5, radiationDuration: 2, radiationSlowChance: .05, radiationSlowMultiplier: .85, kind: 'gun', continuousBeam: true },
+  radBeam: { name: 'RAD BEAM', ammo: 'radCells', magazine: 8, range: 600, damage: 0.05, radiationDamage: .5, radiationTickInterval: .1, radiationDuration: 3, radiationSlowChance: .05, radiationSlowMultiplier: .85, kind: 'gun', continuousBeam: true },
   cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 16, cooldown: 100, damage: 1.60, speed: 450, life: 0.8, pellets: 2, spread: .60, kind: 'gun', oscillating: true, coneSize: .25 }
 };
 
@@ -300,7 +338,7 @@ function createBeaconStations() {
     const station = { id, x, y, radius: beaconStationRadius, repairCost, repaired: Boolean(savedState.repaired), turrets: [] };
     if (station.repaired) createBeaconTurrets(station, savedState.weapons);
     return station;
-  });
+   });
 }
 let game = freshGame();
 function freshGame() {
@@ -371,10 +409,85 @@ function freshGame() {
 }
 ui.high.textContent = String(game.high).padStart(6, '0');
 renderWeaponBar();
-function resize() { const ratio = window.devicePixelRatio || 1; canvas.width = canvas.clientWidth * ratio; canvas.height = canvas.clientHeight * ratio; ctx.setTransform(ratio, 0, 0, ratio, 0, 0); if (!game.active) game.player = { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2, angle: 0 }; }
+function resize() { const ratio = window.devicePixelRatio || 1; canvas.width = canvas.clientWidth * ratio; canvas.height = canvas.clientHeight * ratio; ctx.setTransform(ratio, 0, 0, ratio, 0, 0); if (!game.active) game.player = { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2, angle: 0 }; resizeMapCanvas(); }
 window.addEventListener('resize', resize); resize();
-window.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); togglePause(); return; } keys[event.key.toLowerCase()] = true; if (event.key === adminUnlockSequence[adminUnlockIndex]) { adminUnlockIndex++; if (adminUnlockIndex === adminUnlockSequence.length) { adminUnlockIndex = 0; const code = window.prompt('ADMIN ACCESS CODE'); if (code === 'iAmAdmin') { adminMode = true; adminPanel.hidden = false; gameLog('INFO', 'Admin panel unlocked'); } else { gameLog('WARN', 'Admin access denied'); } } } else { adminUnlockIndex = event.key === adminUnlockSequence[0] ? 1 : 0; } if (event.key.toLowerCase() === 'j' && game.active && !game.paused && !event.repeat) cycleTacticalMapZoom(); if (event.key.toLowerCase() === 'e' && game.active && !game.paused && !event.repeat) toggleStation(); if (event.key === ' ' && game.active && !game.paused) shoot(); if (event.key.toLowerCase() === 'h' && game.active && !game.paused && !event.repeat) useMedkit(); if (event.key.toLowerCase() === 'q' && game.active && !game.paused) pulse(); if (game.active && !game.paused && !event.repeat && /^[0-9]$/.test(event.key)) switchWeapon(Number(event.key)); }); window.addEventListener('keyup', event => keys[event.key.toLowerCase()] = false);
+window.addEventListener('keydown', event => {
+  if (mapOpen) {
+    event.preventDefault();
+    if (!event.repeat && (event.key.toLowerCase() === 'm' || event.key === 'Escape')) {
+      setMapOpen(false);
+    }
+    return;
+  }
+  if (event.key.toLowerCase() === 'm') {
+    if (game.active && !event.repeat) {
+      event.preventDefault();
+      setMapOpen(true);
+    }
+    return;
+  }
+  if (event.key === 'Escape') { event.preventDefault(); if (!event.repeat) togglePause(); return; }
+  keys[event.key.toLowerCase()] = true;
+  if (event.key === adminUnlockSequence[adminUnlockIndex]) {
+    adminUnlockIndex++;
+    if (adminUnlockIndex === adminUnlockSequence.length) {
+      adminUnlockIndex = 0;
+      const code = window.prompt('ADMIN ACCESS CODE');
+      if (code === 'iAmAdmin') { adminMode = true; adminPanel.hidden = false; gameLog('INFO', 'Admin panel unlocked'); }
+      else { gameLog('WARN', 'Admin access denied'); }
+    }
+  } else { adminUnlockIndex = event.key === adminUnlockSequence[0] ? 1 : 0; }
+  if (event.key.toLowerCase() === 'j' && game.active && !game.paused && !event.repeat) cycleTacticalMapZoom();
+  if (event.key.toLowerCase() === 'e' && game.active && !game.paused && !event.repeat) toggleStation();
+  if (event.key === ' ' && game.active && !game.paused) shoot();
+  if (event.key.toLowerCase() === 'h' && game.active && !game.paused && !event.repeat) useMedkit();
+  if (event.key.toLowerCase() === 'q' && game.active && !game.paused) pulse();
+  if (game.active && !game.paused && !event.repeat && /^[0-9]$/.test(event.key)) switchWeapon(Number(event.key));
+});
+window.addEventListener('keyup', event => { if (!mapOpen) keys[event.key.toLowerCase()] = false; });
 canvas.addEventListener('pointermove', event => { const box = canvas.getBoundingClientRect(); pointer.x = event.clientX - box.left; pointer.y = event.clientY - box.top; crosshair.style.left = `${pointer.x}px`; crosshair.style.top = `${pointer.y}px`; }); canvas.addEventListener('pointerdown', () => { pointer.down = true; if (game.active && !game.paused) shoot(); }); window.addEventListener('pointerup', () => { pointer.down = false; game.radBeamActive = false; });
+function getMapWorldPosition(event) {
+  const rect = mapCanvas.getBoundingClientRect();
+  const scale = getTacticalMapScale();
+  const center = getMapCenter();
+  return {
+    x: ((event.clientX - rect.left) * mapCanvas.width / rect.width - mapCanvas.width / 2) / scale + center.x,
+    y: ((event.clientY - rect.top) * mapCanvas.height / rect.height - mapCanvas.height / 2) / scale + center.y
+  };
+}
+function isAtFastTravelHub() {
+  return Math.hypot(game.player.x, game.player.y) < beaconRegionRadius
+    || Boolean(getNearbyBeaconStation()?.repaired);
+}
+mapCanvas.addEventListener('pointermove', event => {
+  if (!mapOpen) return;
+  const { x, y } = getMapWorldPosition(event);
+  const biome = getBiome(x, y);
+  const biomeKey = getDiscoveryKey(x, y);
+  mapBiomeName.textContent = game.discovered.has(biomeKey) ? biome.name : 'UNDISCOVERED';
+});
+mapCanvas.addEventListener('click', event => {
+  if (!mapOpen || !isAtFastTravelHub() || event.button !== 0) return;
+  const { x, y } = getMapWorldPosition(event);
+  const scale = getTacticalMapScale();
+  const station = game.beaconStations.find(candidate =>
+    candidate.repaired
+      && Math.hypot(x - candidate.x, y - candidate.y) <= candidate.radius + 10 / scale
+  );
+  if (station) {
+    if (getNearbyBeaconStation() === station) return;
+    teleportPlayer(station.x, station.y);
+  } else if (Math.hypot(x, y) <= beaconRegionRadius) {
+    if (Math.hypot(game.player.x, game.player.y) < beaconRegionRadius) return;
+    teleportPlayer(0, 0);
+  } else {
+    return;
+  }
+  game.stationOpen = null;
+  game.activeBeaconStationId = null;
+  updateStationUI();
+});
+mapCanvas.addEventListener('pointerleave', () => { mapBiomeName.textContent = ''; });
 document.querySelector('#start-button').onclick = start; document.querySelector('#restart-button').onclick = start; adminPanel.hidden = !adminMode; adminPanel.querySelectorAll('[data-admin]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); adminAction(button.dataset.admin, button.dataset.value); })); document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const quantityButton = event.target.closest('[data-craft-quantity]'); if (quantityButton) { event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(quantityButton.dataset.craftQuantity), Number(ui.craftDetails.dataset.weaponSlot || 0)); return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm, Number(ui.craftDetails.dataset.quantity || 1), Number(ui.craftDetails.dataset.weaponSlot || 0)); } });
 ui.weaponBar?.addEventListener('click', event => { const slotButton = event.target.closest('[data-weapon-slot]'); if (!slotButton) return; switchWeapon(Number(slotButton.dataset.weaponSlot)); });
 ui.craftDetails.addEventListener('click', event => { const slotButton = event.target.closest('[data-craft-slot]'); if (!slotButton) return; event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(ui.craftDetails.dataset.quantity || 1), Number(slotButton.dataset.craftSlot)); });
@@ -395,7 +508,7 @@ adminAction = function(action, value) {
 };
 function teleportToSector(sector) { teleportPlayer((sector - .5) * 3000, 0); game.currentSector = sector; game.biomeKey = null; game.discovered.add(getSectorKey(sector - 1)); }
 function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camera.x = x; game.camera.y = y; }
-function start() { game = freshGame(); game.active = true; randomizeBiomeData(game.seed); game.hazardZones = generateHazardZones(); game.enemies.push(createVoidStalker()); const random = seededRandom(game.seed + 17); updateInventoryUI(); updateStationButtons(); for (let i = 0; i < 140; i++) { const roll = random(); game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: roll < .08 ? 'relic' : roll < .54 ? 'chest' : 'scrap', taken: false }); } gameShell.classList.remove('menu-state'); resize(); ui.start.classList.add('hidden'); ui.over.classList.add('hidden'); ui.pause.classList.add('hidden'); lastTime = performance.now(); cancelAnimationFrame(animation); animation = requestAnimationFrame(loop); }
+function start() { setMapOpen(false); game = freshGame(); game.active = true; randomizeBiomeData(game.seed); game.hazardZones = generateHazardZones(); game.enemies.push(createVoidStalker()); const random = seededRandom(game.seed + 17); updateInventoryUI(); updateStationButtons(); for (let i = 0; i < 140; i++) { const roll = random(); game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: roll < .08 ? 'relic' : roll < .54 ? 'chest' : 'scrap', taken: false }); } gameShell.classList.remove('menu-state'); resize(); ui.start.classList.add('hidden'); ui.over.classList.add('hidden'); ui.pause.classList.add('hidden'); lastTime = performance.now(); cancelAnimationFrame(animation); animation = requestAnimationFrame(loop); }
 function togglePause() { if (!game.active) return; game.paused = !game.paused; keys.w = false; keys.a = false; keys.s = false; keys.d = false; pointer.down = false; game.radBeamActive = false; ui.pause.classList.toggle('hidden', !game.paused); }
 function switchWeapon(index) { const weaponId = game.weaponSlots[index - 1]; if (!weaponId || !game.unlockedWeapons[weaponId]) return; game.weapon = weaponId; game.ammo = 0; game.reloadPending = weaponCatalog[weaponId].kind !== 'melee'; game.radBeamActive = false; game.radBeamDrainTimer = 0; updateAmmoUI(); renderWeaponBar(); }
 function renderWeaponBar() { if (!ui.weaponBar) return; ui.weaponBar.innerHTML = game.weaponSlots.map((weaponId, index) => { const weapon = weaponId ? weaponCatalog[weaponId] : null; return `<button type="button" class="weapon-slot ${weaponId === game.weapon ? 'selected' : ''}" data-weapon-slot="${index + 1}" title="${weapon ? weapon.name : 'EMPTY SLOT'}"><b>${index + 1}</b><span>${weapon ? weapon.name : 'EMPTY'}</span></button>`; }).join(''); }
@@ -2273,8 +2386,35 @@ function drawSectorFourEffects() {
   ctx.restore();
 }
 function drawHazardZones() { if (!game.hazardZones.length) return; const biome = getBiome(game.player.x, game.player.y); const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; const time = performance.now() / 1000; ctx.save(); ctx.translate(-camX, -camY); game.hazardZones.forEach(zone => { const radius = zone.radius; ctx.globalAlpha = zone.biomeKey === biome.key ? .34 : .12; ctx.fillStyle = zone.color; ctx.strokeStyle = zone.color; ctx.lineWidth = 3; drawHazardShape(ctx, zone); ctx.fill(); ctx.stroke(); ctx.globalAlpha *= .8; if (zone.hazard.visual.includes('ice') || zone.hazard.visual.includes('spikes')) { for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(zone.x + (i - 2) * radius / 3, zone.y + radius * .45); ctx.lineTo(zone.x + (i - 2) * radius / 4, zone.y - radius * .6); ctx.stroke(); } } else if (zone.hazard.visual.includes('lightning') || zone.hazard.visual.includes('pylon')) { ctx.beginPath(); ctx.moveTo(zone.x, zone.y - zone.radius); ctx.lineTo(zone.x - 10, zone.y - zone.radius * .25); ctx.lineTo(zone.x + 8, zone.y + zone.radius * .05); ctx.lineTo(zone.x - 4, zone.y + zone.radius); ctx.stroke(); } else { ctx.beginPath(); ctx.arc(zone.x, zone.y, radius * (.55 + Math.sin(time * 2 + zone.x) * .08), 0, Math.PI * 2); ctx.stroke(); } }); ctx.restore(); }
-function drawVoidMapRegions() { const scale = getTacticalMapScale(); const visibleRadius = getTacticalMapVisibleRadius(); mapCtx.save(); mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2); mapCtx.scale(scale, scale); mapCtx.fillStyle = '#241d3d'; mapCtx.beginPath(); mapCtx.rect(-visibleRadius, -visibleRadius, visibleRadius * 2, visibleRadius * 2); mapCtx.arc(0, 0, mapRadius, 0, Math.PI * 2, true); mapCtx.fill('evenodd'); mapCtx.restore(); }
-function drawHazardMap() { drawVoidMapRegions(); if (!game.hazardZones.length) return; const scale = getTacticalMapScale(); mapCtx.save(); mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2); mapCtx.scale(scale, scale); game.hazardZones.forEach(zone => { mapCtx.globalAlpha = .55; mapCtx.fillStyle = zone.color; mapCtx.strokeStyle = zone.color; drawHazardShape(mapCtx, zone); mapCtx.fill(); mapCtx.stroke(); }); mapCtx.restore(); }
+function drawVoidMapRegions() {
+  const scale = getTacticalMapScale();
+  const center = getMapCenter();
+  mapCtx.save();
+  applyMapTransform(scale);
+  mapCtx.fillStyle = '#241d3d';
+  mapCtx.beginPath();
+  mapCtx.rect(center.x - mapCanvas.width / (2 * scale), center.y - mapCanvas.height / (2 * scale), mapCanvas.width / scale, mapCanvas.height / scale);
+  mapCtx.arc(0, 0, mapRadius, 0, Math.PI * 2, true);
+  mapCtx.fill('evenodd');
+  mapCtx.restore();
+}
+function drawHazardMap() {
+  drawVoidMapRegions();
+  if (!game.hazardZones.length) return;
+  const scale = getTacticalMapScale();
+  mapCtx.save();
+  applyMapTransform(scale);
+  game.hazardZones.forEach(zone => {
+    if (!game.discovered.has(getDiscoveryKey(zone.x, zone.y))) return;
+    mapCtx.globalAlpha = .55;
+    mapCtx.fillStyle = zone.color;
+    mapCtx.strokeStyle = zone.color;
+    drawHazardShape(mapCtx, zone);
+    mapCtx.fill();
+    mapCtx.stroke();
+  });
+  mapCtx.restore();
+}
 function drawPickups() { const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); game.nodes.forEach(node => { if (node.taken || node.type !== 'chest') return; ctx.fillStyle = '#d7b07a'; ctx.strokeStyle = '#ffdf91'; ctx.lineWidth = 2; ctx.fillRect(node.x - 12, node.y - 8, 24, 16); ctx.strokeRect(node.x - 12, node.y - 8, 24, 16); ctx.fillStyle = '#ffdf91'; ctx.fillRect(node.x - 2, node.y - 8, 4, 16); }); game.drops.forEach(drop => { const resource = resourceTypes.find(item => item.key === drop.type); ctx.fillStyle = resource.color; ctx.shadowBlur = 12; ctx.shadowColor = resource.color; ctx.beginPath(); ctx.moveTo(drop.x, drop.y - 8); ctx.lineTo(drop.x + 8, drop.y); ctx.lineTo(drop.x, drop.y + 8); ctx.lineTo(drop.x - 8, drop.y); ctx.fill(); ctx.shadowBlur = 0; }); ctx.restore(); }
 function drawSanctuaryStations() { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary') return; const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); ctx.textAlign = 'center'; ctx.font = 'bold 9px Space Mono'; ctx.fillStyle = '#f9c779'; ctx.fillText('CRAFTING TABLE', -300, -82); ctx.fillText('FURNACE', 285, -82); ctx.fillStyle = '#8b5a3c'; ctx.strokeStyle = '#f9c779'; ctx.lineWidth = 3; ctx.fillRect(-360, -55, 120, 70); ctx.strokeRect(-360, -55, 120, 70); ctx.fillStyle = '#c88968'; ctx.fillRect(-350, -68, 100, 16); ctx.fillStyle = '#17131a'; ctx.fillRect(-320, -42, 40, 20); ctx.fillStyle = '#493a36'; ctx.fillRect(230, -55, 110, 70); ctx.strokeStyle = '#ff865c'; ctx.strokeRect(230, -55, 110, 70); ctx.fillStyle = '#ff865c'; ctx.beginPath(); ctx.arc(285, -20, 28, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(285, -20, 16, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#b9b0a8'; ctx.fillRect(245, -70, 80, 15); ctx.restore(); }
 function drawBeaconStations() {
@@ -2342,8 +2482,7 @@ function drawBeaconStationMapMarkers() {
   if (!game.discovered.has(getSectorKey(3))) return;
   const scale = getTacticalMapScale();
   mapCtx.save();
-  mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2);
-  mapCtx.scale(scale, scale);
+  applyMapTransform(scale);
   game.beaconStations.forEach(station => {
     const color = station.repaired ? '#8fe0ad' : '#ff865c';
     mapCtx.fillStyle = color;
@@ -2361,8 +2500,24 @@ function drawBeaconStationMapMarkers() {
   });
   mapCtx.restore();
 }
-function loop(now) { if (game.paused) { animation = requestAnimationFrame(loop); return; } const dt = Math.min((now - lastTime) / 1000, .04); lastTime = now; updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt); draw(); drawBrambleZones(); drawSectorFourEffects(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawBeaconStations(); drawMap(); drawHazardMap(); drawBeaconStationMapMarkers(); drawStalkerMapMarker(); if (game.active) animation = requestAnimationFrame(loop); }
- function updateBiomeAnnouncement(dt) { const biome = getBiome(game.player.x, game.player.y); game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(Math.min(sectorRegions.length - 1, Math.floor(Math.hypot(game.player.x, game.player.y) / 3000)))); if (biome.key !== game.biomeKey) { game.biomeKey = biome.key; game.announcementTimer = 3; announceBiome(biome); updateBiomeEffects(biome); updateBiomeHazard(biome); } game.announcementTimer = Math.max(0, game.announcementTimer - dt); if (game.announcementTimer === 0) ui.announcement.classList.remove('show'); }
+function loop(now) {
+  if (mapOpen) {
+    drawMap();
+    drawHazardMap();
+    drawBeaconStationMapMarkers();
+    drawStalkerMapMarker();
+    animation = requestAnimationFrame(loop);
+    return;
+  }
+  if (game.paused) { animation = requestAnimationFrame(loop); return; }
+  const dt = Math.min((now - lastTime) / 1000, .04);
+  lastTime = now;
+  updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt);
+  draw(); drawBrambleZones(); drawSectorFourEffects(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawBeaconStations();
+  drawMap(); drawHazardMap(); drawBeaconStationMapMarkers(); drawStalkerMapMarker();
+  if (game.active) animation = requestAnimationFrame(loop);
+}
+function updateBiomeAnnouncement(dt) { const biome = getBiome(game.player.x, game.player.y); game.discovered.add(getDiscoveryKey(game.player.x, game.player.y)); game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(Math.min(sectorRegions.length - 1, Math.floor(Math.hypot(game.player.x, game.player.y) / 3000)))); if (biome.key !== game.biomeKey) { game.biomeKey = biome.key; game.announcementTimer = 3; announceBiome(biome); updateBiomeEffects(biome); updateBiomeHazard(biome); } game.announcementTimer = Math.max(0, game.announcementTimer - dt); if (game.announcementTimer === 0) ui.announcement.classList.remove('show'); }
 function updateBiomeHazard(biome) { const hazard = biome.effects.hazard; ui.effects.querySelector('.biome-hazard-effect')?.remove(); ui.effects.insertAdjacentHTML('beforeend', `<span class="biome-effect negative biome-hazard-effect" title="${hazard.description}"><b>!</b>${hazard.name}</span>`); }
 function updateBiomeEffects(biome) { const effects = biome.effects; const conditions = []; if (effects.healthRegen) conditions.push({ positive: true, text: `REGEN +${effects.healthRegen}/SEC`, detail: biome.key.startsWith('beacon-') ? `Restores ${effects.healthRegen} health per second inside this beacon station.` : `Restores ${effects.healthRegen} health per second while outside the beacon.` }); if (effects.moveMultiplier !== 1) conditions.push({ positive: effects.moveMultiplier > 1, text: `MOVE ${effects.moveMultiplier > 1 ? '+' : ''}${Math.round((effects.moveMultiplier - 1) * 100)}%`, detail: `${effects.moveMultiplier > 1 ? 'Increases' : 'Reduces'} player movement speed by ${Math.abs(Math.round((effects.moveMultiplier - 1) * 100))}%.` }); if (effects.fireCooldownMultiplier !== 1) conditions.push({ positive: effects.fireCooldownMultiplier < 1, text: `FIRE ${effects.fireCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%`, detail: `${effects.fireCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the delay between shots by ${Math.round(Math.abs(1 - effects.fireCooldownMultiplier) * 100)}%.` }); if (effects.pulseCooldownMultiplier !== 1) conditions.push({ positive: effects.pulseCooldownMultiplier < 1, text: `PULSE ${effects.pulseCooldownMultiplier < 1 ? '+' : '-'}${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%`, detail: `${effects.pulseCooldownMultiplier < 1 ? 'Reduces' : 'Increases'} the pulse cooldown by ${Math.round(Math.abs(1 - effects.pulseCooldownMultiplier) * 100)}%.` }); if (effects.salvageMultiplier !== 1) conditions.push({ positive: effects.salvageMultiplier > 1, text: `SALVAGE +${Math.round((effects.salvageMultiplier - 1) * 100)}%`, detail: `Collected salvage is multiplied by ${effects.salvageMultiplier}x.` }); if (effects.enemySpeedMultiplier !== 1) conditions.push({ positive: effects.enemySpeedMultiplier < 1, text: `HORDE ${effects.enemySpeedMultiplier < 1 ? '-' : '+'}${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}% SPEED`, detail: `Enemies move ${effects.enemySpeedMultiplier < 1 ? 'slower' : 'faster'} by ${Math.round(Math.abs(1 - effects.enemySpeedMultiplier) * 100)}%.` }); if (effects.damageMultiplier !== 1) conditions.push({ positive: false, text: `DAMAGE +${Math.round((effects.damageMultiplier - 1) * 100)}%`, detail: `Enemy contact damage is increased by ${Math.round((effects.damageMultiplier - 1) * 100)}%.` }); ui.effects.innerHTML = `<span class="biome-effects-title">${biome.name} // CONDITIONS</span>${conditions.map(condition => `<span class="biome-effect ${condition.positive ? 'positive' : 'negative'}" title="${condition.detail}"><b>${condition.positive ? '+' : '-'}</b>${condition.text}</span>`).join('')}`; }
 function updateBrambleZones(dt) {
@@ -3826,7 +3981,13 @@ function getBiome(x, y) {
   }
   return { ...biome, key: `sector-${sector}-${index}`, sectorKey: getSectorKey(sector), sector: sector + 1, animationKey: `biome-${index}` };
 }
-function getDiscoveryKey(x, y) { const biome = getBiome(x, y); return biome.key === 'sanctuary' ? 'sanctuary' : biome.sectorKey; }
+function getDiscoveryKey(x, y) {
+  const biome = getBiome(x, y);
+  if (biome.key === 'sanctuary' || biome.key === 'void') return biome.key;
+  const angle = (Math.atan2(y, x) + Math.PI * 2) % (Math.PI * 2);
+  const biomeIndex = Math.floor(angle / (Math.PI / 2));
+  return `${biome.sectorKey}-${biomeIndex}`;
+}
 function announceBiome(biome) { ui.announcement.textContent = biome.name; ui.announcement.style.color = biome.color; ui.announcement.className = `biome-announcement show ${biome.animationKey}`; }
 function burst(x, y, amount, force) { for (let i = 0; i < amount; i++) game.sparks.push({ x, y, life: .45, vx: (Math.random() - .5) * force, vy: (Math.random() - .5) * force }); }
 function updateUI(distance, safe, biome) { const sector = safe ? 0 : Math.floor(distance / 3000) + 1; const health = Math.max(0, Math.round(game.health)); if (safe && bankInventory()) updateInventoryUI(); updateStationUI(); ui.wave.textContent = String(sector).padStart(2, '0'); ui.score.textContent = String(game.score).padStart(6, '0'); ui.ammo.textContent = game.ammo; ui.health.style.width = `${health}%`; ui.healthValue.textContent = `${health}%`; ui.threats.textContent = String(game.enemies.length).padStart(2, '0'); ui.distance.textContent = `${String(Math.floor(distance / 10)).padStart(3, '0')}m`; ui.salvage.textContent = String(game.salvage).padStart(2, '0'); ui.relics.textContent = String(game.relics).padStart(2, '0'); ui.objective.textContent = safe ? 'SANCTUARY // SALVAGE BANKED' : 'RETURN TO BEACON // SALVAGE'; }
@@ -3848,14 +4009,87 @@ function drawVoidBatarProjectile(bullet) {
   ctx.fill();
   ctx.restore();
 }
-function drawMap() { const w = mapCanvas.width, h = mapCanvas.height, scale = getTacticalMapScale(), visibleRadius = getTacticalMapVisibleRadius(); mapCtx.clearRect(0, 0, w, h); mapCtx.fillStyle = "#100d13"; mapCtx.fillRect(0, 0, w, h); mapCtx.save(); mapCtx.translate(w / 2, h / 2); mapCtx.scale(scale, scale); sectorRegions.forEach((regions, sector) => { const radius = (sector + 1) * 3000; mapCtx.strokeStyle = `${regions[0].color}99`; mapCtx.lineWidth = 3 / scale; mapCtx.beginPath(); mapCtx.arc(0, 0, radius, 0, Math.PI * 2); mapCtx.stroke(); }); mapCtx.strokeStyle = "#f9c779"; mapCtx.lineWidth = 7 / scale; mapCtx.beginPath(); mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2); mapCtx.stroke(); game.nodes.forEach(node => { if (!node.taken) { mapCtx.fillStyle = node.type === "relic" ? "#b9f4ff" : "#ffbe68"; mapCtx.fillRect(node.x - 30, node.y - 30, 60, 60); } }); game.enemies.forEach(enemy => { if (!enemy.voidStalker) { mapCtx.fillStyle = "#ff4d42"; mapCtx.fillRect(enemy.x - 35, enemy.y - 35, 70, 70); } }); mapCtx.fillStyle = "#100d13ee"; mapCtx.fillRect(-visibleRadius, -visibleRadius, visibleRadius * 2, visibleRadius * 2); game.discovered.forEach(key => { if (key === "sanctuary") { mapCtx.fillStyle = "#f9c77933"; mapCtx.beginPath(); mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2); mapCtx.fill(); } else { const sector = Number(key.split("-")[1]); const inner = sector * 3000; const outer = (sector + 1) * 3000; mapCtx.fillStyle = `${sectorRegions[sector][0].color}28`; mapCtx.beginPath(); mapCtx.arc(0, 0, outer, 0, Math.PI * 2); mapCtx.arc(0, 0, inner, 0, Math.PI * 2, true); mapCtx.fill(); } }); game.nodes.forEach(node => { if (!node.taken && game.discovered.has(getDiscoveryKey(node.x, node.y))) { mapCtx.fillStyle = node.type === "relic" ? "#b9f4ff" : "#ffbe68"; mapCtx.fillRect(node.x - 30, node.y - 30, 60, 60); } }); game.enemies.forEach(enemy => { if (!enemy.voidStalker && game.discovered.has(getDiscoveryKey(enemy.x, enemy.y))) { mapCtx.fillStyle = "#ff4d42"; mapCtx.fillRect(enemy.x - 35, enemy.y - 35, 70, 70); } }); mapCtx.fillStyle = "#f9c779"; mapCtx.beginPath(); mapCtx.arc(0, 0, 70, 0, Math.PI * 2); mapCtx.fill(); mapCtx.fillStyle = "#ffffff"; mapCtx.beginPath(); mapCtx.arc(game.player.x, game.player.y, 90, 0, Math.PI * 2); mapCtx.fill(); mapCtx.restore(); }
+function drawMap() {
+  const w = mapCanvas.width;
+  const h = mapCanvas.height;
+  const scale = getTacticalMapScale();
+  const visibleRadius = getTacticalMapVisibleRadius();
+  const center = getMapCenter();
+  mapCtx.clearRect(0, 0, w, h);
+  mapCtx.fillStyle = '#100d13';
+  mapCtx.fillRect(0, 0, w, h);
+  mapCtx.save();
+  applyMapTransform(scale);
+  mapCtx.fillStyle = '#100d13ee';
+  mapCtx.fillRect(center.x - visibleRadius, center.y - visibleRadius, visibleRadius * 2, visibleRadius * 2);
+  if (game.discovered.has('sanctuary')) {
+    mapCtx.fillStyle = '#f9c77933';
+    mapCtx.beginPath();
+    mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2);
+    mapCtx.fill();
+  }
+  sectorRegions.forEach((regions, sector) => {
+    const inner = sector === 0 ? beaconRegionRadius : sector * 3000;
+    const outer = (sector + 1) * 3000;
+    regions.forEach((biome, index) => {
+      if (!game.discovered.has(`${getSectorKey(sector)}-${index}`)) return;
+      const start = index * Math.PI / 2;
+      const end = start + Math.PI / 2;
+      mapCtx.fillStyle = `${biome.color}38`;
+      mapCtx.beginPath();
+      mapCtx.arc(0, 0, outer, start, end);
+      if (inner > 0) mapCtx.arc(0, 0, inner, end, start, true);
+      else mapCtx.lineTo(0, 0);
+      mapCtx.closePath();
+      mapCtx.fill();
+    });
+  });
+  sectorRegions.forEach((regions, sector) => {
+    mapCtx.strokeStyle = `${regions[0].color}99`;
+    mapCtx.lineWidth = 3 / scale;
+    mapCtx.beginPath();
+    mapCtx.arc(0, 0, (sector + 1) * 3000, 0, Math.PI * 2);
+    mapCtx.stroke();
+  });
+  mapCtx.strokeStyle = '#f9c779';
+  mapCtx.lineWidth = 7 / scale;
+  mapCtx.beginPath();
+  mapCtx.arc(0, 0, beaconRegionRadius, 0, Math.PI * 2);
+  mapCtx.stroke();
+  game.nodes.forEach(node => {
+    if (node.taken || !game.discovered.has(getDiscoveryKey(node.x, node.y))) return;
+    mapCtx.fillStyle = node.type === 'relic' ? '#b9f4ff' : '#ffbe68';
+    mapCtx.fillRect(node.x - 30, node.y - 30, 60, 60);
+  });
+  game.enemies.forEach(enemy => {
+    if (enemy.voidStalker || !game.discovered.has(getDiscoveryKey(enemy.x, enemy.y))) return;
+    mapCtx.fillStyle = '#ff4d42';
+    mapCtx.fillRect(enemy.x - 35, enemy.y - 35, 70, 70);
+  });
+  mapCtx.save();
+  mapCtx.translate(game.player.x, game.player.y);
+  mapCtx.rotate(game.player.angle + Math.PI / 2);
+  const markerSize = 14 / scale;
+  mapCtx.fillStyle = '#ff4d42';
+  mapCtx.strokeStyle = '#fff4e8';
+  mapCtx.lineWidth = 2 / scale;
+  mapCtx.beginPath();
+  mapCtx.moveTo(0, -markerSize);
+  mapCtx.lineTo(markerSize * .72, markerSize * .75);
+  mapCtx.lineTo(0, markerSize * .4);
+  mapCtx.lineTo(-markerSize * .72, markerSize * .75);
+  mapCtx.closePath();
+  mapCtx.fill();
+  mapCtx.stroke();
+  mapCtx.restore();
+  mapCtx.restore();
+}
 function drawStalkerMapMarker() {
   const stalker = game.enemies.find(enemy => enemy.voidStalker && !enemy.defeated);
   if (!stalker) return;
   const scale = getTacticalMapScale();
   mapCtx.save();
-  mapCtx.translate(mapCanvas.width / 2, mapCanvas.height / 2);
-  mapCtx.scale(scale, scale);
+  applyMapTransform(scale);
   mapCtx.fillStyle = '#d78cff';
   mapCtx.beginPath();
   mapCtx.arc(stalker.x, stalker.y, 4 / scale, 0, Math.PI * 2);
