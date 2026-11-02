@@ -33,9 +33,16 @@
         <div class="overlay" id="start-screen">
           <p class="eyebrow">NIGHT SHIFT // SECTOR 07</p>
           <h1>FIGHT<br><span>THE HORDE</span></h1>
-          <p class="intro">Hold the line. Clear every wave.<br>Nothing gets past you.</p>
-          <button class="primary-button" id="start-button">ENTER THE FIGHT <span>→</span></button>
-          <p class="controls-hint"><kbd>WASD</kbd> MOVE <i></i> <kbd>MOUSE</kbd> AIM + FIRE <i></i> <kbd>E</kbd> STATIONS <i></i> <kbd>M</kbd> MAP</p>
+          <div class="main-menu" id="main-menu">
+            <button type="button" class="menu-button" data-menu-action="new">NEW GAME</button>
+            <button type="button" class="menu-button" data-menu-action="continue">CONTINUE LAST SAVE</button>
+            <button type="button" class="menu-button" data-menu-action="load">LOAD SAVE</button>
+          </div>
+          <div class="save-slots hidden" id="save-slots">
+            <p class="save-slots-title" id="save-slots-title">SELECT SAVE SLOT</p>
+            <div id="save-slot-list"></div>
+            <button type="button" class="menu-button menu-button-back" data-menu-action="back">BACK</button>
+          </div>
         </div>
         <div class="overlay hidden" id="game-over">
           <p class="eyebrow">SIGNAL LOST</p>
@@ -46,6 +53,7 @@
         <div class="overlay hidden" id="pause-screen">
           <p class="eyebrow">SIGNAL HOLD</p>
           <h2>GAME<br><span>PAUSED</span></h2>
+          <button type="button" class="primary-button" id="save-button">SAVE GAME</button>
           <p class="controls-hint">PRESS <kbd>ESC</kbd> TO RESUME</p>
         </div>
         <div class="expedition-hud">

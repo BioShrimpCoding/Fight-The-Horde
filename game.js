@@ -19,6 +19,16 @@ clearConsoleButton?.addEventListener('click', () => { debugConsoleOutput.innerHT
 gameLog('INFO', 'Diagnostic console online');
 const keys = {}; const pointer = { x: 0, y: 0, down: false }; let animation; let lastTime = 0; let adminMode = false;
 let mapOpen = false;
+const saveSlotCount = 5;
+const saveSlotsKey = 'horde-save-slots';
+const lastSaveSlotKey = 'horde-last-save-slot';
+let currentSaveSlot = null;
+const saveSlotsPanel = document.querySelector('#save-slots');
+const saveSlotsTitle = document.querySelector('#save-slots-title');
+const saveSlotList = document.querySelector('#save-slot-list');
+const mainMenu = document.querySelector('#main-menu');
+const continueButton = document.querySelector('[data-menu-action="continue"]');
+const saveButton = document.querySelector('#save-button');
 const adminUnlockSequence = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'Enter'];
 let adminUnlockIndex = 0;
 const clipSize = 12;
@@ -103,7 +113,7 @@ const resourceTypes = [
   { key: 'wood', name: 'WOOD', color: '#c88968', weight: 12 },
   { key: 'rawIron', name: 'RAW IRON', color: '#8b8584', weight: 12 },
   { key: 'iron', name: 'IRON', color: '#d7d0c8', weight: 10 },
-  { key: 'steel', name: 'STEEL', color: '#9fd8e3', weight: 5 }, 
+  { key: 'steel', name: 'STEEL', color: '#9fd8e3', weight: 0 }, 
   { key: 'stone', name: 'STONE', color: '#b9b0a8', weight: 10 },
   { key: 'fiber', name: 'FIBER', color: '#8fc47e', weight: 12 },
   { key: 'crystal', name: 'CRYSTAL', color: '#d58ee0', weight: 7 },
@@ -513,7 +523,111 @@ mapCanvas.addEventListener('click', event => {
   updateStationUI();
 });
 mapCanvas.addEventListener('pointerleave', () => { mapBiomeName.textContent = ''; });
-document.querySelector('#start-button').onclick = start; document.querySelector('#restart-button').onclick = start; adminPanel.hidden = !adminMode; adminPanel.querySelectorAll('[data-admin]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); adminAction(button.dataset.admin, button.dataset.value); })); document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const quantityButton = event.target.closest('[data-craft-quantity]'); if (quantityButton) { event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(quantityButton.dataset.craftQuantity), Number(ui.craftDetails.dataset.weaponSlot || 0)); return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm, Number(ui.craftDetails.dataset.quantity || 1), Number(ui.craftDetails.dataset.weaponSlot || 0)); } });
+function readSaveSlots() {
+  try {
+    const savedSlots = JSON.parse(localStorage.getItem(saveSlotsKey) || '[]');
+    return Array.from({ length: saveSlotCount }, (_, index) => savedSlots[index] || null);
+  } catch (error) {
+    gameLog('ERROR', 'Unable to read save slots', error.message);
+    return Array(saveSlotCount).fill(null);
+  }
+}
+function writeSaveSlots(slots) {
+  localStorage.setItem(saveSlotsKey, JSON.stringify(slots));
+}
+function formatSaveTime(timestamp) {
+  if (!timestamp) return 'EMPTY SLOT';
+  return new Date(timestamp).toLocaleString();
+}
+function renderSaveSlots(mode) {
+  saveSlotsTitle.textContent = mode === 'new' ? 'SELECT SLOT FOR NEW GAME' : 'SELECT SAVE TO LOAD';
+  saveSlotList.innerHTML = readSaveSlots().map((slot, index) => {
+    const details = slot ? `SECTOR ${slot.sector || 1} // ${formatSaveTime(slot.timestamp)}` : 'EMPTY SLOT';
+    const action = mode === 'new' ? 'new-slot' : 'load-slot';
+    return `<button type="button" class="menu-button save-slot" data-save-action="${action}" data-save-slot="${index}" ${mode === 'load' && !slot ? 'disabled' : ''}><strong>SLOT ${index + 1}</strong><small>${details}</small></button>`;
+  }).join('');
+  mainMenu.classList.add('hidden');
+  saveSlotsPanel.classList.remove('hidden');
+}
+function showMainMenu() {
+  saveSlotsPanel.classList.add('hidden');
+  mainMenu.classList.remove('hidden');
+  const lastSlot = Number(localStorage.getItem(lastSaveSlotKey));
+  continueButton.disabled = !Number.isInteger(lastSlot) || !readSaveSlots()[lastSlot];
+}
+function serializeGame() {
+  return JSON.stringify(game, (_, value) => value instanceof Set ? { __saveType: 'Set', values: [...value] } : value);
+}
+function restoreGame(savedState) {
+  const parsed = JSON.parse(savedState, (_, value) => value?.__saveType === 'Set' ? new Set(value.values) : value);
+  const restored = { ...freshGame(), ...parsed };
+  restored.active = true;
+  restored.paused = false;
+  restored.discovered = restored.discovered instanceof Set ? restored.discovered : new Set(restored.discovered || ['sanctuary']);
+  restored.bullets?.forEach(bullet => { if (Array.isArray(bullet.hitEnemies)) bullet.hitEnemies = new Set(bullet.hitEnemies); });
+  return restored;
+}
+function saveGame(slot = currentSaveSlot) {
+  if (!game.active || slot === null || slot < 0 || slot >= saveSlotCount) return false;
+  const slots = readSaveSlots();
+  slots[slot] = {
+    timestamp: Date.now(),
+    sector: game.currentSector || 1,
+    state: serializeGame()
+  };
+  writeSaveSlots(slots);
+  currentSaveSlot = slot;
+  localStorage.setItem(lastSaveSlotKey, String(slot));
+  gameLog('INFO', `Game saved to slot ${slot + 1}`);
+  return true;
+}
+function loadSave(slot) {
+  const saved = readSaveSlots()[slot];
+  if (!saved?.state) return;
+  try {
+    currentSaveSlot = slot;
+    start(saved.state, slot);
+  } catch (error) {
+    gameLog('ERROR', `Unable to load save slot ${slot + 1}`, error.message);
+  }
+}
+function handleMenuAction(action) {
+  if (action === 'new') renderSaveSlots('new');
+  if (action === 'load') renderSaveSlots('load');
+  if (action === 'continue') {
+    const slot = Number(localStorage.getItem(lastSaveSlotKey));
+    if (Number.isInteger(slot) && readSaveSlots()[slot]) loadSave(slot);
+    else renderSaveSlots('load');
+  }
+  if (action === 'back') showMainMenu();
+}
+document.querySelectorAll('[data-menu-action]').forEach(button => button.addEventListener('click', () => handleMenuAction(button.dataset.menuAction)));
+saveSlotList.addEventListener('click', event => {
+  const button = event.target.closest('[data-save-action]');
+  if (!button) return;
+  const slot = Number(button.dataset.saveSlot);
+  if (button.dataset.saveAction === 'new-slot') {
+    if (readSaveSlots()[slot] && !window.confirm(`Overwrite save slot ${slot + 1}?`)) return;
+    currentSaveSlot = slot;
+    start();
+  } else {
+    loadSave(slot);
+  }
+});
+saveButton?.addEventListener('click', () => {
+  if (currentSaveSlot === null) {
+    togglePause();
+    renderSaveSlots('new');
+    ui.start.classList.remove('hidden');
+    gameShell.classList.add('menu-state');
+    return;
+  }
+  saveGame();
+  saveButton.textContent = 'GAME SAVED';
+  window.setTimeout(() => { saveButton.textContent = 'SAVE GAME'; }, 1200);
+});
+showMainMenu();
+document.querySelector('#restart-button').onclick = start; adminPanel.hidden = !adminMode; adminPanel.querySelectorAll('[data-admin]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); adminAction(button.dataset.admin, button.dataset.value); })); document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const quantityButton = event.target.closest('[data-craft-quantity]'); if (quantityButton) { event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(quantityButton.dataset.craftQuantity), Number(ui.craftDetails.dataset.weaponSlot || 0)); return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm, Number(ui.craftDetails.dataset.quantity || 1), Number(ui.craftDetails.dataset.weaponSlot || 0)); } });
 ui.weaponBar?.addEventListener('click', event => { const slotButton = event.target.closest('[data-weapon-slot]'); if (!slotButton) return; switchWeapon(Number(slotButton.dataset.weaponSlot)); });
 ui.craftDetails.addEventListener('click', event => { const slotButton = event.target.closest('[data-craft-slot]'); if (!slotButton) return; event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(ui.craftDetails.dataset.quantity || 1), Number(slotButton.dataset.craftSlot)); });
 function adminAction(action, value) { if (!game.active) start(); if (action === 'sector') teleportToSector(Number(value)); if (action === 'spawn') for (let i = 0; i < 20; i++) spawn(); if (action === 'refill') { game.health = 100; game.ammo = clipSize; game.ammoReserve.pistolAmmo = startingAmmoReserve * clipSize; game.ammoReserve.magicGauntletAmmo = 6; game.cosmosGauntletRechargeTimer = 6; game.magicGauntletRechargeTimer = 5; game.salvage = 0; game.relics = 0; } if (action === 'reset') { teleportPlayer(0, 0); game.enemies = []; game.bullets = []; game.discovered = new Set(['sanctuary']); game.biomeKey = null; } }
@@ -534,7 +648,32 @@ adminAction = function(action, value) {
 function getBiomeSector(distance) { return biomeBoundaries.findIndex(boundary => distance < boundary) === -1 ? sectorRegions.length - 1 : biomeBoundaries.findIndex(boundary => distance < boundary); }
 function teleportToSector(sector) { const start = sector > 1 ? biomeBoundaries[sector - 2] : 0; const end = biomeBoundaries[sector - 1] || mapRadius; teleportPlayer((start + end) / 2, 0); game.currentSector = sector; game.discovered.add(getSectorKey(sector - 1)); }
 function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camera.x = x; game.camera.y = y; game.biomeKey = null; game.biomeName = null; }
-function start() { setMapOpen(false); game = freshGame(); game.active = true; randomizeBiomeData(game.seed); game.hazardZones = generateHazardZones(); game.enemies.push(createVoidStalker()); const random = seededRandom(game.seed + 17); updateInventoryUI(); updateStationButtons(); for (let i = 0; i < 140; i++) { const roll = random(); game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: roll < .08 ? 'relic' : roll < .54 ? 'chest' : 'scrap', taken: false }); } gameShell.classList.remove('menu-state'); resize(); ui.start.classList.add('hidden'); ui.over.classList.add('hidden'); ui.pause.classList.add('hidden'); lastTime = performance.now(); cancelAnimationFrame(animation); animation = requestAnimationFrame(loop); }
+function start(savedState = null, slot = currentSaveSlot) {
+  setMapOpen(false);
+  game = savedState ? restoreGame(savedState) : freshGame();
+  currentSaveSlot = slot;
+  game.active = true;
+  if (!savedState) {
+    randomizeBiomeData(game.seed);
+    game.hazardZones = generateHazardZones();
+    game.enemies.push(createVoidStalker());
+    const random = seededRandom(game.seed + 17);
+    for (let i = 0; i < 140; i++) {
+      const roll = random();
+      game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: roll < .08 ? 'relic' : roll < .54 ? 'chest' : 'scrap', taken: false });
+    }
+  }
+  updateInventoryUI();
+  updateStationButtons();
+  gameShell.classList.remove('menu-state');
+  resize();
+  ui.start.classList.add('hidden');
+  ui.over.classList.add('hidden');
+  ui.pause.classList.add('hidden');
+  lastTime = performance.now();
+  cancelAnimationFrame(animation);
+  animation = requestAnimationFrame(loop);
+}
 function togglePause() { if (!game.active) return; game.paused = !game.paused; keys.w = false; keys.a = false; keys.s = false; keys.d = false; pointer.down = false; game.radBeamActive = false; ui.pause.classList.toggle('hidden', !game.paused); }
 function switchWeapon(index) {
   const weaponId = game.weaponSlots[index - 1];
