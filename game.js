@@ -4069,10 +4069,10 @@ function drawMap() {
   mapCtx.save();
   mapCtx.translate(game.player.x, game.player.y);
   mapCtx.rotate(game.player.angle + Math.PI / 2);
-  const markerSize = 14 / scale;
+  const markerSize = 9 / scale;
   mapCtx.fillStyle = '#ff4d42';
   mapCtx.strokeStyle = '#fff4e8';
-  mapCtx.lineWidth = 2 / scale;
+  mapCtx.lineWidth = 1 / scale;
   mapCtx.beginPath();
   mapCtx.moveTo(0, -markerSize);
   mapCtx.lineTo(markerSize * .72, markerSize * .75);
