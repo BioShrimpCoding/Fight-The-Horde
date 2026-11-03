@@ -55,6 +55,7 @@ const beaconModuleDefinitions = {
 const beaconModuleInteractionRadius = 45;
 const beaconModuleBenchOffset = 55;
 const beaconRegionRadius = 1200;
+const sanctuaryTurretCount = 16;
 const mapRadius = 18000;
 const biomeBoundaries = [3000, 6000, 9500, 13000, 16000];
 const tacticalMapZoomLevels = [.4, .6, .8, 1, 1.25, 1.5, 2];
@@ -338,6 +339,19 @@ function hasEnemyEffect(enemy, effect) {
 }
 function seededRandom(seed) { let value = seed >>> 0; return () => { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; }; }
 function randomizeBiomeData(seed) { const random = seededRandom(seed); const positives = [() => ({ healthRegen: 3 + random() * 3 }), () => ({ moveMultiplier: 1.15 + random() * .25 }), () => ({ fireCooldownMultiplier: .55 + random() * .2 }), () => ({ pulseCooldownMultiplier: .35 + random() * .2 }), () => ({ salvageMultiplier: 1.75 + random() * 1.25 }), () => ({ enemySpeedMultiplier: .55 + random() * .2 })]; const negatives = [() => ({ damageMultiplier: 1.05 + random() * .1 }), () => ({ enemySpeedMultiplier: 1.05 + random() * .1 }), () => ({ moveMultiplier: .88 + random() * .07 }), () => ({ fireCooldownMultiplier: 1.05 + random() * .1 }), () => ({ pulseCooldownMultiplier: 1.05 + random() * .1 })]; sectorRegions.flat().forEach((biome, index) => { const positive = positives[Math.floor(random() * positives.length)](); const firstNegative = negatives[Math.floor(random() * negatives.length)](); const secondNegative = negatives[Math.floor(random() * negatives.length)](); const hazard = biome.effects.hazard; const sectorHazardMultiplier = .35 + Math.floor(index / 4) * .23; biome.effects = { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { ...hazard, damagePerSecond: biomeHazards[index].damagePerSecond * sectorHazardMultiplier, zoneDamagePerSecond: 3.5 + random() * 3 }, ...positive, ...firstNegative, ...secondNegative }; Object.assign(biome.effects, positive); if (index % 2 === 0) biome.effects.hazard.zoneDamagePerSecond += 1; }); }
+function createSanctuaryTurrets() {
+  const weaponKeys = Object.keys(beaconTurretWeapons);
+  return Array.from({ length: sanctuaryTurretCount }, (_, index) => {
+    const angle = -Math.PI / 2 + index * Math.PI * 2 / sanctuaryTurretCount;
+    return {
+      x: Math.cos(angle) * beaconRegionRadius,
+      y: Math.sin(angle) * beaconRegionRadius,
+      weapon: weaponKeys[Math.floor(Math.random() * weaponKeys.length)],
+      cooldown: 0,
+      angle: angle + Math.PI
+    };
+  });
+}
 function createBeaconStations() {
   return Array.from({ length: 4 }, (_, index) => {
     const id = `sector4-${index}`;
@@ -2262,89 +2276,79 @@ function createBeaconTurrets(station, weapons = []) {
     return { x: station.x + offsetX * station.radius, y: station.y + offsetY * station.radius, weapon, cooldown: 0, angle: 0 };
   });
 }
-function createSanctuaryTurrets() {
-  const weaponKeys = Object.keys(beaconTurretWeapons);
-  const padding = 55;
-  const diameter = (beaconRegionRadius - padding) * 2;
-  return Array.from({ length: 16 }, (_, index) => ({
-    x: 0,
-    y: -beaconRegionRadius + padding + diameter * index / 15,
-    weapon: weaponKeys[Math.floor(Math.random() * weaponKeys.length)],
-    cooldown: 0,
-    angle: Math.random() * Math.PI * 2
-  }));
-}
 function updateBeaconTurrets(dt) {
-  const turrets = game.beaconStations
-    .filter(station => station.repaired)
-    .flatMap(station => station.turrets)
-    .concat(game.sanctuaryTurrets);
-  turrets.forEach(turret => {
-    turret.cooldown = Math.max(0, turret.cooldown - dt);
-    const target = game.enemies
-      .filter(enemy => !enemy.defeated && enemy.shieldTimer <= 0 && enemy.hp > 0)
-      .map(enemy => ({ enemy, distance: Math.hypot(enemy.x - turret.x, enemy.y - turret.y) }))
-      .filter(candidate => candidate.distance <= 850)
-      .sort((a, b) => a.distance - b.distance)[0];
-    if (!target) return;
-    const weapon = beaconTurretWeapons[turret.weapon];
-    const angle = Math.atan2(target.enemy.y - turret.y, target.enemy.x - turret.x);
-    const angleDifference = Math.atan2(Math.sin(angle - turret.angle), Math.cos(angle - turret.angle));
-    turret.angle += Math.sign(angleDifference) * Math.min(Math.abs(angleDifference), 8 * dt);
-    if (turret.cooldown > 0) return;
-    if (weapon.type === 'beam') {
-      target.enemy.hp = Math.max(0, target.enemy.hp - weapon.damage);
-      if (target.enemy.hp <= 0) defeatEnemy(target.enemy);
-      if (weapon.pulseBlastRadius) {
-        applyPulseBlast(
-          target.enemy.x,
-          target.enemy.y,
-          weapon.pulseBlastRadius,
-          weapon.pulseKnockback,
-          Math.cos(angle),
-          Math.sin(angle)
-        );
-      }
-      game.beams.push({
-        x: turret.x,
-        y: turret.y,
-        angle,
-        length: target.distance,
-        color: weapon.color,
-        life: .12,
-        maxLife: .12
-      });
-    } else if (weapon.type === 'grenade') {
-      game.projectiles.push({
-        x: turret.x,
-        y: turret.y,
-        vx: Math.cos(angle) * weapon.speed,
-        vy: Math.sin(angle) * weapon.speed,
-        life: 1.3,
-        radius: 11,
-        damage: weapon.damage,
-        blastRadius: weapon.radius,
-        color: weapon.color,
-        turretProjectile: true,
-        explosive: true
-      });
-    } else if (weapon.type === 'shotgun') {
-      for (let pellet = 0; pellet < weapon.pellets; pellet++) {
-        const pelletAngle = angle + (Math.random() - .5) * weapon.spread;
+  const turretGroups = [
+    game.sanctuaryTurrets,
+    ...game.beaconStations.filter(station => station.repaired).map(station => station.turrets)
+  ];
+  turretGroups.forEach(turrets => {
+    turrets.forEach(turret => {
+      turret.cooldown = Math.max(0, turret.cooldown - dt);
+      const target = game.enemies
+        .filter(enemy => !enemy.defeated && enemy.shieldTimer <= 0 && enemy.hp > 0)
+        .map(enemy => ({ enemy, distance: Math.hypot(enemy.x - turret.x, enemy.y - turret.y) }))
+        .filter(candidate => candidate.distance <= 850)
+        .sort((a, b) => a.distance - b.distance)[0];
+      if (!target) return;
+      const weapon = beaconTurretWeapons[turret.weapon];
+      const angle = Math.atan2(target.enemy.y - turret.y, target.enemy.x - turret.x);
+      const angleDifference = Math.atan2(Math.sin(angle - turret.angle), Math.cos(angle - turret.angle));
+      turret.angle += Math.sign(angleDifference) * Math.min(Math.abs(angleDifference), 8 * dt);
+      if (turret.cooldown > 0) return;
+      if (weapon.type === 'beam') {
+        target.enemy.hp = Math.max(0, target.enemy.hp - weapon.damage);
+        if (target.enemy.hp <= 0) defeatEnemy(target.enemy);
+        if (weapon.pulseBlastRadius) {
+          applyPulseBlast(
+            target.enemy.x,
+            target.enemy.y,
+            weapon.pulseBlastRadius,
+            weapon.pulseKnockback,
+            Math.cos(angle),
+            Math.sin(angle)
+          );
+        }
+        game.beams.push({
+          x: turret.x,
+          y: turret.y,
+          angle,
+          length: target.distance,
+          color: weapon.color,
+          life: .12,
+          maxLife: .12
+        });
+      } else if (weapon.type === 'grenade') {
         game.projectiles.push({
           x: turret.x,
           y: turret.y,
-          vx: Math.cos(pelletAngle) * weapon.speed,
-          vy: Math.sin(pelletAngle) * weapon.speed,
-          life: weapon.life,
-          radius: 5,
+          vx: Math.cos(angle) * weapon.speed,
+          vy: Math.sin(angle) * weapon.speed,
+          life: 1.3,
+          radius: 11,
           damage: weapon.damage,
+          blastRadius: weapon.radius,
           color: weapon.color,
-          turretProjectile: true
+          turretProjectile: true,
+          explosive: true
         });
+      } else if (weapon.type === 'shotgun') {
+        for (let pellet = 0; pellet < weapon.pellets; pellet++) {
+          const pelletAngle = angle + (Math.random() - .5) * weapon.spread;
+          game.projectiles.push({
+            x: turret.x,
+            y: turret.y,
+            vx: Math.cos(pelletAngle) * weapon.speed,
+            vy: Math.sin(pelletAngle) * weapon.speed,
+            life: weapon.life,
+            radius: 5,
+            damage: weapon.damage,
+            color: weapon.color,
+            turretProjectile: true
+          });
+        }
       }
-    }
-    turret.cooldown = weapon.cooldown;
+      turret.cooldown = weapon.cooldown;
+    });
   });
 }
 function detonateBeaconGrenade(projectile) {
@@ -2779,35 +2783,29 @@ function drawHazardMap() {
 }
 function drawPickups() { const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); game.nodes.forEach(node => { if (node.taken || node.type !== 'chest') return; ctx.fillStyle = '#d7b07a'; ctx.strokeStyle = '#ffdf91'; ctx.lineWidth = 2; ctx.fillRect(node.x - 12, node.y - 8, 24, 16); ctx.strokeRect(node.x - 12, node.y - 8, 24, 16); ctx.fillStyle = '#ffdf91'; ctx.fillRect(node.x - 2, node.y - 8, 4, 16); }); game.drops.forEach(drop => { const resource = resourceTypes.find(item => item.key === drop.type); ctx.fillStyle = resource.color; ctx.shadowBlur = 12; ctx.shadowColor = resource.color; ctx.beginPath(); ctx.moveTo(drop.x, drop.y - 8); ctx.lineTo(drop.x + 8, drop.y); ctx.lineTo(drop.x, drop.y + 8); ctx.lineTo(drop.x - 8, drop.y); ctx.fill(); ctx.shadowBlur = 0; }); ctx.restore(); }
 function drawSanctuaryStations() { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary') return; const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); ctx.textAlign = 'center'; ctx.font = 'bold 9px Space Mono'; ctx.fillStyle = '#f9c779'; ctx.fillText('CRAFTING TABLE', -300, -82); ctx.fillText('FURNACE', 285, -82); ctx.fillStyle = '#8b5a3c'; ctx.strokeStyle = '#f9c779'; ctx.lineWidth = 3; ctx.fillRect(-360, -55, 120, 70); ctx.strokeRect(-360, -55, 120, 70); ctx.fillStyle = '#c88968'; ctx.fillRect(-350, -68, 100, 16); ctx.fillStyle = '#17131a'; ctx.fillRect(-320, -42, 40, 20); ctx.fillStyle = '#493a36'; ctx.fillRect(230, -55, 110, 70); ctx.strokeStyle = '#ff865c'; ctx.strokeRect(230, -55, 110, 70); ctx.fillStyle = '#ff865c'; ctx.beginPath(); ctx.arc(285, -20, 28, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(285, -20, 16, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#b9b0a8'; ctx.fillRect(245, -70, 80, 15); ctx.restore(); }
-function drawSanctuaryTurrets() {
-  const camX = game.camera.x - canvas.clientWidth / 2;
-  const camY = game.camera.y - canvas.clientHeight / 2;
-  ctx.save();
-  ctx.translate(-camX, -camY);
-  game.sanctuaryTurrets.forEach(drawBeaconTurret);
-  ctx.restore();
-}
-function drawBeaconTurret(turret) {
-  const color = beaconTurretWeapons[turret.weapon].color;
-  ctx.fillStyle = '#17131a';
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 3;
-  ctx.fillRect(turret.x - 14, turret.y - 14, 28, 28);
-  ctx.strokeRect(turret.x - 14, turret.y - 14, 28, 28);
-  ctx.save();
-  ctx.translate(turret.x, turret.y);
-  ctx.rotate(turret.angle);
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(21, 0);
-  ctx.stroke();
-  ctx.restore();
-}
 function drawBeaconStations() {
   const camX = game.camera.x - canvas.clientWidth / 2;
   const camY = game.camera.y - canvas.clientHeight / 2;
   ctx.save();
   ctx.translate(-camX, -camY);
+  game.sanctuaryTurrets.forEach(turret => {
+    const color = beaconTurretWeapons[turret.weapon].color;
+    ctx.fillStyle = '#17131a';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(turret.x, turret.y, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(turret.x, turret.y);
+    ctx.rotate(turret.angle);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(22, 0);
+    ctx.stroke();
+    ctx.restore();
+  });
   game.beaconStations.forEach(station => {
     ctx.save();
     ctx.globalAlpha = station.repaired ? .5 : .35;
@@ -2841,7 +2839,22 @@ function drawBeaconStations() {
       ctx.beginPath();
       ctx.arc(station.x + beaconModuleBenchOffset, station.y - 2, 8, 0, Math.PI * 2);
       ctx.fill();
-      station.turrets.forEach(drawBeaconTurret);
+      station.turrets.forEach(turret => {
+        const color = beaconTurretWeapons[turret.weapon].color;
+        ctx.fillStyle = '#17131a';
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.fillRect(turret.x - 14, turret.y - 14, 28, 28);
+        ctx.strokeRect(turret.x - 14, turret.y - 14, 28, 28);
+        ctx.save();
+        ctx.translate(turret.x, turret.y);
+        ctx.rotate(turret.angle);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(21, 0);
+        ctx.stroke();
+        ctx.restore();
+      });
       ctx.fillStyle = '#f9c779';
       ctx.font = 'bold 9px Space Mono';
       ctx.fillText('CRAFTING TABLE', station.x - beaconModuleBenchOffset, station.y + 31);
@@ -2907,7 +2920,7 @@ function loop(now) {
   const dt = Math.min((now - lastTime) / 1000, .04);
   lastTime = now;
   updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt);
-  draw(); drawBrambleZones(); drawSectorFourEffects(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawSanctuaryTurrets(); drawBeaconStations();
+  draw(); drawBrambleZones(); drawSectorFourEffects(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawBeaconStations();
   drawMap(); drawHazardMap(); drawBeaconStationMapMarkers(); drawStalkerMapMarker();
   if (game.active) animation = requestAnimationFrame(loop);
 }
