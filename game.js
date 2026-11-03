@@ -144,7 +144,7 @@ const weaponCatalog = {
   grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 6, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 80, kind: 'gun'},
   pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 180, life: 1.7, pellets: 1, spread: .02, pulseBlastRadius: 50, pulseKnockback: 400, kind: 'gun' },
 
-  // Tier 4 (Exotic / Endgame)
+  // Tier 4 (Endgame)
   voidBatar: { name: 'VOID BATAR', ammo: 'voidChains', magazine: 200, cooldown: 30, damage: 0.45, speed: 400, life: 6, pellets: 1, spread: .15, voidBatarMotion: true, kind: 'gun' },
   laserBlade: { name: 'LASER BLADE', ammo: null, cooldown: 350, damage: 4.80, range: 115, meleeDuration: .36, meleeSweep: 2.5, meleeStyle: 'laserBlade', kind: 'melee' },
   magicGauntlet: { name: 'MAGIC GAUNTLET', ammo: 'magicGauntletAmmo', magazine: 14, cooldown: 100, damage: 1.30, speed: 440, life: .50, pellets: 1, spread: .50, kind: 'gun', oscillating: true, coneSize: .20 },
@@ -404,6 +404,7 @@ function freshGame() {
     stationOpen: null, 
     activeBeaconStationId: null,
     beaconStations: createBeaconStations(),
+    sanctuaryTurrets: createSanctuaryTurrets(),
     enemies: [], 
     bullets: [],
     beams: [],
@@ -2258,77 +2259,92 @@ function createBeaconTurrets(station, weapons = []) {
     const weapon = weaponKeys.includes(savedWeapon)
       ? savedWeapon
       : weaponKeys[Math.floor(Math.random() * weaponKeys.length)];
-    return { x: station.x + offsetX * station.radius, y: station.y + offsetY * station.radius, weapon, cooldown: 0 };
+    return { x: station.x + offsetX * station.radius, y: station.y + offsetY * station.radius, weapon, cooldown: 0, angle: 0 };
   });
 }
+function createSanctuaryTurrets() {
+  const weaponKeys = Object.keys(beaconTurretWeapons);
+  const padding = 55;
+  const diameter = (beaconRegionRadius - padding) * 2;
+  return Array.from({ length: 16 }, (_, index) => ({
+    x: 0,
+    y: -beaconRegionRadius + padding + diameter * index / 15,
+    weapon: weaponKeys[Math.floor(Math.random() * weaponKeys.length)],
+    cooldown: 0,
+    angle: Math.random() * Math.PI * 2
+  }));
+}
 function updateBeaconTurrets(dt) {
-  game.beaconStations.forEach(station => {
-    if (!station.repaired) return;
-    station.turrets.forEach(turret => {
-      turret.cooldown = Math.max(0, turret.cooldown - dt);
-      if (turret.cooldown > 0) return;
-      const target = game.enemies
-        .filter(enemy => !enemy.defeated && enemy.shieldTimer <= 0 && enemy.hp > 0)
-        .map(enemy => ({ enemy, distance: Math.hypot(enemy.x - turret.x, enemy.y - turret.y) }))
-        .filter(candidate => candidate.distance <= 850)
-        .sort((a, b) => a.distance - b.distance)[0];
-      if (!target) return;
-      const weapon = beaconTurretWeapons[turret.weapon];
-      const angle = Math.atan2(target.enemy.y - turret.y, target.enemy.x - turret.x);
-      if (weapon.type === 'beam') {
-        target.enemy.hp = Math.max(0, target.enemy.hp - weapon.damage);
-        if (target.enemy.hp <= 0) defeatEnemy(target.enemy);
-        if (weapon.pulseBlastRadius) {
-          applyPulseBlast(
-            target.enemy.x,
-            target.enemy.y,
-            weapon.pulseBlastRadius,
-            weapon.pulseKnockback,
-            Math.cos(angle),
-            Math.sin(angle)
-          );
-        }
-        game.beams.push({
-          x: turret.x,
-          y: turret.y,
-          angle,
-          length: target.distance,
-          color: weapon.color,
-          life: .12,
-          maxLife: .12
-        });
-      } else if (weapon.type === 'grenade') {
+  const turrets = game.beaconStations
+    .filter(station => station.repaired)
+    .flatMap(station => station.turrets)
+    .concat(game.sanctuaryTurrets);
+  turrets.forEach(turret => {
+    turret.cooldown = Math.max(0, turret.cooldown - dt);
+    const target = game.enemies
+      .filter(enemy => !enemy.defeated && enemy.shieldTimer <= 0 && enemy.hp > 0)
+      .map(enemy => ({ enemy, distance: Math.hypot(enemy.x - turret.x, enemy.y - turret.y) }))
+      .filter(candidate => candidate.distance <= 850)
+      .sort((a, b) => a.distance - b.distance)[0];
+    if (!target) return;
+    const weapon = beaconTurretWeapons[turret.weapon];
+    const angle = Math.atan2(target.enemy.y - turret.y, target.enemy.x - turret.x);
+    const angleDifference = Math.atan2(Math.sin(angle - turret.angle), Math.cos(angle - turret.angle));
+    turret.angle += Math.sign(angleDifference) * Math.min(Math.abs(angleDifference), 8 * dt);
+    if (turret.cooldown > 0) return;
+    if (weapon.type === 'beam') {
+      target.enemy.hp = Math.max(0, target.enemy.hp - weapon.damage);
+      if (target.enemy.hp <= 0) defeatEnemy(target.enemy);
+      if (weapon.pulseBlastRadius) {
+        applyPulseBlast(
+          target.enemy.x,
+          target.enemy.y,
+          weapon.pulseBlastRadius,
+          weapon.pulseKnockback,
+          Math.cos(angle),
+          Math.sin(angle)
+        );
+      }
+      game.beams.push({
+        x: turret.x,
+        y: turret.y,
+        angle,
+        length: target.distance,
+        color: weapon.color,
+        life: .12,
+        maxLife: .12
+      });
+    } else if (weapon.type === 'grenade') {
+      game.projectiles.push({
+        x: turret.x,
+        y: turret.y,
+        vx: Math.cos(angle) * weapon.speed,
+        vy: Math.sin(angle) * weapon.speed,
+        life: 1.3,
+        radius: 11,
+        damage: weapon.damage,
+        blastRadius: weapon.radius,
+        color: weapon.color,
+        turretProjectile: true,
+        explosive: true
+      });
+    } else if (weapon.type === 'shotgun') {
+      for (let pellet = 0; pellet < weapon.pellets; pellet++) {
+        const pelletAngle = angle + (Math.random() - .5) * weapon.spread;
         game.projectiles.push({
           x: turret.x,
           y: turret.y,
-          vx: Math.cos(angle) * weapon.speed,
-          vy: Math.sin(angle) * weapon.speed,
-          life: 1.3,
-          radius: 11,
+          vx: Math.cos(pelletAngle) * weapon.speed,
+          vy: Math.sin(pelletAngle) * weapon.speed,
+          life: weapon.life,
+          radius: 5,
           damage: weapon.damage,
-          blastRadius: weapon.radius,
           color: weapon.color,
-          turretProjectile: true,
-          explosive: true
+          turretProjectile: true
         });
-      } else if (weapon.type === 'shotgun') {
-        for (let pellet = 0; pellet < weapon.pellets; pellet++) {
-          const pelletAngle = angle + (Math.random() - .5) * weapon.spread;
-          game.projectiles.push({
-            x: turret.x,
-            y: turret.y,
-            vx: Math.cos(pelletAngle) * weapon.speed,
-            vy: Math.sin(pelletAngle) * weapon.speed,
-            life: weapon.life,
-            radius: 5,
-            damage: weapon.damage,
-            color: weapon.color,
-            turretProjectile: true
-          });
-        }
       }
-      turret.cooldown = weapon.cooldown;
-    });
+    }
+    turret.cooldown = weapon.cooldown;
   });
 }
 function detonateBeaconGrenade(projectile) {
@@ -2763,6 +2779,30 @@ function drawHazardMap() {
 }
 function drawPickups() { const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); game.nodes.forEach(node => { if (node.taken || node.type !== 'chest') return; ctx.fillStyle = '#d7b07a'; ctx.strokeStyle = '#ffdf91'; ctx.lineWidth = 2; ctx.fillRect(node.x - 12, node.y - 8, 24, 16); ctx.strokeRect(node.x - 12, node.y - 8, 24, 16); ctx.fillStyle = '#ffdf91'; ctx.fillRect(node.x - 2, node.y - 8, 4, 16); }); game.drops.forEach(drop => { const resource = resourceTypes.find(item => item.key === drop.type); ctx.fillStyle = resource.color; ctx.shadowBlur = 12; ctx.shadowColor = resource.color; ctx.beginPath(); ctx.moveTo(drop.x, drop.y - 8); ctx.lineTo(drop.x + 8, drop.y); ctx.lineTo(drop.x, drop.y + 8); ctx.lineTo(drop.x - 8, drop.y); ctx.fill(); ctx.shadowBlur = 0; }); ctx.restore(); }
 function drawSanctuaryStations() { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary') return; const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); ctx.textAlign = 'center'; ctx.font = 'bold 9px Space Mono'; ctx.fillStyle = '#f9c779'; ctx.fillText('CRAFTING TABLE', -300, -82); ctx.fillText('FURNACE', 285, -82); ctx.fillStyle = '#8b5a3c'; ctx.strokeStyle = '#f9c779'; ctx.lineWidth = 3; ctx.fillRect(-360, -55, 120, 70); ctx.strokeRect(-360, -55, 120, 70); ctx.fillStyle = '#c88968'; ctx.fillRect(-350, -68, 100, 16); ctx.fillStyle = '#17131a'; ctx.fillRect(-320, -42, 40, 20); ctx.fillStyle = '#493a36'; ctx.fillRect(230, -55, 110, 70); ctx.strokeStyle = '#ff865c'; ctx.strokeRect(230, -55, 110, 70); ctx.fillStyle = '#ff865c'; ctx.beginPath(); ctx.arc(285, -20, 28, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(285, -20, 16, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#b9b0a8'; ctx.fillRect(245, -70, 80, 15); ctx.restore(); }
+function drawSanctuaryTurrets() {
+  const camX = game.camera.x - canvas.clientWidth / 2;
+  const camY = game.camera.y - canvas.clientHeight / 2;
+  ctx.save();
+  ctx.translate(-camX, -camY);
+  game.sanctuaryTurrets.forEach(drawBeaconTurret);
+  ctx.restore();
+}
+function drawBeaconTurret(turret) {
+  const color = beaconTurretWeapons[turret.weapon].color;
+  ctx.fillStyle = '#17131a';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.fillRect(turret.x - 14, turret.y - 14, 28, 28);
+  ctx.strokeRect(turret.x - 14, turret.y - 14, 28, 28);
+  ctx.save();
+  ctx.translate(turret.x, turret.y);
+  ctx.rotate(turret.angle);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(21, 0);
+  ctx.stroke();
+  ctx.restore();
+}
 function drawBeaconStations() {
   const camX = game.camera.x - canvas.clientWidth / 2;
   const camY = game.camera.y - canvas.clientHeight / 2;
@@ -2801,18 +2841,7 @@ function drawBeaconStations() {
       ctx.beginPath();
       ctx.arc(station.x + beaconModuleBenchOffset, station.y - 2, 8, 0, Math.PI * 2);
       ctx.fill();
-      station.turrets.forEach(turret => {
-        const color = beaconTurretWeapons[turret.weapon].color;
-        ctx.fillStyle = '#17131a';
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
-        ctx.fillRect(turret.x - 14, turret.y - 14, 28, 28);
-        ctx.strokeRect(turret.x - 14, turret.y - 14, 28, 28);
-        ctx.beginPath();
-        ctx.moveTo(turret.x, turret.y);
-        ctx.lineTo(turret.x + 21, turret.y);
-        ctx.stroke();
-      });
+      station.turrets.forEach(drawBeaconTurret);
       ctx.fillStyle = '#f9c779';
       ctx.font = 'bold 9px Space Mono';
       ctx.fillText('CRAFTING TABLE', station.x - beaconModuleBenchOffset, station.y + 31);
@@ -2878,7 +2907,7 @@ function loop(now) {
   const dt = Math.min((now - lastTime) / 1000, .04);
   lastTime = now;
   updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt);
-  draw(); drawBrambleZones(); drawSectorFourEffects(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawBeaconStations();
+  draw(); drawBrambleZones(); drawSectorFourEffects(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawSanctuaryTurrets(); drawBeaconStations();
   drawMap(); drawHazardMap(); drawBeaconStationMapMarkers(); drawStalkerMapMarker();
   if (game.active) animation = requestAnimationFrame(loop);
 }
