@@ -37,11 +37,32 @@
             <button type="button" class="menu-button" data-menu-action="new">NEW GAME</button>
             <button type="button" class="menu-button" data-menu-action="continue">CONTINUE LAST SAVE</button>
             <button type="button" class="menu-button" data-menu-action="load">LOAD SAVE</button>
+            <button type="button" class="menu-button" data-menu-action="how-to-play">HOW TO PLAY</button>
           </div>
           <div class="save-slots hidden" id="save-slots">
             <p class="save-slots-title" id="save-slots-title">SELECT SAVE SLOT</p>
             <div id="save-slot-list"></div>
             <button type="button" class="menu-button menu-button-back" data-menu-action="back">BACK</button>
+          </div>
+          <div class="how-to-play hidden" id="how-to-play">
+            <p class="save-slots-title">HOW TO PLAY</p>
+            <div class="how-to-play-content">
+              <h3>MISSION</h3>
+              <p>Leave the Beacon Sanctuary, explore the sectors, collect resources, craft stronger equipment, and survive the growing horde. The farther you travel from the Beacon, the more dangerous the enemies and environmental hazards become.</p>
+              <h3>CONTROLS</h3>
+              <p><b>WASD</b> Move. <b>Mouse</b> Aim and fire. Hold <b>Space</b> to fire continuously. <b>Q</b> uses your pulse blast. <b>H</b> uses a medkit. <b>E</b> opens nearby crafting stations. <b>M</b> opens the tactical map. <b>J</b> changes mini-map zoom. <b>Esc</b> pauses the game.</p>
+              <h3>WEAPONS AND AMMO</h3>
+              <p>Use number keys or the weapon bar to switch weapons. Each weapon keeps its own magazine ammo when you switch away. Guns consume magazine ammo and reload from their matching reserve. Melee weapons do not use ammunition. Craft ammo at the Sanctuary and watch the storage counter before committing to a long expedition.</p>
+              <h3>EXPLORATION</h3>
+              <p>Move across the horizontal, vertical, and curved biome borders to discover new environments. Entering a new biome displays its name and applies its unique effects and hazard. Use the map to track discovered areas, resources, enemies, and fast-travel beacons.</p>
+              <h3>RESOURCES AND CRAFTING</h3>
+              <p>Collect dropped materials and salvage from enemies, nodes, and chests. Return to the Beacon to bank your carried resources in your vault. Craft weapons, armor, ammo, medkits, and upgrades at the crafting table and furnace. Beacon stations can be repaired and equipped with modules and turrets.</p>
+              <h3>COMBAT AND SURVIVAL</h3>
+              <p>Keep moving, manage reloads, and use the terrain and Beacon stations to your advantage. Enemy families gain new abilities as you reach later sectors. Environmental hazards and elite enemies can deal damage even when no enemy is nearby, so pay attention to the hazard indicator and biome effects panel.</p>
+              <h3>SAVES</h3>
+              <p>You have five browser save slots. Save from the pause menu, load a slot from the main menu, continue your most recently used slot, or delete an old slot when you need space. Materials, weapons, upgrades, discoveries, and world progress are stored separately for each slot.</p>
+            </div>
+            <button type="button" class="menu-button menu-button-back" data-menu-action="back-from-help">BACK</button>
           </div>
         </div>
         <div class="overlay hidden" id="game-over">

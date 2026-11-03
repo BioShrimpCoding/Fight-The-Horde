@@ -27,6 +27,7 @@ const saveSlotsPanel = document.querySelector('#save-slots');
 const saveSlotsTitle = document.querySelector('#save-slots-title');
 const saveSlotList = document.querySelector('#save-slot-list');
 const mainMenu = document.querySelector('#main-menu');
+const howToPlay = document.querySelector('#how-to-play');
 const continueButton = document.querySelector('[data-menu-action="continue"]');
 const saveButton = document.querySelector('#save-button');
 const mainMenuButton = document.querySelector('#main-menu-button');
@@ -547,9 +548,15 @@ function renderSaveSlots(mode) {
 }
 function showMainMenu() {
   saveSlotsPanel.classList.add('hidden');
+  howToPlay.classList.add('hidden');
   mainMenu.classList.remove('hidden');
   const lastSlot = Number(localStorage.getItem(lastSaveSlotKey));
   continueButton.disabled = !Number.isInteger(lastSlot) || !readSaveSlots()[lastSlot];
+}
+function showHowToPlay() {
+  mainMenu.classList.add('hidden');
+  saveSlotsPanel.classList.add('hidden');
+  howToPlay.classList.remove('hidden');
 }
 function returnToMainMenu() {
   if (game.active && currentSaveSlot !== null && !saveGame()) return;
@@ -618,12 +625,14 @@ function loadSave(slot) {
 function handleMenuAction(action) {
   if (action === 'new') renderSaveSlots('new');
   if (action === 'load') renderSaveSlots('load');
+  if (action === 'how-to-play') showHowToPlay();
   if (action === 'continue') {
     const slot = Number(localStorage.getItem(lastSaveSlotKey));
     if (Number.isInteger(slot) && readSaveSlots()[slot]) loadSave(slot);
     else renderSaveSlots('load');
   }
   if (action === 'back') showMainMenu();
+  if (action === 'back-from-help') showMainMenu();
 }
 document.querySelectorAll('[data-menu-action]').forEach(button => button.addEventListener('click', () => handleMenuAction(button.dataset.menuAction)));
 saveSlotsPanel.querySelector('[data-menu-action="back"]').addEventListener('click', event => {
