@@ -29,6 +29,7 @@ const saveSlotList = document.querySelector('#save-slot-list');
 const mainMenu = document.querySelector('#main-menu');
 const continueButton = document.querySelector('[data-menu-action="continue"]');
 const saveButton = document.querySelector('#save-button');
+const mainMenuButton = document.querySelector('#main-menu-button');
 const adminUnlockSequence = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'Enter'];
 let adminUnlockIndex = 0;
 const clipSize = 12;
@@ -337,14 +338,12 @@ function hasEnemyEffect(enemy, effect) {
 function seededRandom(seed) { let value = seed >>> 0; return () => { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; }; }
 function randomizeBiomeData(seed) { const random = seededRandom(seed); const positives = [() => ({ healthRegen: 3 + random() * 3 }), () => ({ moveMultiplier: 1.15 + random() * .25 }), () => ({ fireCooldownMultiplier: .55 + random() * .2 }), () => ({ pulseCooldownMultiplier: .35 + random() * .2 }), () => ({ salvageMultiplier: 1.75 + random() * 1.25 }), () => ({ enemySpeedMultiplier: .55 + random() * .2 })]; const negatives = [() => ({ damageMultiplier: 1.05 + random() * .1 }), () => ({ enemySpeedMultiplier: 1.05 + random() * .1 }), () => ({ moveMultiplier: .88 + random() * .07 }), () => ({ fireCooldownMultiplier: 1.05 + random() * .1 }), () => ({ pulseCooldownMultiplier: 1.05 + random() * .1 })]; sectorRegions.flat().forEach((biome, index) => { const positive = positives[Math.floor(random() * positives.length)](); const firstNegative = negatives[Math.floor(random() * negatives.length)](); const secondNegative = negatives[Math.floor(random() * negatives.length)](); const hazard = biome.effects.hazard; const sectorHazardMultiplier = .35 + Math.floor(index / 4) * .23; biome.effects = { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { ...hazard, damagePerSecond: biomeHazards[index].damagePerSecond * sectorHazardMultiplier, zoneDamagePerSecond: 3.5 + random() * 3 }, ...positive, ...firstNegative, ...secondNegative }; Object.assign(biome.effects, positive); if (index % 2 === 0) biome.effects.hazard.zoneDamagePerSecond += 1; }); }
 function createBeaconStations() {
-  const savedStates = JSON.parse(localStorage.getItem('horde-beacon-stations') || '{}');
   return Array.from({ length: 4 }, (_, index) => {
     const id = `sector4-${index}`;
     const angle = Math.PI / 4 + index * Math.PI / 2;
     const x = Math.cos(angle) * beaconStationRingRadius;
     const y = Math.sin(angle) * beaconStationRingRadius;
     const random = seededRandom(4104 + index * 7919);
-    const savedState = savedStates[id] || {};
     const repairCost = {
       fuel: 50 + Math.floor(random() * 51),
       steel: 100 + Math.floor(random() * 51),
@@ -353,30 +352,26 @@ function createBeaconStations() {
       stone: 25 + Math.floor(random() * 51),
       iron: 50 + Math.floor(random() * 26)
     };
-    const savedModules = savedState.modules || {};
     const station = {
       id,
       x,
       y,
       radius: beaconStationRadius,
       repairCost,
-      repaired: Boolean(savedState.repaired),
+      repaired: false,
       turrets: [],
       modules: Object.fromEntries(Object.keys(beaconModuleDefinitions).map(key => [
         key,
-        Math.max(0, Math.floor(Number(savedModules[key]) || 0))
+        0
       ])),
       pulseTimer: 3,
     };
-    if (station.repaired) createBeaconTurrets(station, savedState.weapons);
     return station;
    });
 }
 let game = freshGame();
 function freshGame() {
-  const storedStationItems = JSON.parse(localStorage.getItem('horde-station-items') || '{}');
-  const storedSalvage = Number(localStorage.getItem('horde-salvage') || 0);
-  const stationItems = { ...storedStationItems, medkit: Math.min(5, Math.max(0, Number(storedStationItems.medkit ?? 1))) };
+  const stationItems = { medkit: 1 };
   return { 
     active: false,
     paused: false,
@@ -397,11 +392,11 @@ function freshGame() {
     unlockedWeapons: { sidearm: true }, 
     reloadPending: false, 
     weaponReloadPending: {},
-    salvage: storedSalvage, 
-    relics: Number(localStorage.getItem('horde-relics') || 0), 
-    atlasCrystals: Number(localStorage.getItem('horde-atlas-crystals') || 0), 
+    salvage: 0,
+    relics: 0,
+    atlasCrystals: 0,
     banked: 0, 
-    vault: JSON.parse(localStorage.getItem('horde-vault') || '{}'), 
+    vault: {},
     inventory: Object.fromEntries(resourceTypes.map(resource => [resource.key, 0])), 
     stationItems, 
     crafting: null, 
@@ -544,7 +539,8 @@ function renderSaveSlots(mode) {
   saveSlotList.innerHTML = readSaveSlots().map((slot, index) => {
     const details = slot ? `SECTOR ${slot.sector || 1} // ${formatSaveTime(slot.timestamp)}` : 'EMPTY SLOT';
     const action = mode === 'new' ? 'new-slot' : 'load-slot';
-    return `<button type="button" class="menu-button save-slot" data-save-action="${action}" data-save-slot="${index}" ${mode === 'load' && !slot ? 'disabled' : ''}><strong>SLOT ${index + 1}</strong><small>${details}</small></button>`;
+    const deleteButton = slot ? `<button type="button" class="save-delete" data-save-action="delete-slot" data-save-slot="${index}" aria-label="Delete save slot ${index + 1}">DELETE</button>` : '';
+    return `<div class="save-slot-row"><button type="button" class="menu-button save-slot" data-save-action="${action}" data-save-slot="${index}" ${mode === 'load' && !slot ? 'disabled' : ''}><strong>SLOT ${index + 1}</strong><small>${details}</small></button>${deleteButton}</div>`;
   }).join('');
   mainMenu.classList.add('hidden');
   saveSlotsPanel.classList.remove('hidden');
@@ -555,8 +551,31 @@ function showMainMenu() {
   const lastSlot = Number(localStorage.getItem(lastSaveSlotKey));
   continueButton.disabled = !Number.isInteger(lastSlot) || !readSaveSlots()[lastSlot];
 }
+function returnToMainMenu() {
+  if (game.active && currentSaveSlot !== null && !saveGame()) return;
+  game.active = false;
+  game.paused = false;
+  pointer.down = false;
+  game.radBeamActive = false;
+  setMapOpen(false);
+  ui.pause.classList.add('hidden');
+  ui.over.classList.add('hidden');
+  ui.start.classList.remove('hidden');
+  gameShell.classList.add('menu-state');
+  showMainMenu();
+}
 function serializeGame() {
-  return JSON.stringify(game, (_, value) => value instanceof Set ? { __saveType: 'Set', values: [...value] } : value);
+  const seen = new WeakSet();
+  return JSON.stringify(game, (_, value) => {
+    if (value instanceof Set) {
+      return { __saveType: 'Set', values: [...value] };
+    }
+    if (value && typeof value === 'object') {
+      if (seen.has(value)) return undefined;
+      seen.add(value);
+    }
+    return value;
+  });
 }
 function restoreGame(savedState) {
   const parsed = JSON.parse(savedState, (_, value) => value?.__saveType === 'Set' ? new Set(value.values) : value);
@@ -569,17 +588,22 @@ function restoreGame(savedState) {
 }
 function saveGame(slot = currentSaveSlot) {
   if (!game.active || slot === null || slot < 0 || slot >= saveSlotCount) return false;
-  const slots = readSaveSlots();
-  slots[slot] = {
-    timestamp: Date.now(),
-    sector: game.currentSector || 1,
-    state: serializeGame()
-  };
-  writeSaveSlots(slots);
-  currentSaveSlot = slot;
-  localStorage.setItem(lastSaveSlotKey, String(slot));
-  gameLog('INFO', `Game saved to slot ${slot + 1}`);
-  return true;
+  try {
+    const slots = readSaveSlots();
+    slots[slot] = {
+      timestamp: Date.now(),
+      sector: game.currentSector || 1,
+      state: serializeGame()
+    };
+    writeSaveSlots(slots);
+    currentSaveSlot = slot;
+    localStorage.setItem(lastSaveSlotKey, String(slot));
+    gameLog('INFO', `Game saved to slot ${slot + 1}`);
+    return true;
+  } catch (error) {
+    gameLog('ERROR', `Unable to save slot ${slot + 1}`, error.message);
+    return false;
+  }
 }
 function loadSave(slot) {
   const saved = readSaveSlots()[slot];
@@ -602,10 +626,24 @@ function handleMenuAction(action) {
   if (action === 'back') showMainMenu();
 }
 document.querySelectorAll('[data-menu-action]').forEach(button => button.addEventListener('click', () => handleMenuAction(button.dataset.menuAction)));
+saveSlotsPanel.querySelector('[data-menu-action="back"]').addEventListener('click', event => {
+  event.preventDefault();
+  event.stopPropagation();
+  showMainMenu();
+});
 saveSlotList.addEventListener('click', event => {
   const button = event.target.closest('[data-save-action]');
   if (!button) return;
   const slot = Number(button.dataset.saveSlot);
+  if (button.dataset.saveAction === 'delete-slot') {
+    if (!window.confirm(`Delete save slot ${slot + 1}? This cannot be undone.`)) return;
+    const slots = readSaveSlots();
+    slots[slot] = null;
+    writeSaveSlots(slots);
+    if (Number(localStorage.getItem(lastSaveSlotKey)) === slot) localStorage.removeItem(lastSaveSlotKey);
+    renderSaveSlots(saveSlotsTitle.textContent.includes('NEW GAME') ? 'new' : 'load');
+    return;
+  }
   if (button.dataset.saveAction === 'new-slot') {
     if (readSaveSlots()[slot] && !window.confirm(`Overwrite save slot ${slot + 1}?`)) return;
     currentSaveSlot = slot;
@@ -626,6 +664,7 @@ saveButton?.addEventListener('click', () => {
   saveButton.textContent = 'GAME SAVED';
   window.setTimeout(() => { saveButton.textContent = 'SAVE GAME'; }, 1200);
 });
+mainMenuButton?.addEventListener('click', returnToMainMenu);
 showMainMenu();
 document.querySelector('#restart-button').onclick = start; adminPanel.hidden = !adminMode; adminPanel.querySelectorAll('[data-admin]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); adminAction(button.dataset.admin, button.dataset.value); })); document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const quantityButton = event.target.closest('[data-craft-quantity]'); if (quantityButton) { event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(quantityButton.dataset.craftQuantity), Number(ui.craftDetails.dataset.weaponSlot || 0)); return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm, Number(ui.craftDetails.dataset.quantity || 1), Number(ui.craftDetails.dataset.weaponSlot || 0)); } });
 ui.weaponBar?.addEventListener('click', event => { const slotButton = event.target.closest('[data-weapon-slot]'); if (!slotButton) return; switchWeapon(Number(slotButton.dataset.weaponSlot)); });
@@ -662,6 +701,8 @@ function start(savedState = null, slot = currentSaveSlot) {
       const roll = random();
       game.nodes.push({ x: (random() - .5) * mapRadius * 2, y: (random() - .5) * mapRadius * 1.5, type: roll < .08 ? 'relic' : roll < .54 ? 'chest' : 'scrap', taken: false });
     }
+  } else {
+    game.hazardZones = generateHazardZones();
   }
   updateInventoryUI();
   updateStationButtons();
@@ -2473,7 +2514,21 @@ openCraftDetails = function(recipeKey, requestedQuantity = 1, requestedSlot = 0)
 };
 function drawBiomeHazard(biome, width, height) { if (biome.key === 'sanctuary' || biome.key.startsWith('beacon-')) return; const hazard = biome.effects.hazard; const time = performance.now() / 1000; const name = hazard.name; ctx.save(); ctx.globalAlpha = .2; if (name.includes('MIST') || name.includes('ASH') || name.includes('SPORES') || name.includes('RAIN')) { ctx.fillStyle = biome.color; for (let i = 0; i < 28; i++) { const x = (i * 97 + time * 18) % width; const y = (i * 53 + time * 11) % height; ctx.beginPath(); ctx.arc(x, y, 3 + (i % 4), 0, Math.PI * 2); ctx.fill(); } } else if (name.includes('HEAT') || name.includes('EMBER') || name.includes('FIRE') || name.includes('BURN')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 2; for (let i = 0; i < 18; i++) { const x = (i * 131 + time * 35) % width; const y = (i * 71 + time * 24) % height; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 12, y + 28); ctx.stroke(); } } else if (name.includes('FREEZE') || name.includes('FROST') || name.includes('COLD')) { ctx.fillStyle = biome.color; for (let i = 0; i < 24; i++) { const x = (i * 83 + time * 12) % width; const y = (i * 61 + time * 30) % height; ctx.fillRect(x, y, 2, 8); } } else if (name.includes('LIGHTNING') || name.includes('THUNDER')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 3; for (let i = 0; i < 3; i++) { const x = (i * 211 + time * 7) % width; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x - 14, height * .25); ctx.lineTo(x + 8, height * .5); ctx.lineTo(x - 12, height * .78); ctx.stroke(); } } else if (name.includes('ROOT') || name.includes('BONE')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 4; for (let i = 0; i < 8; i++) { const x = i * width / 7; ctx.beginPath(); ctx.moveTo(x, height); ctx.quadraticCurveTo(x + 20, height * .7, x - 8, height * .42); ctx.stroke(); } } else if (name.includes('GRAVITY') || name.includes('PRESSURE') || name.includes('HORIZON')) { ctx.strokeStyle = biome.color; ctx.lineWidth = 2; for (let radius = 70; radius < Math.max(width, height); radius += 100) { ctx.beginPath(); ctx.arc(width / 2, height / 2, radius + Math.sin(time * 2 + radius) * 8, 0, Math.PI * 2); ctx.stroke(); } } else { ctx.fillStyle = biome.color; for (let i = 0; i < 18; i++) { const x = (i * 113 + time * 20) % width; const y = (i * 67 + time * 14) % height; ctx.beginPath(); ctx.arc(x, y, 2 + i % 3, 0, Math.PI * 2); ctx.fill(); } } ctx.restore(); }
 function generateHazardZones() { const zones = []; const random = seededRandom(game.seed + 71); for (let i = 0; i < 110; i++) { const x = (random() - .5) * mapRadius * 2; const y = (random() - .5) * mapRadius * 1.5; const biome = getBiome(x, y); if (biome.key === 'sanctuary' || biome.key === 'void' || biome.key.startsWith('beacon-')) continue; zones.push({ x, y, radius: 90 + random() * 150, biomeKey: biome.key, color: biome.color, damagePerSecond: biome.effects.hazard.zoneDamagePerSecond * 1.6, hazard: biome.effects.hazard }); } return zones; }
-function drawHazardShape(context, zone) { const visual = zone.hazard.visual; const { x, y, radius } = zone; context.beginPath(); if (visual.includes('pool') || visual.includes('crater') || visual.includes('cloud') || visual.includes('patch') || visual.includes('pile') || visual.includes('core')) context.ellipse(x, y, radius, radius * .72, .15, 0, Math.PI * 2); else if (visual.includes('spikes') || visual.includes('pylon')) { context.moveTo(x, y - radius); for (let i = 0; i < 8; i++) { const angle = -Math.PI / 2 + i * Math.PI / 4; const distance = i % 2 ? radius * .62 : radius; context.lineTo(x + Math.cos(angle) * distance, y + Math.sin(angle) * distance); } context.closePath(); } else { context.arc(x, y, radius, 0, Math.PI * 2); } }
+function drawHazardShape(context, zone) {
+  const visual = zone.hazard?.visual || 'pool';
+  const { x, y, radius } = zone;
+  context.beginPath();
+  if (visual.includes('pool') || visual.includes('crater') || visual.includes('cloud') || visual.includes('patch') || visual.includes('pile') || visual.includes('core')) context.ellipse(x, y, radius, radius * .72, .15, 0, Math.PI * 2);
+  else if (visual.includes('spikes') || visual.includes('pylon')) {
+    context.moveTo(x, y - radius);
+    for (let i = 0; i < 8; i++) {
+      const angle = -Math.PI / 2 + i * Math.PI / 4;
+      const distance = i % 2 ? radius * .62 : radius;
+      context.lineTo(x + Math.cos(angle) * distance, y + Math.sin(angle) * distance);
+    }
+    context.closePath();
+  } else context.arc(x, y, radius, 0, Math.PI * 2);
+}
 function drawBrambleZones() {
   if (!game.brambleZones.length) return;
   const camX = game.camera.x - canvas.clientWidth / 2;
