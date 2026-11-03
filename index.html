@@ -22,6 +22,14 @@
       <div class="arena-frame">
         <canvas id="arena" aria-label="Top-down Fight the Horde game"></canvas>
         <div class="crosshair" aria-hidden="true"></div>
+        <div class="manager-mode" id="manager-mode" hidden>
+          <button type="button" class="manager-exit" id="manager-exit">EXIT MANAGERS TABLE</button>
+          <aside class="manager-inventory" id="manager-inventory" aria-label="Stored sanctuary stations">
+            <strong>MANAGERS TABLE // STORED STATIONS</strong>
+            <p>Drag a station onto the sanctuary to place it. Drag a placed station back here to store it.</p>
+            <div class="manager-items" id="manager-items"></div>
+          </aside>
+        </div>
         <div class="map-panel" id="map-panel" role="dialog" aria-modal="false" aria-label="Tactical map">
           <div class="map-heading">
             <span>TACTICAL MAP</span>
@@ -102,6 +110,7 @@
           <span class="station-title">SANCTUARY // WORKSHOPS</span>
           <div class="station-card" data-station="crafting"><strong>CRAFTING TABLE</strong><button type="button" data-craft="medkit">MEDKIT <small>4 FIBER + 2 CRYSTAL</small></button><button type="button" data-craft="steelPlate">STEEL PLATE <small>5 STEEL + 2 STONE</small></button><div class="arsenal-list" id="arsenal-list"></div></div>
           <div class="station-card" data-station="furnace"><strong>FURNACE</strong><button type="button" data-craft="smeltIron">SMELT IRON <small>3 RAW IRON + 10 FUEL</small></button><button type="button" data-craft="makeSteel">MAKE STEEL <small>2 IRON + 3 STONE + 10 FUEL</small></button><button type="button" data-craft="refineFuel">REFINE FUEL <small>2 WOOD + 2 FIBER + 10 FUEL</small></button></div>
+          <div class="station-card" data-station="designer"><strong>DESIGNER TABLE</strong><button type="button" data-craft="buildWorkbench">WORKBENCH <small>50 WOOD + 10 STONE + 20 FIBER</small></button><button type="button" data-craft="buildFurnace">FURNACE <small>50 STONE + 10 IRON + 20 FUEL</small></button></div>
           <div class="station-card" data-station="beacon-repair"><strong>RUINED BEACON STATION</strong><button type="button" data-craft="repairBeacon:sector4-0">REPAIR STATION <small>HIGH RESOURCE COST</small></button></div>
           <div class="station-card" data-station="beacon-modules"><strong>MODULE STATION</strong><button type="button" data-craft="beaconModule:pulse">PULSE MODULE <small>SHOCKWAVE // PUSH ENEMIES</small></button><button type="button" data-craft="beaconModule:drain">DRAIN MODULE <small>DAMAGE NEARBY ENEMIES</small></button><button type="button" data-craft="beaconModule:support">SUPPORT MODULE <small>HEALING // DAMAGE // ATTACK SPEED</small></button></div>
           <div class="craft-details" id="craft-details" hidden></div>

@@ -32,11 +32,42 @@ canvas { display: block; width: 100%; height: 100%; cursor: none; }.crosshair { 
 .sanctuary-stations { position: absolute; z-index: 4; left: 50%; bottom: 18px; transform: translateX(-50%); display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)) minmax(180px, 1.15fr); gap: 8px; width: min(780px, calc(100% - 36px)); padding: 10px; background: #100d13f2; border: 1px solid #f9c779aa; box-shadow: 0 0 24px #f9c77922; font: 8px 'Space Mono', monospace; }.sanctuary-stations[hidden] { display: none; }.station-title, .station-output { grid-column: 1 / -1; color: var(--orange); }.station-card { display: grid; gap: 5px; padding: 7px; border: 1px solid #5b3438; background: #171016; }.station-card[hidden] { display: none; }.station-card[data-station='crafting'] { border-color: #f9c779aa; }.station-card[data-station='furnace'] { border-color: #ff865caa; }.station-card strong { color: var(--muted); }.station-card button { display: flex; justify-content: space-between; gap: 8px; border: 1px solid #754047; background: #2a171e; color: var(--ink); padding: 6px; font: inherit; cursor: pointer; text-align: left; }.station-card button:hover { background: var(--orange); color: #170e12; }.station-card button:disabled { cursor: wait; opacity: .55; }.station-card button.crafting { animation: craft-pulse 1s ease-in-out infinite; border-color: var(--orange); }.station-card small { color: #b9b0a8; font: inherit; }.station-card button:hover small { color: #170e12; }.station-output { min-height: 10px; color: #8fe0ad; }.craft-details { grid-column: 3; grid-row: 2 / span 2; display: grid; gap: 8px; padding: 8px; border: 1px solid #f9c779aa; background: #171016; min-height: 165px; }.craft-details[hidden] { display: none; }.craft-details-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--orange); }.craft-details-header strong { font-size: 11px; letter-spacing: .08em; }.detail-close { border: 1px solid #754047; background: #2a171e; color: var(--ink); font: inherit; padding: 2px 6px; cursor: pointer; }.detail-close:hover { background: var(--red); color: #170e12; }.craft-details-body { display: grid; gap: 8px; }.craft-detail-title { font-size: 11px; color: var(--muted); }.craft-detail-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }.craft-detail-list li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid #2f232e; color: var(--ink); }.craft-detail-list li.missing { color: #ff8d7f; }.craft-detail-list li.ready { color: #8fe0ad; }.craft-detail-list small { color: var(--muted); font: inherit; }.craft-detail-actions { display: flex; justify-content: flex-end; margin-top: auto; }.craft-detail-actions button { border: 1px solid #754047; background: #2a171e; color: var(--ink); padding: 6px 10px; font: inherit; cursor: pointer; }.craft-detail-actions button:hover:not(:disabled) { background: var(--orange); color: #170e12; }.craft-detail-actions button:disabled { cursor: not-allowed; opacity: .55; }
 .station-card[data-station='beacon-repair'] { border-color: #ff865caa; }
 .station-card[data-station='beacon-modules'] { border-color: #8fe0adaa; }
+.station-card[data-station='designer'] { border-color: #8f7cffaa; }
 .sanctuary-stations.beacon-menu { grid-template-columns: minmax(180px, 1fr) minmax(180px, 1.15fr); }
 .beacon-menu .craft-details { grid-column: 2; grid-row: 2; }
 .module-description { color: #c9dfcf; line-height: 1.5; }
 .craft-details[data-recipe-key^='beaconModule:'] .craft-detail-actions { justify-content: flex-end; }
 @media (max-width: 650px) { .sanctuary-stations.beacon-menu { grid-template-columns: 1fr; }.beacon-menu .craft-details { grid-column: 1; grid-row: auto; } }
+.manager-mode { position: absolute; inset: 0; z-index: 8; pointer-events: none; }
+.manager-mode[hidden] { display: none; }
+.manager-exit { position: absolute; top: 50%; left: 16px; transform: translateY(-50%); pointer-events: auto; border: 1px solid #f9c779; background: #100d13ee; color: var(--orange); padding: 12px; font: 9px 'Space Mono', monospace; cursor: pointer; }
+.manager-exit:hover { background: var(--orange); color: #170e12; }
+.manager-inventory { position: absolute; top: 0; right: 0; bottom: 0; width: min(280px, 38%); padding: 18px 12px; overflow-y: auto; pointer-events: auto; border-left: 1px solid #8fe0adaa; background: #100d13f2; color: var(--ink); font: 9px 'Space Mono', monospace; }
+.manager-inventory > strong { color: #8fe0ad; line-height: 1.5; }
+.manager-inventory p { color: var(--muted); line-height: 1.5; }
+.manager-items { display: grid; gap: 8px; margin-top: 16px; }
+.manager-item { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 10px; border: 1px solid #5b3438; background: #171016; color: var(--ink); font: inherit; text-align: left; cursor: grab; touch-action: none; }
+.manager-item:active { cursor: grabbing; }
+.manager-item:disabled { opacity: .45; cursor: not-allowed; }
+.manager-item strong { color: var(--orange); }
+.manager-items-empty { color: var(--muted); line-height: 1.5; }
+.manager-view canvas { cursor: crosshair; touch-action: none; }
+.manager-view .map-panel,
+.manager-view .crosshair,
+.manager-view .expedition-hud,
+.manager-view .vitals-hud,
+.manager-view .ammo-hud,
+.manager-view .weapon-bar,
+.manager-view .inventory-hud,
+.manager-view .biome-effects,
+.manager-view .biome-announcement,
+.manager-view .admin-panel,
+.manager-view .sanctuary-stations,
+.manager-view .mobile-controls { visibility: hidden; }
+@media (max-width: 650px) {
+  .manager-inventory { width: min(220px, 42%); padding: 12px 8px; font-size: 8px; }
+  .manager-exit { left: 6px; max-width: 78px; padding: 8px 5px; font-size: 7px; }
+}
 @keyframes craft-pulse { 0%, 100% { transform: scale(1); box-shadow: 0 0 0 #ffb35c00; } 50% { transform: scale(1.03); box-shadow: 0 0 14px #ffb35c88; } }
 .mobile-controls { display: none; }
 .craft-quantity-controls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }.craft-quantity-controls span { width: 100%; color: var(--muted); }.craft-quantity-controls button { min-width: 24px; border: 1px solid #754047; background: #2a171e; color: var(--ink); padding: 3px 5px; font: inherit; cursor: pointer; }.craft-quantity-controls button.selected, .craft-quantity-controls button:hover { background: var(--orange); color: #170e12; }.craft-quantity-controls button:disabled { cursor: wait; opacity: .55; }

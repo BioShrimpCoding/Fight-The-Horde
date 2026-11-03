@@ -8,7 +8,7 @@ const mapInstructions = document.querySelector('#map-instructions');
 const crosshair = document.querySelector('.crosshair');
 const gameShell = document.querySelector('.game-shell');
 const adminPanel = document.querySelector('#admin-panel');
-const ui = { wave: document.querySelector('#wave'), score: document.querySelector('#score'), high: document.querySelector('#high-score'), ammo: document.querySelector('#ammo'), ammoStorage: document.querySelector('#ammo-storage'), medkits: document.querySelector('#medkits'), weaponName: document.querySelector('#weapon-name'), ammoType: document.querySelector('#ammo-type'), weaponBar: document.querySelector('#weapon-bar'), health: document.querySelector('#health-bar'), healthValue: document.querySelector('#health-value'), threats: document.querySelector('#threat-count'), distance: document.querySelector('#distance'), salvage: document.querySelector('#salvage'), relics: document.querySelector('#relics'), objective: document.querySelector('#objective-text'), start: document.querySelector('#start-screen'), over: document.querySelector('#game-over'), pause: document.querySelector('#pause-screen'), final: document.querySelector('#final-score'), announcement: document.querySelector('#biome-announcement'), effects: document.querySelector('#biome-effects'), inventory: document.querySelector('#inventory-hud'), stations: document.querySelector('#sanctuary-stations'), stationOutput: document.querySelector('#station-output'), arsenal: document.querySelector('#arsenal-list'), craftDetails: document.querySelector('#craft-details') };
+const ui = { wave: document.querySelector('#wave'), score: document.querySelector('#score'), high: document.querySelector('#high-score'), ammo: document.querySelector('#ammo'), ammoStorage: document.querySelector('#ammo-storage'), medkits: document.querySelector('#medkits'), weaponName: document.querySelector('#weapon-name'), ammoType: document.querySelector('#ammo-type'), weaponBar: document.querySelector('#weapon-bar'), health: document.querySelector('#health-bar'), healthValue: document.querySelector('#health-value'), threats: document.querySelector('#threat-count'), distance: document.querySelector('#distance'), salvage: document.querySelector('#salvage'), relics: document.querySelector('#relics'), objective: document.querySelector('#objective-text'), start: document.querySelector('#start-screen'), over: document.querySelector('#game-over'), pause: document.querySelector('#pause-screen'), final: document.querySelector('#final-score'), announcement: document.querySelector('#biome-announcement'), effects: document.querySelector('#biome-effects'), inventory: document.querySelector('#inventory-hud'), stations: document.querySelector('#sanctuary-stations'), stationOutput: document.querySelector('#station-output'), arsenal: document.querySelector('#arsenal-list'), craftDetails: document.querySelector('#craft-details'), manager: document.querySelector('#manager-mode'), managerInventory: document.querySelector('#manager-inventory') };
 const debugConsoleOutput = document.querySelector('#debug-console-output');
 const clearConsoleButton = document.querySelector('#clear-console');
 const atlasCrystalCounter = document.querySelector('#atlas-crystals');
@@ -18,6 +18,7 @@ window.addEventListener('unhandledrejection', event => { const reason = event.re
 clearConsoleButton?.addEventListener('click', () => { debugConsoleOutput.innerHTML = ''; gameLog('INFO', 'Diagnostic console cleared'); });
 gameLog('INFO', 'Diagnostic console online');
 const keys = {}; const pointer = { x: 0, y: 0, down: false }; let animation; let lastTime = 0; let adminMode = false;
+let managerDrag = null;
 let mapOpen = false;
 const saveSlotCount = 5;
 const saveSlotsKey = 'horde-save-slots';
@@ -37,11 +38,16 @@ const clipSize = 12;
 const startingAmmoReserve = 15;
 const stationInteractionRadius = 95;
 const frostfallAuraRadius = 80;
-const stationPositions = { crafting: { x: -300, y: -27 }, furnace: { x: 285, y: -27 } };
+const sanctuaryBuildStations = {
+  designer: { x: -70, y: -1000 },
+  manager: { x: 70, y: -1000 }
+};
+const placedStationRadius = 24;
+const managerInventoryWidth = 280;
 const beaconStationRadius = 200;
 const beaconStationRingRadius = 10500;
 const beaconTurretWeapons = {
-  laser: { type: 'beam', damage: .9, cooldown: .65, color: '#b9f4ff' },
+  laser: { type: 'beam', damage: 1.9, cooldown: 1.65, range: 1700, color: '#b9f4ff' },
   pulseCarbine: { type: 'beam', damage: .55, cooldown: .25, color: '#d58ee0', pulseBlastRadius: 50, pulseKnockback: 400 },
   minigun: { type: 'beam', damage: .28, cooldown: .08, color: '#ffb35c' },
   grenadeLauncher: { type: 'grenade', damage: 1.25, cooldown: 1.25, radius: 105, speed: 700, color: '#ff865c' },
@@ -50,7 +56,7 @@ const beaconTurretWeapons = {
 const beaconModuleDefinitions = {
   pulse: { name: 'PULSE MODULE', description: 'Periodically blasts nearby enemies away from this station.' },
   drain: { name: 'DRAIN MODULE', description: 'Continuously damages enemies around this station.' },
-  support: { name: 'SUPPORT MODULE', description: '+3 HP/s, +10% player damage, and +10% attack speed per module while inside.' }
+  support: { name: 'SUPPORT MODULE', description: '+3 HP/s, +10% player damage, and +10% player attack speed per module while inside. Station turrets also gain +10% damage and attack speed per module.' }
 };
 const beaconModuleInteractionRadius = 45;
 const beaconModuleBenchOffset = 55;
@@ -419,6 +425,10 @@ function freshGame() {
     activeBeaconStationId: null,
     beaconStations: createBeaconStations(),
     sanctuaryTurrets: createSanctuaryTurrets(),
+    craftedStations: { workbench: 1, furnace: 1 },
+    startingStationsGranted: true,
+    placedStations: [],
+    managerMode: false,
     enemies: [], 
     bullets: [],
     beams: [],
@@ -458,6 +468,11 @@ renderWeaponBar();
 function resize() { const ratio = window.devicePixelRatio || 1; canvas.width = canvas.clientWidth * ratio; canvas.height = canvas.clientHeight * ratio; ctx.setTransform(ratio, 0, 0, ratio, 0, 0); if (!game.active) game.player = { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2, angle: 0 }; resizeMapCanvas(); }
 window.addEventListener('resize', resize); resize();
 window.addEventListener('keydown', event => {
+  if (game.managerMode) {
+    if (event.key === 'Escape' && !event.repeat) exitManagersTable();
+    event.preventDefault();
+    return;
+  }
   if (mapOpen) {
     event.preventDefault();
     if (!event.repeat && (event.key.toLowerCase() === 'm' || event.key === 'Escape')) {
@@ -490,8 +505,28 @@ window.addEventListener('keydown', event => {
   if (event.key.toLowerCase() === 'q' && game.active && !game.paused) pulse();
   if (game.active && !game.paused && !event.repeat && /^[0-9]$/.test(event.key)) switchWeapon(Number(event.key));
 });
-window.addEventListener('keyup', event => { if (!mapOpen) keys[event.key.toLowerCase()] = false; });
-canvas.addEventListener('pointermove', event => { const box = canvas.getBoundingClientRect(); pointer.x = event.clientX - box.left; pointer.y = event.clientY - box.top; crosshair.style.left = `${pointer.x}px`; crosshair.style.top = `${pointer.y}px`; }); canvas.addEventListener('pointerdown', () => { pointer.down = true; if (game.active && !game.paused) shoot(); }); window.addEventListener('pointerup', () => { pointer.down = false; game.radBeamActive = false; });
+window.addEventListener('keyup', event => { if (!mapOpen && !game.managerMode) keys[event.key.toLowerCase()] = false; });
+canvas.addEventListener('pointermove', event => { const box = canvas.getBoundingClientRect(); pointer.x = event.clientX - box.left; pointer.y = event.clientY - box.top; crosshair.style.left = `${pointer.x}px`; crosshair.style.top = `${pointer.y}px`; });
+canvas.addEventListener('pointerdown', event => {
+  if (game.managerMode) {
+    beginPlacedStationDrag(event);
+    return;
+  }
+  pointer.down = true;
+  if (game.active && !game.paused) shoot();
+});
+window.addEventListener('pointerup', event => {
+  pointer.down = false;
+  game.radBeamActive = false;
+  if (game.managerMode && managerDrag) finishManagerDrag(event);
+});
+ui.managerInventory?.addEventListener('pointerdown', event => {
+  const item = event.target.closest('[data-manager-item]');
+  if (!game.managerMode || !item || item.disabled) return;
+  event.preventDefault();
+  managerDrag = { source: 'inventory', type: item.dataset.managerItem };
+});
+document.querySelector('#manager-exit')?.addEventListener('click', exitManagersTable);
 function getMapWorldPosition(event) {
   const rect = mapCanvas.getBoundingClientRect();
   const scale = getTacticalMapScale();
@@ -577,6 +612,10 @@ function returnToMainMenu() {
   if (game.active && currentSaveSlot !== null && !saveGame()) return;
   game.active = false;
   game.paused = false;
+  game.managerMode = false;
+  gameShell.classList.remove('manager-view');
+  ui.manager.hidden = true;
+  managerDrag = null;
   pointer.down = false;
   game.radBeamActive = false;
   setMapOpen(false);
@@ -604,6 +643,22 @@ function restoreGame(savedState) {
   const restored = { ...freshGame(), ...parsed };
   restored.active = true;
   restored.paused = false;
+  restored.managerMode = false;
+  restored.craftedStations = {
+    workbench: Math.max(0, Math.floor(Number(parsed.craftedStations?.workbench) || 0)),
+    furnace: Math.max(0, Math.floor(Number(parsed.craftedStations?.furnace) || 0))
+  };
+  restored.startingStationsGranted = parsed.startingStationsGranted === true;
+  if (!restored.startingStationsGranted) {
+    restored.craftedStations.workbench++;
+    restored.craftedStations.furnace++;
+    restored.startingStationsGranted = true;
+  }
+  restored.placedStations = Array.isArray(restored.placedStations)
+    ? restored.placedStations.filter(station => station
+      && ['workbench', 'furnace'].includes(station.type)
+      && Number.isFinite(station.x) && Number.isFinite(station.y))
+    : [];
   restored.discovered = restored.discovered instanceof Set ? restored.discovered : new Set(restored.discovered || ['sanctuary']);
   restored.bullets?.forEach(bullet => { if (Array.isArray(bullet.hitEnemies)) bullet.hitEnemies = new Set(bullet.hitEnemies); });
   return restored;
@@ -714,6 +769,9 @@ function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camer
 function start(savedState = null, slot = currentSaveSlot) {
   setMapOpen(false);
   game = savedState ? restoreGame(savedState) : freshGame();
+  gameShell.classList.remove('manager-view');
+  ui.manager.hidden = true;
+  managerDrag = null;
   currentSaveSlot = slot;
   game.active = true;
   if (!savedState) {
@@ -2137,7 +2195,126 @@ function updateAmmoUI() { const weapon = weaponCatalog[game.weapon]; ui.ammo.tex
 function updateAtlasCrystalUI() { if (atlasCrystalCounter) atlasCrystalCounter.textContent = String(game.atlasCrystals || 0).padStart(2, '0'); }
 const baseUpdateAmmoUI = updateAmmoUI;
 updateAmmoUI = function() { baseUpdateAmmoUI(); updateAtlasCrystalUI(); };
-function getNearbyStation() { return Object.entries(stationPositions).find(([, position]) => Math.hypot(game.player.x - position.x, game.player.y - position.y) <= stationInteractionRadius)?.[0] || null; }
+function getNearbyStation() {
+  const candidates = [
+    ...Object.entries(sanctuaryBuildStations).map(([type, position]) => ({ type, ...position })),
+    ...game.placedStations.map(station => ({
+      type: station.type === 'workbench' ? 'crafting' : 'furnace',
+      x: station.x,
+      y: station.y
+    }))
+  ];
+  return candidates
+    .map(candidate => ({ ...candidate, distance: Math.hypot(game.player.x - candidate.x, game.player.y - candidate.y) }))
+    .filter(candidate => candidate.distance <= stationInteractionRadius)
+    .sort((a, b) => a.distance - b.distance)[0]?.type || null;
+}
+function renderManagerInventory() {
+  const items = document.querySelector('#manager-items');
+  if (!items) return;
+  const labels = { workbench: 'WORKBENCH', furnace: 'FURNACE' };
+  items.innerHTML = Object.entries(labels).map(([type, label]) => {
+    const count = game.craftedStations[type] || 0;
+    return `<button type="button" class="manager-item" data-manager-item="${type}" ${count ? '' : 'disabled'}><span>${label}</span><strong>× ${count}</strong></button>`;
+  }).join('');
+}
+function getManagerViewTransform() {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  const inventoryWidth = ui.managerInventory?.getBoundingClientRect().width || managerInventoryWidth;
+  const leftMargin = Math.min(110, width * .18);
+  const viewWidth = Math.max(100, width - inventoryWidth - leftMargin);
+  return {
+    centerX: leftMargin + viewWidth / 2,
+    centerY: height / 2,
+    scale: Math.min(viewWidth / (beaconRegionRadius * 2 + 120), height / (beaconRegionRadius * 2 + 120))
+  };
+}
+function managerScreenToWorld(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const view = getManagerViewTransform();
+  return {
+    x: ((clientX - rect.left) - view.centerX) / view.scale,
+    y: ((clientY - rect.top) - view.centerY) / view.scale
+  };
+}
+function enterManagersTable() {
+  if (game.managerMode || !game.active || game.paused) return;
+  game.managerMode = true;
+  game.paused = true;
+  game.stationOpen = null;
+  game.activeBeaconStationId = null;
+  gameShell.classList.add('manager-view');
+  keys.w = keys.a = keys.s = keys.d = keys.shift = false;
+  pointer.down = false;
+  ui.stations.hidden = true;
+  ui.manager.hidden = false;
+  renderManagerInventory();
+}
+function exitManagersTable() {
+  if (!game.managerMode) return;
+  game.managerMode = false;
+  game.paused = false;
+  gameShell.classList.remove('manager-view');
+  managerDrag = null;
+  ui.manager.hidden = true;
+  lastTime = performance.now();
+}
+function beginPlacedStationDrag(event) {
+  const world = managerScreenToWorld(event.clientX, event.clientY);
+  const station = [...game.placedStations].reverse().find(candidate =>
+    Math.hypot(world.x - candidate.x, world.y - candidate.y) <= placedStationRadius
+  );
+  if (station) {
+    event.preventDefault();
+    managerDrag = { source: 'placed', id: station.id, type: station.type };
+  }
+}
+function canPlaceStation(x, y, ignoreId = null) {
+  if (Math.hypot(x, y) > beaconRegionRadius - placedStationRadius) return false;
+  const fixedPositions = Object.values(sanctuaryBuildStations);
+  if (fixedPositions.some(position => Math.hypot(x - position.x, y - position.y) < placedStationRadius * 2 + 12)) return false;
+  return !game.placedStations.some(station =>
+    station.id !== ignoreId && Math.hypot(x - station.x, y - station.y) < placedStationRadius * 2 + 12
+  );
+}
+function finishManagerDrag(event) {
+  event.preventDefault();
+  const drag = managerDrag;
+  managerDrag = null;
+  const rect = ui.managerInventory.getBoundingClientRect();
+  const droppedInInventory = event.clientX >= rect.left && event.clientX <= rect.right
+    && event.clientY >= rect.top && event.clientY <= rect.bottom;
+  if (drag.source === 'placed') {
+    const station = game.placedStations.find(candidate => candidate.id === drag.id);
+    if (!station) return;
+    if (droppedInInventory) {
+      game.placedStations = game.placedStations.filter(candidate => candidate.id !== station.id);
+      game.craftedStations[station.type] = (game.craftedStations[station.type] || 0) + 1;
+    } else {
+      const world = managerScreenToWorld(event.clientX, event.clientY);
+      if (!canPlaceStation(world.x, world.y, station.id)) return;
+      station.x = world.x;
+      station.y = world.y;
+    }
+  } else {
+    const world = managerScreenToWorld(event.clientX, event.clientY);
+    if (droppedInInventory || !game.craftedStations[drag.type] || !canPlaceStation(world.x, world.y)) return;
+    game.craftedStations[drag.type]--;
+    game.placedStations.push({
+      id: `${Date.now()}-${Math.random()}`,
+      type: drag.type,
+      x: world.x,
+      y: world.y
+    });
+  }
+  renderManagerInventory();
+}
+window.addEventListener('pointermove', event => {
+  if (!managerDrag) return;
+  managerDrag.clientX = event.clientX;
+  managerDrag.clientY = event.clientY;
+});
 function getBeaconStationAt(x, y) { return game.beaconStations.find(station => Math.hypot(x - station.x, y - station.y) <= station.radius) || null; }
 function getNearbyBeaconStation() { return getBeaconStationAt(game.player.x, game.player.y); }
 function getNearbyBeaconBench() {
@@ -2153,6 +2330,10 @@ function getNearbyBeaconBench() {
 }
 function toggleStation() {
   const nearbyStation = getNearbyStation();
+  if (nearbyStation === 'manager') {
+    enterManagersTable();
+    return;
+  }
   if (nearbyStation) {
     game.activeBeaconStationId = null;
     game.stationOpen = game.stationOpen === nearbyStation ? null : nearbyStation;
@@ -2198,7 +2379,8 @@ function updateStationUI() {
     ? 'BEACON STATION // REPAIR'
     : game.stationOpen === 'beacon-modules'
       ? 'BEACON STATION // MODULE STATION'
-      : game.activeBeaconStationId ? 'BEACON STATION // CRAFTING TABLE' : 'SANCTUARY // WORKSHOPS';
+      : game.activeBeaconStationId ? 'BEACON STATION // CRAFTING TABLE'
+        : game.stationOpen === 'designer' ? 'SANCTUARY // DESIGNER TABLE' : 'SANCTUARY // WORKSHOPS';
 }
 function bankInventory() { let deposited = false; resourceTypes.forEach(resource => { const amount = game.inventory[resource.key]; if (!amount) return; game.vault[resource.key] = (game.vault[resource.key] || 0) + amount; game.inventory[resource.key] = 0; deposited = true; }); if (deposited) localStorage.setItem('horde-vault', JSON.stringify(game.vault)); return deposited; }
 function getCraftResourceAmount(key) { if (weaponCatalog[key]) return game.unlockedWeapons[key] ? 1 : 0; if (key === 'relic') return game.relics; if (key === 'atlasCrystal') return game.atlasCrystals; if (key === 'steelPlate') return game.stationItems.steelPlate || 0; return game.vault[key] || 0; }
@@ -2231,6 +2413,21 @@ function openCraftDetails(recipeKey, requestedQuantity = 1) { const recipe = sta
   `; ui.craftDetails.hidden = false; }
 function craftItem(recipeKey, requestedQuantity = 1) { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary' || game.crafting) return; const recipe = stationRecipes[recipeKey]; const repeatable = !recipe.weapon && !recipe.armor; const quantity = repeatable ? Math.max(1, Math.min(5, requestedQuantity)) : 1; if (recipe.output?.medkit && (game.stationItems.medkit || 0) + quantity > 5) { ui.stationOutput.textContent = 'MEDKIT STORAGE FULL'; return; } const missing = Object.entries(recipe.cost).find(([key, amount]) => getCraftResourceAmount(key) < amount * quantity); if (missing) { const shortage = missing[1] * quantity - getCraftResourceAmount(missing[0]); ui.stationOutput.textContent = `NEED ${shortage} MORE ${missing[0].toUpperCase()}`; return; } Object.entries(recipe.cost).forEach(([key, amount]) => { spendCraftResource(key, amount * quantity); }); game.crafting = { recipeKey, quantity, remaining: recipe.time * quantity, total: recipe.time * quantity }; localStorage.setItem('horde-vault', JSON.stringify(game.vault)); updateInventoryUI(); updateStationButtons(); ui.stationOutput.textContent = `CRAFTING ${recipe.name} x${quantity} // ${recipe.time * quantity}s`; openCraftDetails(recipeKey, quantity); }
 function getStationRecipe(recipeKey) {
+  const buildRecipes = {
+    buildWorkbench: {
+      name: 'WORKBENCH',
+      time: 8,
+      cost: { wood: 50, stone: 10, fiber: 20 },
+      managerStationType: 'workbench'
+    },
+    buildFurnace: {
+      name: 'FURNACE',
+      time: 10,
+      cost: { stone: 50, iron: 10, fuel: 20 },
+      managerStationType: 'furnace'
+    }
+  };
+  if (buildRecipes[recipeKey]) return buildRecipes[recipeKey];
   if (recipeKey.startsWith('repairBeacon:')) {
     const stationId = recipeKey.slice('repairBeacon:'.length);
     const station = game.beaconStations.find(candidate => candidate.id === stationId && !candidate.repaired);
@@ -2278,25 +2475,29 @@ function createBeaconTurrets(station, weapons = []) {
 }
 function updateBeaconTurrets(dt) {
   const turretGroups = [
-    game.sanctuaryTurrets,
-    ...game.beaconStations.filter(station => station.repaired).map(station => station.turrets)
+    { turrets: game.sanctuaryTurrets, station: null },
+    ...game.beaconStations
+      .filter(station => station.repaired)
+      .map(station => ({ turrets: station.turrets, station }))
   ];
-  turretGroups.forEach(turrets => {
+  turretGroups.forEach(({ turrets, station }) => {
+    const supportMultiplier = station ? 1 + (station.modules.support || 0) * .1 : 1;
     turrets.forEach(turret => {
       turret.cooldown = Math.max(0, turret.cooldown - dt);
+      const weapon = beaconTurretWeapons[turret.weapon];
+      const range = weapon.range || 850;
       const target = game.enemies
         .filter(enemy => !enemy.defeated && enemy.shieldTimer <= 0 && enemy.hp > 0)
         .map(enemy => ({ enemy, distance: Math.hypot(enemy.x - turret.x, enemy.y - turret.y) }))
-        .filter(candidate => candidate.distance <= 850)
+        .filter(candidate => candidate.distance <= range)
         .sort((a, b) => a.distance - b.distance)[0];
       if (!target) return;
-      const weapon = beaconTurretWeapons[turret.weapon];
       const angle = Math.atan2(target.enemy.y - turret.y, target.enemy.x - turret.x);
       const angleDifference = Math.atan2(Math.sin(angle - turret.angle), Math.cos(angle - turret.angle));
       turret.angle += Math.sign(angleDifference) * Math.min(Math.abs(angleDifference), 8 * dt);
       if (turret.cooldown > 0) return;
       if (weapon.type === 'beam') {
-        target.enemy.hp = Math.max(0, target.enemy.hp - weapon.damage);
+        target.enemy.hp = Math.max(0, target.enemy.hp - weapon.damage * supportMultiplier);
         if (target.enemy.hp <= 0) defeatEnemy(target.enemy);
         if (weapon.pulseBlastRadius) {
           applyPulseBlast(
@@ -2325,7 +2526,7 @@ function updateBeaconTurrets(dt) {
           vy: Math.sin(angle) * weapon.speed,
           life: 1.3,
           radius: 11,
-          damage: weapon.damage,
+          damage: weapon.damage * supportMultiplier,
           blastRadius: weapon.radius,
           color: weapon.color,
           turretProjectile: true,
@@ -2341,13 +2542,13 @@ function updateBeaconTurrets(dt) {
             vy: Math.sin(pelletAngle) * weapon.speed,
             life: weapon.life,
             radius: 5,
-            damage: weapon.damage,
+            damage: weapon.damage * supportMultiplier,
             color: weapon.color,
             turretProjectile: true
           });
         }
       }
-      turret.cooldown = weapon.cooldown;
+      turret.cooldown = weapon.cooldown / supportMultiplier;
     });
   });
 }
@@ -2428,6 +2629,10 @@ function updateCrafting(dt) {
       game.stationOpen = 'crafting';
       updateStationUI();
     }
+  } else if (recipe.managerStationType) {
+    game.craftedStations[recipe.managerStationType] =
+      (game.craftedStations[recipe.managerStationType] || 0) + quantity;
+    renderManagerInventory();
   } else if (recipe.weapon) {
     game.unlockedWeapons[recipe.weapon] = true;
     game.weaponSlots[game.crafting.weaponSlot] = recipe.weapon;
@@ -2480,6 +2685,7 @@ function craftItem(recipeKey, requestedQuantity = 1, requestedSlot = Number(ui.c
     && nearbyBeaconBench?.station === beaconStation && nearbyBeaconBench.type === 'beacon-modules';
   const atBeaconRepair = recipe.beaconRepairId && game.stationOpen === 'beacon-repair'
     && getNearbyBeaconStation()?.id === recipe.beaconRepairId;
+  if (recipe.managerStationType && game.stationOpen !== 'designer') return;
   if (getBiome(game.player.x, game.player.y).key !== 'sanctuary'
       && !atBeaconTable && !atBeaconModuleStation && !atBeaconRepair) return;
   if (recipe.beaconModule && (!atBeaconModuleStation || recipe.beaconStationId !== beaconStation.id)) return;
@@ -2782,7 +2988,71 @@ function drawHazardMap() {
   mapCtx.restore();
 }
 function drawPickups() { const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); game.nodes.forEach(node => { if (node.taken || node.type !== 'chest') return; ctx.fillStyle = '#d7b07a'; ctx.strokeStyle = '#ffdf91'; ctx.lineWidth = 2; ctx.fillRect(node.x - 12, node.y - 8, 24, 16); ctx.strokeRect(node.x - 12, node.y - 8, 24, 16); ctx.fillStyle = '#ffdf91'; ctx.fillRect(node.x - 2, node.y - 8, 4, 16); }); game.drops.forEach(drop => { const resource = resourceTypes.find(item => item.key === drop.type); ctx.fillStyle = resource.color; ctx.shadowBlur = 12; ctx.shadowColor = resource.color; ctx.beginPath(); ctx.moveTo(drop.x, drop.y - 8); ctx.lineTo(drop.x + 8, drop.y); ctx.lineTo(drop.x, drop.y + 8); ctx.lineTo(drop.x - 8, drop.y); ctx.fill(); ctx.shadowBlur = 0; }); ctx.restore(); }
-function drawSanctuaryStations() { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary') return; const camX = game.camera.x - canvas.clientWidth / 2; const camY = game.camera.y - canvas.clientHeight / 2; ctx.save(); ctx.translate(-camX, -camY); ctx.textAlign = 'center'; ctx.font = 'bold 9px Space Mono'; ctx.fillStyle = '#f9c779'; ctx.fillText('CRAFTING TABLE', -300, -82); ctx.fillText('FURNACE', 285, -82); ctx.fillStyle = '#8b5a3c'; ctx.strokeStyle = '#f9c779'; ctx.lineWidth = 3; ctx.fillRect(-360, -55, 120, 70); ctx.strokeRect(-360, -55, 120, 70); ctx.fillStyle = '#c88968'; ctx.fillRect(-350, -68, 100, 16); ctx.fillStyle = '#17131a'; ctx.fillRect(-320, -42, 40, 20); ctx.fillStyle = '#493a36'; ctx.fillRect(230, -55, 110, 70); ctx.strokeStyle = '#ff865c'; ctx.strokeRect(230, -55, 110, 70); ctx.fillStyle = '#ff865c'; ctx.beginPath(); ctx.arc(285, -20, 28, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#ffd08a'; ctx.beginPath(); ctx.arc(285, -20, 16, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#b9b0a8'; ctx.fillRect(245, -70, 80, 15); ctx.restore(); }
+function drawSanctuaryBuildStations() {
+  const camX = game.camera.x - canvas.clientWidth / 2;
+  const camY = game.camera.y - canvas.clientHeight / 2;
+  ctx.save();
+  ctx.translate(-camX, -camY);
+  Object.entries(sanctuaryBuildStations).forEach(([type, position]) => {
+    const designer = type === 'designer';
+    const color = designer ? '#8f7cff' : '#8fe0ad';
+    ctx.fillStyle = '#493a36';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.fillRect(position.x - 26, position.y - 17, 52, 34);
+    ctx.strokeRect(position.x - 26, position.y - 17, 52, 34);
+    ctx.fillStyle = designer ? '#b9a8ff' : '#8fe0ad';
+    ctx.fillRect(position.x - 22, position.y - 21, 44, 6);
+    if (!designer) {
+      ctx.beginPath();
+      ctx.arc(position.x, position.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 9px Space Mono';
+    ctx.fillStyle = color;
+    ctx.fillText(designer ? 'DESIGNER TABLE' : 'MANAGERS TABLE', position.x, position.y + 32);
+  });
+  game.placedStations.forEach(station => {
+    if (game.managerMode && managerDrag?.source === 'placed' && managerDrag.id === station.id) return;
+    ctx.fillStyle = station.type === 'workbench' ? '#8b5a3c' : '#493a36';
+    ctx.strokeStyle = station.type === 'workbench' ? '#f9c779' : '#ff865c';
+    ctx.lineWidth = 3;
+    ctx.fillRect(station.x - placedStationRadius, station.y - placedStationRadius, placedStationRadius * 2, placedStationRadius * 2);
+    ctx.strokeRect(station.x - placedStationRadius, station.y - placedStationRadius, placedStationRadius * 2, placedStationRadius * 2);
+    ctx.fillStyle = station.type === 'workbench' ? '#c88968' : '#ff865c';
+    if (station.type === 'workbench') ctx.fillRect(station.x - 20, station.y - 28, 40, 7);
+    else {
+      ctx.beginPath();
+      ctx.arc(station.x, station.y, 10, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 8px Space Mono';
+    ctx.fillStyle = '#f4eee5';
+    ctx.fillText(station.type === 'workbench' ? 'WORKBENCH' : 'FURNACE', station.x, station.y + 36);
+    if (Math.hypot(game.player.x - station.x, game.player.y - station.y) <= stationInteractionRadius) {
+      ctx.fillText(`E // ${station.type === 'workbench' ? 'CRAFT' : 'FURNACE'}`, station.x, station.y + 49);
+    }
+  });
+  if (game.managerMode && managerDrag?.clientX !== undefined) {
+    const world = managerScreenToWorld(managerDrag.clientX, managerDrag.clientY);
+    ctx.globalAlpha = .65;
+    ctx.fillStyle = managerDrag.type === 'workbench' ? '#8b5a3c' : '#493a36';
+    ctx.strokeStyle = managerDrag.type === 'workbench' ? '#f9c779' : '#ff865c';
+    ctx.fillRect(world.x - placedStationRadius, world.y - placedStationRadius, placedStationRadius * 2, placedStationRadius * 2);
+    ctx.strokeRect(world.x - placedStationRadius, world.y - placedStationRadius, placedStationRadius * 2, placedStationRadius * 2);
+    ctx.globalAlpha = 1;
+  }
+  Object.entries(sanctuaryBuildStations).forEach(([type, position]) => {
+    if (Math.hypot(game.player.x - position.x, game.player.y - position.y) > stationInteractionRadius) return;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 10px Space Mono';
+    ctx.fillStyle = '#f4eee5';
+    ctx.fillText(`E // ${type === 'designer' ? 'DESIGN' : 'MANAGE'}`, position.x, position.y + 50);
+  });
+  ctx.restore();
+}
 function drawBeaconStations() {
   const camX = game.camera.x - canvas.clientWidth / 2;
   const camY = game.camera.y - canvas.clientHeight / 2;
@@ -2907,6 +3177,29 @@ function drawBeaconStationMapMarkers() {
   });
   mapCtx.restore();
 }
+function drawGameWorld() {
+  draw();
+  drawBrambleZones();
+  drawSectorFourEffects();
+  drawHazardZones();
+  drawPickups();
+  drawSanctuaryBuildStations();
+  drawBeaconStations();
+}
+function drawManagerView() {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  const view = getManagerViewTransform();
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = '#172d2d';
+  ctx.fillRect(0, 0, width, height);
+  ctx.save();
+  ctx.translate(view.centerX, view.centerY);
+  ctx.scale(view.scale, view.scale);
+  ctx.translate(game.camera.x - width / 2, game.camera.y - height / 2);
+  drawGameWorld();
+  ctx.restore();
+}
 function loop(now) {
   if (mapOpen) {
     drawMap();
@@ -2916,11 +3209,16 @@ function loop(now) {
     animation = requestAnimationFrame(loop);
     return;
   }
+  if (game.managerMode) {
+    drawManagerView();
+    animation = requestAnimationFrame(loop);
+    return;
+  }
   if (game.paused) { animation = requestAnimationFrame(loop); return; }
   const dt = Math.min((now - lastTime) / 1000, .04);
   lastTime = now;
   updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt);
-  draw(); drawBrambleZones(); drawSectorFourEffects(); drawHazardZones(); drawPickups(); drawSanctuaryStations(); drawBeaconStations();
+  drawGameWorld();
   drawMap(); drawHazardMap(); drawBeaconStationMapMarkers(); drawStalkerMapMarker();
   if (game.active) animation = requestAnimationFrame(loop);
 }
@@ -3352,7 +3650,7 @@ function update(dt) {
 
     const destinationBiome = getBiome(e.x, e.y).key;
     const isVoidEntity = e.voidWorm || e.voidWalker || e.voidStalker;
-    if (destinationBiome === 'sanctuary' || (destinationBiome === 'void' && !isVoidEntity)) {
+    if (destinationBiome === 'void' && !isVoidEntity) {
       e.x = e.previousX;
       e.y = e.previousY;
     }
