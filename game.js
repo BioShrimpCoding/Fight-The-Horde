@@ -38,6 +38,9 @@ const clipSize = 12;
 const startingAmmoReserve = 15;
 const stationInteractionRadius = 95;
 const frostfallAuraRadius = 80;
+const radioactiveAuraRadius = 150;
+const radioactiveAuraDamagePerSecond = 18;
+const radioactiveBombRadius = 240;
 const sanctuaryBuildStations = {
   designer: { x: -70, y: -1000 },
   manager: { x: 70, y: -1000 }
@@ -115,7 +118,7 @@ const sectorRegions = [
   [{ name: 'BONE ORCHARD', color: '#d7b07a', dark: '#352b25' }, { name: 'EMBER SEA', color: '#ff725e', dark: '#3b201d' }, { name: 'BLACKROOT WILDS', color: '#8fcf9d', dark: '#1c3026' }, { name: 'GRAVITY FIELDS', color: '#b69be8', dark: '#29233b' }],
   [{ name: 'STORM CITADEL', color: '#8db7ee', dark: '#202d45' }, { name: 'CRIMSON CHASM', color: '#ef6672', dark: '#3b2029' }, { name: 'NULL ICE', color: '#a9e3e6', dark: '#1c3338' }, { name: 'WRAITH MOOR', color: '#a88fd0', dark: '#292238' }],
   [{ name: 'SUNLESS VALE', color: '#bd9f7a', dark: '#30271f' }, { name: 'STARFIRE RIDGE', color: '#ff9b62', dark: '#3c251d' }, { name: 'DYING NEBULA', color: '#d58ee0', dark: '#34213b' }, { name: 'ABYSSAL SHELF', color: '#709ed0', dark: '#1d2c45' }],
-  [{ name: 'VOID RIFT', color: '#ca8bea', dark: '#281b39' }, { name: 'EVENT HORIZON', color: '#ec7dc4', dark: '#3b1d35' }, { name: 'DEAD STAR', color: '#ffb067', dark: '#3b281e' }, { name: 'INFINITE DARK', color: '#809eea', dark: '#202744' }]
+  [{ name: 'VOID RIFT', color: '#ca8bea', dark: '#281b39' }, { name: 'RADIOACTIVE FLATLANDS', color: '#e34c4c', dark: '#351313' }, { name: 'DEAD STAR', color: '#ffb067', dark: '#3b281e' }, { name: 'INFINITE DARK', color: '#809eea', dark: '#202744' }]
 ];
 const biomes = sectorRegions[0];
 const resourceTypes = [
@@ -281,18 +284,18 @@ const biomeHazards = [
   { name: 'NEBULA RADIATION', description: 'Cosmic radiation damages the player over time.', damagePerSecond: 2 },
   { name: 'PRESSURE CRUSH', description: 'Deep-space pressure steadily damages the player.', damagePerSecond: 2.5 },
   { name: 'VOID CORRUPTION', description: 'Reality tears drain health continuously.', damagePerSecond: 2.5 },
-  { name: 'HORIZON PULL', description: 'Singularity tides crush the player over time.', damagePerSecond: 3 },
+  { name: 'RADIOACTIVE FALLOUT', description: 'Radioactive fallout damages the player over time.', damagePerSecond: 3 },
   { name: 'STAR COLLAPSE', description: 'A dying star radiates lethal heat.', damagePerSecond: 3 },
   { name: 'ENDLESS VOID', description: 'The infinite dark steadily consumes health.', damagePerSecond: 3.5 }
 ];
-const hazardVisuals = ['acid-pool', 'fire-crater', 'ice-spikes', 'ash-vent', 'lightning-pylon', 'root-patch', 'glass-shards', 'frost-rift', 'bone-pile', 'ember-pool', 'spore-ring', 'gravity-well', 'storm-pylon', 'blood-pool', 'null-ice', 'wraith-rift', 'shadow-patch', 'starfire-crater', 'nebula-cloud', 'pressure-ring', 'void-rift', 'horizon-well', 'star-core', 'dark-pool'];
+const hazardVisuals = ['acid-pool', 'fire-crater', 'ice-spikes', 'ash-vent', 'lightning-pylon', 'root-patch', 'glass-shards', 'frost-rift', 'bone-pile', 'ember-pool', 'spore-ring', 'gravity-well', 'storm-pylon', 'blood-pool', 'null-ice', 'wraith-rift', 'shadow-patch', 'starfire-crater', 'nebula-cloud', 'pressure-ring', 'void-rift', 'radioactive-cloud', 'star-core', 'dark-pool'];
 const enemyFamilies = [
   ['MIRE CRAWLER', null, null], ['CINDER HOUND', null, null], ['ICE MAW', null, null], ['ASH STALKER', null, null],
   ['THUNDER RAM', 'STRAIGHT DASH', 'dash'], ['IRONWOOD TREANT', 'DAMAGE NEGATION', 'damage-ignore'], ['MIRAGE WRAITH', 'BURNING DEATH BURST', 'death-burn'], ['FROSTBURROWER', 'FREEZING AURA', 'slow-aura'],
   ['BONE HARVESTER', 'BONE SHARD BURST', 'damage-burst'], ['EMBER SERPENT', 'DEATHBOUND FIREBALLS', 'death-fireballs'], ['SPORE BRUTE', 'BRAMBLE SNARE', 'bramble'], ['GRAVITY LEECH', 'GRAVITY WELL', 'gravity-fields-pull'],
   ['STORM KNIGHT', 'LIGHTNING SWORD', 'storm-sword'], ['BLOOD HUNTER', 'BLOOD TRAIL', 'damage-trail'], ['NULL PHANTOM', 'NULL EXPLOSION', 'death-explosion'], ['WRAITH EATER', 'WRAITH PEST', 'spawn-pest'],
   ['DUSK STAG', 'DECAY DASH', 'decay-dash'], ['STARFIRE GOLEM', 'LINGERING FIRE', 'fire-explosion'], ['NEBULA SWARM', 'NEBULA MISSILES', 'nebula-missiles'], ['PRESSURE TITAN', 'ARC PROJECTILES', 'arc-projectiles'],
-  ['VOID CRAWLER', 'RIFT PORTAL', 'rift-portal'], ['HORIZON DEVOURER', 'PROJECTILE BLINK', 'projectile-teleport'], ['STAR EATER', 'DEATH EXPLOSION', 'dead-star-explosion'], ['ENDLESS SHADE', 'DARK SPIN', 'spin-attack']
+  ['VOID CRAWLER', 'RIFT PORTAL', 'rift-portal'], ['GLOWING AMALGMS', 'RADIOACTIVE AURA', 'radioactive-aura'], ['STAR EATER', 'DEATH EXPLOSION', 'dead-star-explosion'], ['ENDLESS SHADE', 'DARK SPIN', 'spin-attack']
 ];
 const sectorOneMiniBossAbilities = [
   { ability: 'TOXIC BURST', effect: 'toxic-boss-burst' },
@@ -334,7 +337,7 @@ const sectorFiveMiniBossAbilities = [
 const abyssalBossWaveMaxRadius = 240;
 const sectorSixMiniBossAbilities = [
   { ability: 'RIFT SPAWN VOLLEY', effect: 'rift-boss-volley' },
-  { ability: 'SINGULARITY SHOT', effect: 'horizon-boss-singularity' },
+  { ability: 'RADIOACTIVE BOMBARDMENT', effect: 'radioactive-boss-bomb' },
   { ability: 'DEAD STAR AURA', effect: 'dead-star-boss-aura' },
   { ability: 'INFINITE CHARGE', effect: 'dark-boss-charge' }
 ];
@@ -440,6 +443,8 @@ function freshGame() {
     portals: [],
     enemyTrails: [],
     toxicBossZones: [],
+    radioactiveBombZones: [],
+    radioactiveBlindTimer: 0,
     abyssalBossWaves: [],
     darkBossDashCircles: [],
     sparks: [], 
@@ -1540,24 +1545,6 @@ function fireVoidRiftMiniBossVolley(enemy) {
   }
 }
 
-function fireEventHorizonMiniBossProjectile(enemy) {
-  const angle = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
-  game.projectiles.push({
-    x: enemy.x,
-    y: enemy.y,
-    vx: Math.cos(angle) * 180,
-    vy: Math.sin(angle) * 180,
-    life: 5,
-    radius: 14,
-    damage: 30,
-    color: '#ec7dc4',
-    singularity: true,
-    singularityRadius: 135,
-    pullSpeed: 85,
-    damagePerSecond: 24
-  });
-}
-
 function triggerDeadStarMiniBossAura(enemy) {
   game.enemies.forEach(target => {
     if (target.defeated || target.familyIndex !== 22 || Math.hypot(target.x - enemy.x, target.y - enemy.y) > deadStarBossAuraRadius) return;
@@ -1803,6 +1790,56 @@ function updateAbyssalBossWaves(dt) {
     }
   });
   game.abyssalBossWaves = game.abyssalBossWaves.filter(wave => wave.life > 0);
+}
+
+function createRadioactiveBombTelegraph(enemy) {
+  game.radioactiveBombZones.push({
+    x: game.player.x,
+    y: game.player.y,
+    owner: enemy,
+    radius: radioactiveBombRadius,
+    telegraphTimer: 2,
+    active: false,
+    life: 0
+  });
+}
+
+function updateRadioactiveEffects(dt) {
+  let damagePerSecond = 0;
+  let blindsPlayer = false;
+  game.enemies.forEach(enemy => {
+    if (!enemy.defeated && hasEnemyEffect(enemy, 'radioactive-aura')
+        && Math.hypot(game.player.x - enemy.x, game.player.y - enemy.y) < radioactiveAuraRadius) {
+      damagePerSecond = Math.max(damagePerSecond, radioactiveAuraDamagePerSecond);
+      blindsPlayer = true;
+    }
+  });
+  game.radioactiveBombZones.forEach(zone => {
+    let justActivated = false;
+    if (!zone.active) {
+      zone.telegraphTimer -= dt;
+      if (zone.telegraphTimer <= 0) {
+        zone.active = true;
+        zone.life = 3;
+        justActivated = true;
+        burst(zone.x, zone.y, 20, 240);
+      }
+    } else if (!justActivated) {
+      zone.life -= dt;
+    }
+    if (!zone.active) return;
+    if (Math.hypot(game.player.x - zone.x, game.player.y - zone.y) < zone.radius) {
+      damagePerSecond = Math.max(damagePerSecond, radioactiveAuraDamagePerSecond * 2);
+      blindsPlayer = true;
+    }
+  });
+  game.radioactiveBombZones = game.radioactiveBombZones.filter(zone => !zone.active || zone.life > 0);
+  if (blindsPlayer) {
+    game.health -= damagePerSecond * (1 - (getArmorEffects().statusDamageReduction || 0)) * dt;
+    game.radioactiveBlindTimer = .2;
+  } else {
+    game.radioactiveBlindTimer = Math.max(0, game.radioactiveBlindTimer - dt);
+  }
 }
 
 function distanceToSegment(x, y, startX, startY, endX, endY) {
@@ -2794,6 +2831,27 @@ function drawBrambleZones() {
     }
     ctx.restore();
   });
+  game.radioactiveBombZones.forEach(zone => {
+    ctx.save();
+    const activeAlpha = zone.active ? .35 * Math.max(0, zone.life / 3) : .42;
+    ctx.globalAlpha = activeAlpha;
+    ctx.fillStyle = zone.active ? '#e34c4c' : '#ff7777';
+    ctx.strokeStyle = zone.active ? '#ff7777' : '#ffd0a8';
+    ctx.lineWidth = zone.active ? 4 : 5;
+    ctx.beginPath();
+    ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    if (!zone.active) {
+      ctx.globalAlpha = .8;
+      ctx.setLineDash([14, 10]);
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, zone.radius * Math.max(.15, zone.telegraphTimer / 2), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+  });
   ctx.restore();
 }
 function drawSectorFourEffects() {
@@ -2901,6 +2959,18 @@ function drawSectorFourEffects() {
     ctx.restore();
   });
   game.enemies.forEach(enemy => {
+    if (hasEnemyEffect(enemy, 'radioactive-aura')) {
+      ctx.save();
+      ctx.globalAlpha = .18 + Math.sin(performance.now() / 160) * .04;
+      ctx.fillStyle = '#e34c4c';
+      ctx.strokeStyle = '#ff7777';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(enemy.x, enemy.y, radioactiveAuraRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     if (enemy.effect === 'dead-star-boss-aura' && enemy.deadStarAuraTimer > 0) {
       ctx.save();
       ctx.globalAlpha = .22 * enemy.deadStarAuraTimer / .75;
@@ -3188,6 +3258,17 @@ function drawGameWorld() {
   drawPickups();
   drawSanctuaryBuildStations();
   drawBeaconStations();
+  drawRadioactiveBlindOverlay();
+}
+function drawRadioactiveBlindOverlay() {
+  if (game.radioactiveBlindTimer <= 0) return;
+  const ratio = window.devicePixelRatio || 1;
+  ctx.save();
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.globalAlpha = .88 * Math.min(1, game.radioactiveBlindTimer / .2);
+  ctx.fillStyle = '#180707';
+  ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+  ctx.restore();
 }
 function drawManagerView() {
   const width = canvas.clientWidth;
@@ -3284,6 +3365,7 @@ function update(dt) {
     }
   });
   game.toxicBossZones = game.toxicBossZones.filter(zone => zone.life > 0);
+  updateRadioactiveEffects(dt);
   updateAbyssalBossWaves(dt);
   const slowedByBramble = updateBrambleZones(dt);
   const p = game.player;
@@ -3973,11 +4055,11 @@ function applyEnemyAbilities(dt) {
         fireVoidRiftMiniBossVolley(enemy);
         enemy.bossAbilityCooldown = 8;
       }
-    } else if (enemy.effect === 'horizon-boss-singularity') {
+    } else if (enemy.effect === 'radioactive-boss-bomb') {
       enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
-      if (distance < 850 && enemy.bossAbilityCooldown <= 0) {
-        fireEventHorizonMiniBossProjectile(enemy);
-        enemy.bossAbilityCooldown = 5;
+      if (enemy.bossAbilityCooldown <= 0) {
+        createRadioactiveBombTelegraph(enemy);
+        enemy.bossAbilityCooldown = 8;
       }
     } else if (enemy.effect === 'dead-star-boss-aura') {
       enemy.deadStarAuraTimer = Math.max(0, enemy.deadStarAuraTimer - dt);
