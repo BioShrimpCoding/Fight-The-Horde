@@ -133,8 +133,8 @@ canvas { display: block; width: 100%; height: 100%; cursor: none; }.crosshair { 
 }
 
 .map-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.map-hover-name,
-.map-close-hint { display: none; }
+.map-panel .map-hover-name,
+.map-panel .map-close-hint { display: none; }
 .map-panel.expanded {
 	position: fixed;
 	inset: 0;

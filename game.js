@@ -148,14 +148,14 @@ const weaponCatalog = {
   minigun: { name: 'MINIGUN', ammo: 'minigunAmmo', magazine: 100, cooldown: 50, damage: 0.1, speed: 750, life: .8, pellets: 1, spread: .38, kind: 'gun' },
   shotgun: { name: 'SHOTGUN', ammo: 'shells', magazine: 6, cooldown: 480, damage: 0.30, speed: 580, life: .45, pellets: 8, spread: .34, falloff: true, kind: 'gun' },
   burstRifle: { name: 'BURST RIFLE', ammo: 'rifleAmmo', magazine: 24, cooldown: 220, damage: 0.325, speed: 780, life: .8, pellets: 3, spread: .06, kind: 'gun' },
-  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 40, damage: 0.02, speed: 450, life: 3.0, pellets: 2, spread: .3, bulletRadius: 6, deceleration: [25, 75], decelerationInterval: .125, vibrationAmplitude: 3, vibrationFrequency: 20, burnDuration: 3, burnDamage: .23, burnInterval: .5, kind: 'gun', pierce: true },
+  flamethrower: { name: 'FLAMETHROWER', ammo: 'fuelCells', magazine: 160, cooldown: 40, damage: 0.02, speed: 450, life: 3.0, pellets: 3, spread: .3, bulletRadius: 6, deceleration: [25, 100], decelerationInterval: .125, vibrationAmplitude: 1.5, vibrationFrequency: 80, burnDuration: 2, burnDamage: .4, burnInterval: .2, kind: 'gun', pierce: true },
   sniper: { name: 'SNIPER', ammo: 'marksmanAmmo', magazine: 5, cooldown: 750, damage: 3.60, speed: 1200, life: 1, pellets: 1, spread: 0, kind: 'gun' },
   warHammer: { name: 'WAR HAMMER', ammo: null, cooldown: 850, damage: 4.20, range: 112, meleeDuration: .48, meleeSweep: 2.1, meleeStyle: 'warHammer', kind: 'melee' },
 
   // Tier 3 (Late Mid Game)
   laser: { name: 'LASER', ammo: 'cells', magazine: 20, cooldown: 100, damage: 0.65, speed: 1100, life: .55, pellets: 1, spread: 0.2, beam: true, kind: 'gun' },
   grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 6, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 80, kind: 'gun'},
-  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 55, cooldown: 70, damage: 1.20, speed: 180, life: 1.7, pellets: 1, spread: .22, pulseBlastRadius: 50, pulseKnockback: 400, kind: 'gun' },
+  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 55, cooldown: 70, damage: 1.20, speed: 380, life: 1.7, pellets: 1, spread: .22, pulseBlastRadius: 50, pulseKnockback: 400, kind: 'gun' },
   combatPistol: { name: 'COMBAT PISTOL', ammo: 'bulletClips', magazine: 17, cooldown: 200, damage: 1.25, speed: 100, life: 2.55, pellets: 1, spread: 0.2, beam: true, kind: 'gun' },
 
   // Tier 4 (Endgame)
@@ -230,15 +230,23 @@ const armorCatalog = {
   scoutArmor: { name: 'SCOUT ARMOR', moveMultiplier: 1.12, description: '+12% movement speed' },
   reinforcedArmor: { name: 'REINFORCED ARMOR', contactDamageReduction: .15, description: '-15% contact damage' },
   hazardArmor: { name: 'HAZARD ARMOR', hazardDamageReduction: .35, statusDamageReduction: .35, description: '-35% hazard and status damage' },
-  voidArmor: { name: 'VOID ARMOR', voidDamageReduction: .30, description: '-30% Void projectile damage' }
+  voidArmor: { name: 'VOID ARMOR', voidDamageReduction: .30, description: '-30% Void projectile damage' },
+  hazmatSuit: { name: 'HAZMAT SUIT', hazardDamageReduction: .25, radioactiveHazardDamageReduction: 1, radioactiveBlindImmunity: true, description: '-25% hazard damage, immune to Radioactive Flatlands hazards and blinding' }
 };
 const armorRecipes = {
   scoutArmor: { name: 'SCOUT ARMOR', time: 8, cost: { steelPlate: 2, fiber: 3 }, armor: 'scoutArmor' },
   reinforcedArmor: { name: 'REINFORCED ARMOR', time: 10, cost: { steelPlate: 4, stone: 3 }, armor: 'reinforcedArmor' },
   hazardArmor: { name: 'HAZARD ARMOR', time: 12, cost: { steelPlate: 6, fiber: 4, crystal: 2 }, armor: 'hazardArmor' },
-  voidArmor: { name: 'VOID ARMOR', time: 18, cost: { steelPlate: 8, relic: 1, atlasCrystal: 1 }, armor: 'voidArmor' }
+  voidArmor: { name: 'VOID ARMOR', time: 18, cost: { steelPlate: 8, relic: 1, atlasCrystal: 1 }, armor: 'voidArmor' },
+  hazmatSuit: { name: 'HAZMAT SUIT', time: 16, cost: { steelPlate: 8, fiber: 8, crystal: 6, atlasCrystal: 1 }, armor: 'hazmatSuit' }
 };
 function getArmorEffects() { return armorCatalog[game.armor] || {}; }
+function getHazardDamageReduction(armor, hazard, biomeKey) {
+  if (armor.radioactiveHazardDamageReduction && (biomeKey === 'sector-5-1' || hazard?.name === 'RADIOACTIVE FALLOUT')) {
+    return armor.radioactiveHazardDamageReduction;
+  }
+  return armor.hazardDamageReduction || 0;
+}
 const biomeEffectProfiles = [
   { healthRegen: 4, damageMultiplier: 1.1, enemySpeedMultiplier: 1.05 },
   { moveMultiplier: 1.25, damageMultiplier: 1.15, enemySpeedMultiplier: 1.05 },
@@ -1826,12 +1834,13 @@ function createRadioactiveBombTelegraph(enemy) {
 }
 
 function updateRadioactiveEffects(dt) {
-  let damagePerSecond = 0;
+  let auraDamagePerSecond = 0;
+  let bombDamagePerSecond = 0;
   let blindsPlayer = false;
   game.enemies.forEach(enemy => {
     if (!enemy.defeated && hasEnemyEffect(enemy, 'radioactive-aura')
         && Math.hypot(game.player.x - enemy.x, game.player.y - enemy.y) < radioactiveAuraRadius) {
-      damagePerSecond = Math.max(damagePerSecond, radioactiveAuraDamagePerSecond);
+      auraDamagePerSecond = Math.max(auraDamagePerSecond, radioactiveAuraDamagePerSecond);
       blindsPlayer = true;
     }
   });
@@ -1850,14 +1859,16 @@ function updateRadioactiveEffects(dt) {
     }
     if (!zone.active) return;
     if (Math.hypot(game.player.x - zone.x, game.player.y - zone.y) < zone.radius) {
-      damagePerSecond = Math.max(damagePerSecond, radioactiveAuraDamagePerSecond * 2);
+      bombDamagePerSecond += radioactiveAuraDamagePerSecond * 2;
       blindsPlayer = true;
     }
   });
   game.radioactiveBombZones = game.radioactiveBombZones.filter(zone => !zone.active || zone.life > 0);
   if (blindsPlayer) {
-    game.health -= damagePerSecond * (1 - (getArmorEffects().statusDamageReduction || 0)) * dt;
-    game.radioactiveBlindTimer = .2;
+    const armor = getArmorEffects();
+    const damageReduction = 1 - (armor.statusDamageReduction || 0);
+    game.health -= (auraDamagePerSecond + bombDamagePerSecond) * damageReduction * dt;
+    game.radioactiveBlindTimer = armor.radioactiveBlindImmunity ? 0 : .2;
   } else {
     game.radioactiveBlindTimer = Math.max(0, game.radioactiveBlindTimer - dt);
   }
@@ -2852,6 +2863,13 @@ function drawBrambleZones() {
     }
     ctx.restore();
   });
+  ctx.restore();
+}
+function drawSectorFourEffects() {
+  const camX = game.camera.x - canvas.clientWidth / 2;
+  const camY = game.camera.y - canvas.clientHeight / 2;
+  ctx.save();
+  ctx.translate(-camX, -camY);
   game.radioactiveBombZones.forEach(zone => {
     ctx.save();
     const activeAlpha = zone.active ? .35 * Math.max(0, zone.life / 3) : .42;
@@ -2873,13 +2891,6 @@ function drawBrambleZones() {
     }
     ctx.restore();
   });
-  ctx.restore();
-}
-function drawSectorFourEffects() {
-  const camX = game.camera.x - canvas.clientWidth / 2;
-  const camY = game.camera.y - canvas.clientHeight / 2;
-  ctx.save();
-  ctx.translate(-camX, -camY);
   game.lightningStrikes.forEach(strike => {
     ctx.save();
     if (strike.struck) {
@@ -3282,7 +3293,7 @@ function drawGameWorld() {
   drawRadioactiveBlindOverlay();
 }
 function drawRadioactiveBlindOverlay() {
-  if (game.radioactiveBlindTimer <= 0) return;
+  if (game.radioactiveBlindTimer <= 0 || getArmorEffects().radioactiveBlindImmunity) return;
   const ratio = window.devicePixelRatio || 1;
   ctx.save();
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
@@ -3450,7 +3461,10 @@ function update(dt) {
     }
   } else {
     if (effects.healthRegen) game.health = Math.min(100, game.health + effects.healthRegen * dt);
-    if (effects.hazard && !insideGlassDesertHazard) game.health -= effects.hazard.damagePerSecond * (1 - (armor.hazardDamageReduction || 0)) * dt;
+    if (effects.hazard && !insideGlassDesertHazard) {
+      const hazardDamageReduction = getHazardDamageReduction(armor, effects.hazard, biome.key);
+      game.health -= effects.hazard.damagePerSecond * (1 - hazardDamageReduction) * dt;
+    }
   }
 
   game.hazardZones.forEach(zone => {
@@ -3460,7 +3474,8 @@ function update(dt) {
       if (isGlassDesert) {
         game.health = Math.min(100, game.health + 15 * dt); 
       } else {
-        game.health -= zone.damagePerSecond * (1 - (armor.hazardDamageReduction || 0)) * dt;
+        const hazardDamageReduction = getHazardDamageReduction(armor, zone.hazard, zone.biomeKey);
+        game.health -= zone.damagePerSecond * (1 - hazardDamageReduction) * dt;
       }
     }
   });
