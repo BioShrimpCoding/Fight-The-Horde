@@ -17,7 +17,7 @@ window.addEventListener('error', event => gameLog('ERROR', event.message || 'Unc
 window.addEventListener('unhandledrejection', event => { const reason = event.reason; gameLog('ERROR', reason?.message || String(reason || 'Unhandled promise rejection'), reason?.stack || 'Unhandled promise rejection'); });
 clearConsoleButton?.addEventListener('click', () => { debugConsoleOutput.innerHTML = ''; gameLog('INFO', 'Diagnostic console cleared'); });
 gameLog('INFO', 'Diagnostic console online');
-const keys = {}; const pointer = { x: 0, y: 0, down: false }; let animation; let lastTime = 0; let adminMode = false;
+const keys = {}; const pointer = { x: 0, y: 0, down: false }; let animation; let lastTime = 0; let adminMode = false; let adminInvincible = false;
 let managerDrag = null;
 let mapOpen = false;
 const saveSlotCount = 5;
@@ -396,10 +396,20 @@ function createBeaconStations() {
     return station;
    });
 }
+function protectGameHealth(state) {
+  let health = adminInvincible ? 100 : state.health;
+  Object.defineProperty(state, 'health', {
+    configurable: true,
+    enumerable: true,
+    get() { return health; },
+    set(value) { if (!adminInvincible) health = value; }
+  });
+  return state;
+}
 let game = freshGame();
 function freshGame() {
   const stationItems = { medkit: 1 };
-  return { 
+  return protectGameHealth({
     active: false,
     paused: false,
     seed: Math.floor(Math.random() * 4294967296), 
@@ -469,7 +479,7 @@ function freshGame() {
     biomeName: null,
     announcementTimer: 0, 
     camera: { x: 0, y: 0 } 
-  };
+  });
 }
 ui.high.textContent = String(game.high).padStart(6, '0');
 renderWeaponBar();
@@ -669,7 +679,7 @@ function restoreGame(savedState) {
     : [];
   restored.discovered = restored.discovered instanceof Set ? restored.discovered : new Set(restored.discovered || ['sanctuary']);
   restored.bullets?.forEach(bullet => { if (Array.isArray(bullet.hitEnemies)) bullet.hitEnemies = new Set(bullet.hitEnemies); });
-  return restored;
+  return protectGameHealth(restored);
 }
 function saveGame(slot = currentSaveSlot) {
   if (!game.active || slot === null || slot < 0 || slot >= saveSlotCount) return false;
@@ -756,7 +766,7 @@ showMainMenu();
 document.querySelector('#restart-button').onclick = start; adminPanel.hidden = !adminMode; adminPanel.querySelectorAll('[data-admin]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); adminAction(button.dataset.admin, button.dataset.value); })); document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const quantityButton = event.target.closest('[data-craft-quantity]'); if (quantityButton) { event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(quantityButton.dataset.craftQuantity), Number(ui.craftDetails.dataset.weaponSlot || 0)); return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm, Number(ui.craftDetails.dataset.quantity || 1), Number(ui.craftDetails.dataset.weaponSlot || 0)); } });
 ui.weaponBar?.addEventListener('click', event => { const slotButton = event.target.closest('[data-weapon-slot]'); if (!slotButton) return; switchWeapon(Number(slotButton.dataset.weaponSlot)); });
 ui.craftDetails.addEventListener('click', event => { const slotButton = event.target.closest('[data-craft-slot]'); if (!slotButton) return; event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(ui.craftDetails.dataset.quantity || 1), Number(slotButton.dataset.craftSlot)); });
-function adminAction(action, value) { if (!game.active) start(); if (action === 'sector') teleportToSector(Number(value)); if (action === 'spawn') for (let i = 0; i < 20; i++) spawn(); if (action === 'refill') { game.health = 100; game.ammo = clipSize; game.ammoReserve.pistolAmmo = startingAmmoReserve * clipSize; game.ammoReserve.magicGauntletAmmo = 6; game.cosmosGauntletRechargeTimer = 6; game.magicGauntletRechargeTimer = 5; game.salvage = 0; game.relics = 0; } if (action === 'reset') { teleportPlayer(0, 0); game.enemies = []; game.bullets = []; game.discovered = new Set(['sanctuary']); game.biomeKey = null; } }
+function adminAction(action, value) { if (!game.active) start(); if (action === 'sector') teleportToSector(Number(value)); if (action === 'spawn') for (let i = 0; i < 20; i++) spawn(); if (action === 'refill') { game.health = 100; game.ammo = clipSize; game.ammoReserve.pistolAmmo = startingAmmoReserve * clipSize; game.ammoReserve.magicGauntletAmmo = 6; game.cosmosGauntletRechargeTimer = 6; game.magicGauntletRechargeTimer = 5; game.salvage = 0; game.relics = 0; } if (action === 'invincible') { if (!adminInvincible) game.health = 100; adminInvincible = !adminInvincible; adminPanel.querySelector('[data-admin="invincible"]').textContent = `INVINCIBLE: ${adminInvincible ? 'ON' : 'OFF'}`; } if (action === 'reset') { teleportPlayer(0, 0); game.enemies = []; game.bullets = []; game.discovered = new Set(['sanctuary']); game.biomeKey = null; } }
 const baseAdminAction = adminAction;
 adminAction = function(action, value) {
   if (action !== 'grant') return baseAdminAction(action, value);
@@ -5108,6 +5118,17 @@ function draw() {
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.rotate(p.angle);
+
+  if (adminInvincible) {
+    ctx.strokeStyle = '#42a5ff';
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 14;
+    ctx.shadowColor = '#42a5ff';
+    ctx.beginPath();
+    ctx.arc(0, 0, 21, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
   
   ctx.fillStyle = '#e9dfd2';
   ctx.beginPath();
