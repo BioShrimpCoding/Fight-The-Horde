@@ -101,7 +101,10 @@ function setMapOpen(open) {
   mapPanel.classList.toggle('expanded', open);
   const canFastTravel = isAtFastTravelHub();
   mapPanel.classList.toggle('fast-travel-enabled', open && canFastTravel);
-  mapInstructions.textContent = canFastTravel
+  mapPanel.classList.toggle('admin-teleport-enabled', open && adminMode);
+  mapInstructions.textContent = adminMode
+    ? 'CLICK ANYWHERE TO TELEPORT // M OR ESC TO CLOSE'
+    : canFastTravel
     ? 'CLICK A BEACON TO TRAVEL // M OR ESC TO CLOSE'
     : 'M OR ESC TO CLOSE';
   document.body.classList.toggle('map-open', open);
@@ -566,8 +569,17 @@ mapCanvas.addEventListener('pointermove', event => {
   mapBiomeName.textContent = game.discovered.has(biomeKey) ? biome.name : 'UNDISCOVERED';
 });
 mapCanvas.addEventListener('click', event => {
-  if (!mapOpen || !isAtFastTravelHub() || event.button !== 0) return;
+  if (!mapOpen || event.button !== 0) return;
   const { x, y } = getMapWorldPosition(event);
+  if (adminMode) {
+    teleportPlayer(x, y);
+    game.stationOpen = null;
+    game.activeBeaconStationId = null;
+    setMapOpen(false);
+    updateStationUI();
+    return;
+  }
+  if (!isAtFastTravelHub()) return;
   const scale = getTacticalMapScale();
   const station = game.beaconStations.find(candidate =>
     candidate.repaired
@@ -766,7 +778,7 @@ showMainMenu();
 document.querySelector('#restart-button').onclick = start; adminPanel.hidden = !adminMode; adminPanel.querySelectorAll('[data-admin]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); adminAction(button.dataset.admin, button.dataset.value); })); document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const quantityButton = event.target.closest('[data-craft-quantity]'); if (quantityButton) { event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(quantityButton.dataset.craftQuantity), Number(ui.craftDetails.dataset.weaponSlot || 0)); return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm, Number(ui.craftDetails.dataset.quantity || 1), Number(ui.craftDetails.dataset.weaponSlot || 0)); } });
 ui.weaponBar?.addEventListener('click', event => { const slotButton = event.target.closest('[data-weapon-slot]'); if (!slotButton) return; switchWeapon(Number(slotButton.dataset.weaponSlot)); });
 ui.craftDetails.addEventListener('click', event => { const slotButton = event.target.closest('[data-craft-slot]'); if (!slotButton) return; event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(ui.craftDetails.dataset.quantity || 1), Number(slotButton.dataset.craftSlot)); });
-function adminAction(action, value) { if (!game.active) start(); if (action === 'sector') teleportToSector(Number(value)); if (action === 'spawn') for (let i = 0; i < 20; i++) spawn(); if (action === 'refill') { game.health = 100; game.ammo = clipSize; game.ammoReserve.pistolAmmo = startingAmmoReserve * clipSize; game.ammoReserve.magicGauntletAmmo = 6; game.cosmosGauntletRechargeTimer = 6; game.magicGauntletRechargeTimer = 5; game.salvage = 0; game.relics = 0; } if (action === 'invincible') { if (!adminInvincible) game.health = 100; adminInvincible = !adminInvincible; adminPanel.querySelector('[data-admin="invincible"]').textContent = `INVINCIBLE: ${adminInvincible ? 'ON' : 'OFF'}`; } if (action === 'reset') { teleportPlayer(0, 0); game.enemies = []; game.bullets = []; game.discovered = new Set(['sanctuary']); game.biomeKey = null; } }
+function adminAction(action, value) { if (!game.active) start(); if (action === 'spawn') for (let i = 0; i < 20; i++) spawn(); if (action === 'refill') { game.health = 100; game.ammo = clipSize; game.ammoReserve.pistolAmmo = startingAmmoReserve * clipSize; game.ammoReserve.magicGauntletAmmo = 6; game.cosmosGauntletRechargeTimer = 6; game.magicGauntletRechargeTimer = 5; game.salvage = 0; game.relics = 0; } if (action === 'invincible') { if (!adminInvincible) game.health = 100; adminInvincible = !adminInvincible; adminPanel.querySelector('[data-admin="invincible"]').textContent = `INVINCIBLE: ${adminInvincible ? 'ON' : 'OFF'}`; } if (action === 'reset') { teleportPlayer(0, 0); game.enemies = []; game.bullets = []; game.discovered = new Set(['sanctuary']); game.biomeKey = null; } }
 const baseAdminAction = adminAction;
 adminAction = function(action, value) {
   if (action !== 'grant') return baseAdminAction(action, value);
@@ -782,7 +794,6 @@ adminAction = function(action, value) {
   ui.stationOutput.textContent = 'ADMIN GRANT // MATERIALS +100 // RELICS +10 // ATLAS +5';
 };
 function getBiomeSector(distance) { return biomeBoundaries.findIndex(boundary => distance < boundary) === -1 ? sectorRegions.length - 1 : biomeBoundaries.findIndex(boundary => distance < boundary); }
-function teleportToSector(sector) { const start = sector > 1 ? biomeBoundaries[sector - 2] : 0; const end = biomeBoundaries[sector - 1] || mapRadius; teleportPlayer((start + end) / 2, 0); game.currentSector = sector; game.discovered.add(getSectorKey(sector - 1)); }
 function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camera.x = x; game.camera.y = y; game.biomeKey = null; game.biomeName = null; }
 function start(savedState = null, slot = currentSaveSlot) {
   setMapOpen(false);
