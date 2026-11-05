@@ -149,7 +149,8 @@ const weaponCatalog = {
   // Tier 3 (Late Mid Game)
   laser: { name: 'LASER', ammo: 'cells', magazine: 20, cooldown: 100, damage: 0.65, speed: 1100, life: .55, pellets: 1, spread: 0.2, beam: true, kind: 'gun' },
   grenadeLauncher: { name: 'GRENADE LAUNCHER', ammo: 'grenades', magazine: 6, cooldown: 800, damage: 3.5, speed: 380, life: 1.4, pellets: 1, spread: 0, blast: 80, kind: 'gun'},
-  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 25, cooldown: 140, damage: 1.20, speed: 180, life: 1.7, pellets: 1, spread: .02, pulseBlastRadius: 50, pulseKnockback: 400, kind: 'gun' },
+  pulseCarbine: { name: 'PULSE CARBINE', ammo: 'pulseCells', magazine: 55, cooldown: 70, damage: 1.20, speed: 180, life: 1.7, pellets: 1, spread: .22, pulseBlastRadius: 50, pulseKnockback: 400, kind: 'gun' },
+  combatPistol: { name: 'COMBAT PISTOL', ammo: 'bulletClips', magazine: 17, cooldown: 200, damage: 1.25, speed: 100, life: 2.55, pellets: 1, spread: 0.2, beam: true, kind: 'gun' },
 
   // Tier 4 (Endgame)
   voidBatar: { name: 'VOID BATAR', ammo: 'voidChains', magazine: 200, cooldown: 30, damage: 0.45, speed: 400, life: 6, pellets: 1, spread: .15, voidBatarMotion: true, kind: 'gun' },
@@ -172,7 +173,8 @@ const ammoCatalog = {
   grenades: { name: 'GRENADE CASINGS', amount: 8, cost: { iron: 2, fuel: 4 } }, 
   slugs: { name: 'RAIL SLUGS', amount: 8, cost: { steel: 4, crystal: 2 } }, 
   fuelCells: { name: 'FLAME FUEL', amount: 8, cost: { fuel: 8, rawIron: 2 } }, 
-  pulseCells: { name: 'PULSE CELLS', amount: 10, cost: { crystal: 4, steel: 2 } }, 
+  pulseCells: { name: 'PULSE CELLS', amount: 10, cost: { crystal: 4, steel: 2 } },
+  bulletClips: { name: 'BULLET CLIPS', amount: 5, cost: { steel: 3, fuel: 1} }, 
   voidChains: {name:`VOID CHAINS`, amount:4, cost: {steel:6 , fuel:4 , crystal:3 } },
   radCells: { name: 'RAD CELLS', amount: 8, cost: { crystal: 2, fuel: 2, steel: 2 } },
   magicGauntletAmmo: { name: 'MAGIC GAUNTLET CLIPS', amount: 14, cost: {} },
@@ -207,6 +209,7 @@ const weaponRecipes = {
   laser: { name: 'LASER', time: 12, cost: { steel: 6, crystal: 6 }, weapon: 'laser' },
   grenadeLauncher: { name: 'GRENADE LAUNCHER', time: 13, cost: { steel: 8, fuel: 8 }, weapon: 'grenadeLauncher' },
   pulseCarbine: { name: 'PULSE CARBINE', time: 14, cost: { steel: 10, crystal: 5 }, weapon: 'pulseCarbine' },
+  combatPistol: { name: 'COMBAT PISTOL', time: 10, cost: { steel: 6, crystal: 3, wood: 4 }, weapon: 'combatPistol' },
   laserBlade: { name: 'LASER BLADE', time: 12, cost: { steel: 8, crystal: 4, relic: 1 }, weapon: 'laserBlade' },
 
   // Tier 4 (Endgame / Exotic - Relics & Atlas Crystals)
