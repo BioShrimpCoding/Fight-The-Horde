@@ -306,7 +306,7 @@ const enemyFamilies = [
   ['BONE HARVESTER', 'BONE SHARD BURST', 'damage-burst'], ['EMBER SERPENT', 'DEATHBOUND FIREBALLS', 'death-fireballs'], ['SPORE BRUTE', 'BRAMBLE SNARE', 'bramble'], ['GRAVITY LEECH', 'GRAVITY WELL', 'gravity-fields-pull'],
   ['STORM KNIGHT', 'LIGHTNING SWORD', 'storm-sword'], ['BLOOD HUNTER', 'BLOOD TRAIL', 'damage-trail'], ['NULL PHANTOM', 'NULL EXPLOSION', 'death-explosion'], ['WRAITH EATER', 'WRAITH PEST', 'spawn-pest'],
   ['DUSK STAG', 'DECAY DASH', 'decay-dash'], ['STARFIRE GOLEM', 'LINGERING FIRE', 'fire-explosion'], ['NEBULA SWARM', 'NEBULA MISSILES', 'nebula-missiles'], ['PRESSURE TITAN', 'ARC PROJECTILES', 'arc-projectiles'],
-  ['VOID CRAWLER', 'RIFT PORTAL', 'rift-portal'], ['GLOWING AMALGMS', 'RADIOACTIVE AURA', 'radioactive-aura'], ['STAR EATER', 'DEATH EXPLOSION', 'dead-star-explosion'], ['ENDLESS SHADE', 'DARK SPIN', 'spin-attack']
+  ['VOID CRAWLER', 'RIFT PORTAL', 'rift-portal'], ['GLOWING AMALGM', 'RADIOACTIVE AURA', 'radioactive-aura'], ['STAR EATER', 'DEATH EXPLOSION', 'dead-star-explosion'], ['ENDLESS SHADE', 'DARK SPIN', 'spin-attack']
 ];
 const sectorOneMiniBossAbilities = [
   { ability: 'TOXIC BURST', effect: 'toxic-boss-burst' },
@@ -1428,7 +1428,7 @@ function createBiomeEnemy(x, y, biome, variant = null) {
   const enemyVariant = variant || enemyVariants[Math.random() < Math.min(.22, distance / 30000 * .22) ? 4 : Math.floor(Math.random() * 4)];
   const baseSpeed = 38 + game.currentSector * 10 + Math.random() * 22;
   const familyIndex = (biome.sector - 1) * 4 + Number(biome.key.split('-')[2]);
-  const scaledHp = Math.ceil(enemyVariant.hp * (1 + game.currentSector * 0.15));
+  const scaledHp = Math.ceil(enemyVariant.hp * (1 + game.currentSector * 0.2));
   const sectorOneMiniBossAbility = familyIndex < sectorOneMiniBossAbilities.length && enemyVariant.boss
     ? sectorOneMiniBossAbilities[familyIndex]
     : null;
@@ -4093,7 +4093,7 @@ function applyEnemyAbilities(dt) {
       }
     } else if (enemy.effect === 'radioactive-boss-bomb') {
       enemy.bossAbilityCooldown = Math.max(0, enemy.bossAbilityCooldown - dt);
-      if (enemy.bossAbilityCooldown <= 0) {
+      if (distance <= 500 && enemy.bossAbilityCooldown <= 0) {
         createRadioactiveBombTelegraph(enemy);
         enemy.bossAbilityCooldown = 8;
       }
