@@ -195,6 +195,8 @@ const enemyVariants = [
   { name: 'ELITE', hp: 6.00, speed: 1.15, radius: 1.25, damage: 1.35, contactDamage: 28, score: 300, drops: 3 },
   { name: 'MINI-BOSS', hp: 25.00, speed: .78, radius: 2.15, damage: 2.5, contactDamage: 35, score: 750, drops: 5, boss: true }
 ];
+
+// ====================Weapons====================
 const weaponRecipes = {
   // Tier 1 (Early Game - Basic Resources)
   sidearm: { name: 'SIDEARM', time: 3, cost: { iron: 2, wood: 2 }, weapon: 'sidearm' },
