@@ -45,11 +45,19 @@
             <button type="button" class="menu-button" data-menu-action="new">NEW GAME</button>
             <button type="button" class="menu-button" data-menu-action="continue">CONTINUE LAST SAVE</button>
             <button type="button" class="menu-button" data-menu-action="load">LOAD SAVE</button>
+            <button type="button" class="menu-button" id="main-settings-button">SETTINGS</button>
             <button type="button" class="menu-button" data-menu-action="how-to-play">HOW TO PLAY</button>
           </div>
           <div class="save-slots hidden" id="save-slots">
             <p class="save-slots-title" id="save-slots-title">SELECT SAVE SLOT</p>
             <div id="save-slot-list"></div>
+            <div id="save-file-actions" class="save-file-actions" hidden>
+              <button type="button" class="menu-button" id="export-all-saves">BACK UP ALL SLOTS</button>
+              <button type="button" class="menu-button" id="import-save-file">IMPORT SAVE FILE</button>
+              <input type="file" id="save-file-input" accept=".hordesave" hidden>
+            </div>
+            <div id="save-import-preview" hidden></div>
+            <p id="save-file-status" class="save-slots-title" role="status"></p>
             <button type="button" class="menu-button menu-button-back" data-menu-action="back">BACK</button>
           </div>
           <div class="how-to-play hidden" id="how-to-play">
@@ -58,9 +66,9 @@
               <h3>MISSION</h3>
               <p>Leave the Beacon Sanctuary, explore the sectors, collect resources, craft stronger equipment, and survive the growing horde. The farther you travel from the Beacon, the more dangerous the enemies and environmental hazards become.</p>
               <h3>CONTROLS</h3>
-              <p><b>WASD</b> Move. <b>Mouse</b> Aim and fire. Hold <b>Space</b> to fire continuously. <b>Q</b> uses your pulse blast. <b>H</b> uses a medkit. <b>E</b> opens nearby crafting stations. <b>M</b> opens the tactical map. <b>J</b> changes mini-map zoom. <b>Esc</b> pauses the game.</p>
+              <p id="controls-help"></p>
               <h3>WEAPONS AND AMMO</h3>
-              <p>Use number keys or the weapon bar to switch weapons. Each weapon keeps its own magazine ammo when you switch away. Guns consume magazine ammo and reload from their matching reserve. Melee weapons do not use ammunition. Craft ammo at the Sanctuary and watch the storage counter before committing to a long expedition.</p>
+              <p>Use your weapon-slot bindings or the weapon bar to switch weapons. Each weapon keeps its own magazine ammo when you switch away. Guns consume magazine ammo and reload from their matching reserve. Melee weapons do not use ammunition. Craft ammo at the Sanctuary and watch the storage counter before committing to a long expedition.</p>
               <h3>EXPLORATION</h3>
               <p>Move across the horizontal, vertical, and curved biome borders to discover new environments. Entering a new biome displays its name and applies its unique effects and hazard. Use the map to track discovered areas, resources, enemies, and fast-travel beacons.</p>
               <h3>RESOURCES AND CRAFTING</h3>
@@ -79,12 +87,54 @@
           <p class="final-score">SCORE <strong id="final-score">000000</strong></p>
           <button class="primary-button" id="restart-button">RUN IT BACK <span>↻</span></button>
         </div>
-        <div class="overlay hidden" id="pause-screen">
-          <p class="eyebrow">SIGNAL HOLD</p>
-          <h2>GAME<br><span>PAUSED</span></h2>
-          <button type="button" class="primary-button" id="save-button">SAVE GAME</button>
-          <button type="button" class="primary-button" id="main-menu-button">MAIN MENU</button>
-          <p class="controls-hint">PRESS <kbd>ESC</kbd> TO RESUME</p>
+        <div class="overlay hidden" id="pause-screen" role="dialog" aria-labelledby="pause-title">
+          <div class="pause-card">
+            <header class="pause-header">
+              <p class="eyebrow">SIGNAL HOLD</p>
+              <h2 id="pause-title">GAME <span>PAUSED</span></h2>
+            </header>
+            <button type="button" class="primary-button" id="resume-button">RESUME GAME</button>
+            <div class="pause-save-actions">
+              <button type="button" class="menu-button" id="save-button">SAVE GAME</button>
+              <button type="button" class="menu-button" id="export-live-save">EXPORT CURRENT RUN</button>
+              <p id="live-save-status" class="save-slots-title" role="status"></p>
+            </div>
+            <div class="pause-secondary-actions">
+              <button type="button" class="menu-button" id="pause-settings-button">SETTINGS</button>
+              <button type="button" class="menu-button" id="main-menu-button">MAIN MENU</button>
+            </div>
+            <p class="controls-hint">PRESS <kbd>ESC</kbd> TO RESUME</p>
+          </div>
+        </div>
+        <div class="overlay hidden" id="settings-screen" role="dialog" aria-labelledby="settings-title">
+          <div class="pause-card settings-card">
+            <header class="pause-header">
+              <p class="eyebrow">PERSONALIZE YOUR RUN</p>
+              <h2 id="settings-title">SETTINGS</h2>
+            </header>
+            <fieldset class="settings-group">
+              <legend>Display</legend>
+              <label><input id="reduced-effects" type="checkbox"> Reduced Effects</label>
+              <label>Crosshair color <input id="crosshair-color" type="color" value="#ffb35c"></label>
+              <label>Crosshair size
+                <select id="crosshair-size">
+                  <option value="16">Small</option><option value="22">Medium</option><option value="32">Large</option>
+                </select>
+              </label>
+              <span class="crosshair settings-crosshair" aria-hidden="true"></span>
+            </fieldset>
+            <fieldset class="settings-group">
+              <legend>Controls</legend>
+              <p>Select a binding, then press a key or mouse button. Esc cancels and is always reserved for pause and back.</p>
+              <div id="settings-bindings"></div>
+            </fieldset>
+            <p id="settings-status" class="save-slots-title" role="status"></p>
+            <button type="button" class="menu-button" id="settings-swap" hidden>SWAP BINDINGS</button>
+            <div class="pause-secondary-actions">
+              <button type="button" class="menu-button" id="settings-reset">RESET TO DEFAULTS</button>
+              <button type="button" class="primary-button" id="settings-back">BACK</button>
+            </div>
+          </div>
         </div>
         <div class="expedition-hud">
           <div><span>RADIUS</span><strong id="distance">000m</strong></div>
@@ -92,6 +142,9 @@
           <div><span>RELICS</span><strong id="relics">00</strong></div>
           <div><span>ATLAS</span><strong id="atlas-crystals">00</strong></div>
         </div>
+        <div class="quest-hud" id="quest-hud" aria-live="polite"><strong>NO ACTIVE QUESTS</strong></div>
+        <div class="quest-dialog" id="quest-dialog" hidden></div>
+        <div class="quest-panel" id="quest-panel" hidden></div>
         <div class="vitals-hud" aria-label="Player health">
           <div class="vitals-heading"><span>VITALS</span><strong id="health-value">100%</strong></div>
           <div class="health-track"><div id="health-bar"></div></div>
@@ -110,7 +163,7 @@
           <span class="station-title">SANCTUARY // WORKSHOPS</span>
           <div class="station-card" data-station="crafting"><strong>CRAFTING TABLE</strong><button type="button" data-craft="medkit">MEDKIT <small>4 FIBER + 2 CRYSTAL</small></button><button type="button" data-craft="steelPlate">STEEL PLATE <small>5 STEEL + 2 STONE</small></button><div class="arsenal-list" id="arsenal-list"></div></div>
           <div class="station-card" data-station="furnace"><strong>FURNACE</strong><button type="button" data-craft="smeltIron">SMELT IRON <small>3 RAW IRON + 10 FUEL</small></button><button type="button" data-craft="makeSteel">MAKE STEEL <small>2 IRON + 3 STONE + 10 FUEL</small></button><button type="button" data-craft="refineFuel">REFINE FUEL <small>2 WOOD + 2 FIBER + 10 FUEL</small></button></div>
-          <div class="station-card" data-station="designer"><strong>DESIGNER TABLE</strong><button type="button" data-craft="buildWorkbench">WORKBENCH <small>50 WOOD + 10 STONE + 20 FIBER</small></button><button type="button" data-craft="buildFurnace">FURNACE <small>50 STONE + 10 IRON + 20 FUEL</small></button></div>
+          <div class="station-card" data-station="designer"><strong>DESIGNER TABLE</strong><button type="button" data-craft="buildWorkbench">WORKBENCH <small>50 WOOD + 10 STONE + 20 FIBER</small></button><button type="button" data-craft="buildFurnace">FURNACE <small>50 STONE + 10 IRON + 20 FUEL</small></button><button type="button" data-craft="buildBountyBoard">BOUNTY BOARD <small>70 WOOD + 20 IRON + 25 FIBER</small></button></div>
           <div class="station-card" data-station="beacon-repair"><strong>RUINED BEACON STATION</strong><button type="button" data-craft="repairBeacon:sector4-0">REPAIR STATION <small>HIGH RESOURCE COST</small></button></div>
           <div class="station-card" data-station="beacon-modules"><strong>MODULE STATION</strong><button type="button" data-craft="beaconModule:pulse">PULSE MODULE <small>SHOCKWAVE // PUSH ENEMIES</small></button><button type="button" data-craft="beaconModule:drain">DRAIN MODULE <small>DAMAGE NEARBY ENEMIES</small></button><button type="button" data-craft="beaconModule:support">SUPPORT MODULE <small>HEALING // DAMAGE // ATTACK SPEED</small></button></div>
           <div class="craft-details" id="craft-details" hidden></div>
