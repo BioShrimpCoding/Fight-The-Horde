@@ -47,6 +47,7 @@
             <button type="button" class="menu-button" data-menu-action="load">LOAD SAVE</button>
             <button type="button" class="menu-button" id="main-settings-button">SETTINGS</button>
             <button type="button" class="menu-button" data-menu-action="how-to-play">HOW TO PLAY</button>
+            <button type="button" class="menu-button" data-menu-action="change-log">CHANGE LOG</button>
           </div>
           <div class="save-slots hidden" id="save-slots">
             <p class="save-slots-title" id="save-slots-title">SELECT SAVE SLOT</p>
@@ -60,25 +61,44 @@
             <p id="save-file-status" class="save-slots-title" role="status"></p>
             <button type="button" class="menu-button menu-button-back" data-menu-action="back">BACK</button>
           </div>
-          <div class="how-to-play hidden" id="how-to-play">
-            <p class="save-slots-title">HOW TO PLAY</p>
-            <div class="how-to-play-content">
-              <h3>MISSION</h3>
-              <p>Leave the Beacon Sanctuary, explore the sectors, collect resources, craft stronger equipment, and survive the growing horde. The farther you travel from the Beacon, the more dangerous the enemies and environmental hazards become.</p>
+          <div class="how-to-play hidden" id="how-to-play" role="region" aria-labelledby="how-to-play-title">
+            <h2 class="save-slots-title menu-info-title" id="how-to-play-title" tabindex="-1">HOW TO PLAY</h2>
+            <div class="how-to-play-content" tabindex="0" role="region" aria-label="How to play guide">
+              <h3>YOUR FIRST EXPEDITION</h3>
+              <p>Talk to the Quartermaster in Sanctuary to begin <b>The Last Signal</b>. Explore nearby sectors, gather materials, and return to Sanctuary to deposit materials in your vault and bank salvage. Farther sectors bring stronger enemies and new hazards.</p>
+              <p>Use the tactical map to track discoveries, and check the biome effects panel when you enter a new region. Environmental hazards can hurt you even when no enemies are nearby.</p>
               <h3>CONTROLS</h3>
               <p id="controls-help"></p>
+              <p>Open <b>Settings</b> from the main menu or Pause to rebind keyboard and mouse controls, reduce visual effects, or customize the crosshair.</p>
+              <h3>QUESTS AND BEACONS</h3>
+              <p>Follow the quest HUD and cyan map diamonds for field objectives. Stay near a signal mast while it scans and inside the marked perimeter during a defense. You can have three active quests, including the main quest. NPC side quests, repeatable Armourer contracts, and the craftable Bounty Board are optional.</p>
+              <p>The campaign supplies a kit for one beacon repair. Other stations require materials. Repaired beacons protect you from local biome hazards and let you fast-travel between repaired stations and Sanctuary from the tactical map.</p>
               <h3>WEAPONS AND AMMO</h3>
-              <p>Use your weapon-slot bindings or the weapon bar to switch weapons. Each weapon keeps its own magazine ammo when you switch away. Guns consume magazine ammo and reload from their matching reserve. Melee weapons do not use ammunition. Craft ammo at the Sanctuary and watch the storage counter before committing to a long expedition.</p>
-              <h3>EXPLORATION</h3>
-              <p>Move across the horizontal, vertical, and curved biome borders to discover new environments. Entering a new biome displays its name and applies its unique effects and hazard. Use the map to track discovered areas, resources, enemies, and fast-travel beacons.</p>
-              <h3>RESOURCES AND CRAFTING</h3>
-              <p>Collect dropped materials and salvage from enemies, nodes, and chests. Return to the Beacon to bank your carried resources in your vault. Craft weapons, armor, ammo, medkits, and upgrades at the crafting table and furnace. Beacon stations can be repaired and equipped with modules and turrets.</p>
-              <h3>COMBAT AND SURVIVAL</h3>
-              <p>Keep moving, manage reloads, and use the terrain and Beacon stations to your advantage. Enemy families gain new abilities as you reach later sectors. Environmental hazards and elite enemies can deal damage even when no enemy is nearby, so pay attention to the hazard indicator and biome effects panel.</p>
-              <h3>SAVES</h3>
-              <p>You have five browser save slots. Save from the pause menu, load a slot from the main menu, continue your most recently used slot, or delete an old slot when you need space. Materials, weapons, upgrades, discoveries, and world progress are stored separately for each slot.</p>
+              <p>Use your weapon-slot bindings or the weapon bar to switch weapons. Each weapon keeps its magazine when you switch away. The ammo reserve counts <b>full reloads</b>, not individual rounds. Melee weapons use no ammo. Check your reserves and bring medkits before a long expedition.</p>
+              <p>Earn permanent Armourer reputation through contracts and spend salvage on weapon and armor blueprints. Some blueprints come from encounters instead. Unlocking a blueprint lets you craft the gear; it does not equip it.</p>
+              <h3>AFTER THE CAMPAIGN</h3>
+              <p>Check the quest log for the Continuity Key clue after the final turn-in. The map shows a search area, not the exact portal. Defeat the Void Stalker to enter the facility. Stock up before entering the Foreman's arena, and watch for floor markings and purple reinforcement gates.</p>
+              <h3>SAVES AND BACKUPS</h3>
+              <p>Save to one of five slots from Pause and resume a slot from the main menu. <b>Export Current Run</b> backs up even unsaved progress. In <b>Load Save</b>, export individual slots, back up all slots, or preview a <b>.hordesave</b> import before confirming a destination.</p>
+              <p>Dungeon saves resume at the latest safe checkpoint with your saved health and supplies, not in the middle of a boss phase. Death still ends the run.</p>
             </div>
             <button type="button" class="menu-button menu-button-back" data-menu-action="back-from-help">BACK</button>
+          </div>
+          <div class="how-to-play hidden" id="change-log" role="region" aria-labelledby="change-log-title">
+            <h2 class="save-slots-title menu-info-title" id="change-log-title" tabindex="-1">CHANGE LOG</h2>
+            <div class="how-to-play-content" tabindex="0" role="region" aria-label="Update notes">
+              <h3>LATEST UPDATE: THE LAST SIGNAL</h3>
+              <ul>
+                <li><b>Campaign:</b> 12 missions across four chapters, with signal tracking, beacon defense, and a final expedition. Existing saves get credit for equivalent milestones.</li>
+                <li><b>Optional progression:</b> Sanctuary NPC quests, a craftable Bounty Board with escalating contracts, and Armourer reputation and blueprints.</li>
+                <li><b>Void epilogue:</b> The Continuity Key leads to a hidden portal guarded by the redesigned Void Stalker, with telegraphed lunges and recovery windows. Beyond it are eight rooms, a relay puzzle, optional caches, and safe checkpoints.</li>
+                <li><b>The Foreman:</b> A tougher three-phase fight with new attacks and escalating hordes drawn from every biome family and the Void. The Void Stalker is the rarest summon. First victory unlocks the Continuity Weave blueprint; rematches remain available.</li>
+                <li><b>Menus and settings:</b> Refreshed Pause menu, remappable keyboard and mouse controls, Reduced Effects, and crosshair customization.</li>
+                <li><b>Saving:</b> Verified browser saves with IndexedDB fallback, cross-tab protection, and portable <b>.hordesave</b> backups with import previews.</li>
+                <li><b>Combat fixes:</b> Projectile hits check the full path traveled between frames, Hazmat blocks radioactive damage and blinding, and automated beacon kills no longer count toward player kill quests. Minigun ammo crafting makes one belt at the same material cost.</li>
+              </ul>
+            </div>
+            <button type="button" class="menu-button menu-button-back" data-menu-action="back-from-change-log">BACK</button>
           </div>
         </div>
         <div class="overlay hidden" id="game-over">
@@ -86,6 +106,7 @@
           <h2>THE HORDE<br><span>GOT THROUGH</span></h2>
           <p class="final-score">SCORE <strong id="final-score">000000</strong></p>
           <button class="primary-button" id="restart-button">RUN IT BACK <span>↻</span></button>
+          <button type="button" class="menu-button" id="discard-test-after-death" hidden>DISCARD TEST AND RETURN</button>
         </div>
         <div class="overlay hidden" id="pause-screen" role="dialog" aria-labelledby="pause-title">
           <div class="pause-card">
@@ -101,6 +122,7 @@
             </div>
             <div class="pause-secondary-actions">
               <button type="button" class="menu-button" id="pause-settings-button">SETTINGS</button>
+              <button type="button" class="menu-button" id="open-admin" hidden>ADMIN TEST LAB</button>
               <button type="button" class="menu-button" id="main-menu-button">MAIN MENU</button>
             </div>
             <p class="controls-hint">PRESS <kbd>ESC</kbd> TO RESUME</p>
@@ -171,9 +193,44 @@
         </div>
         <div class="biome-effects" id="biome-effects" aria-live="polite"></div>
         <div class="biome-announcement" id="biome-announcement" aria-live="polite"></div>
-        <div class="admin-panel" id="admin-panel" hidden>
-          <strong>ADMIN TEST MODE</strong>
-          <button type="button" data-admin="spawn">SPAWN</button><button type="button" data-admin="refill">REFILL</button><button type="button" data-admin="invincible">INVINCIBLE: OFF</button><button type="button" data-admin="grant">MATERIALS +100</button><button type="button" data-admin="reset">RESET</button>
+        <div class="admin-test-badge" id="admin-test-badge" hidden>DISPOSABLE TEST RUN // SAVING DISABLED</div>
+        <div class="overlay hidden" id="admin-panel" role="dialog" aria-modal="true" aria-labelledby="admin-title">
+          <div class="pause-card admin-card">
+            <header class="pause-header"><p class="eyebrow">DISPOSABLE TEST RUNS ONLY</p><h2 id="admin-title">TEST <span>LAB</span></h2></header>
+            <p id="admin-status" role="status"></p>
+            <button type="button" class="menu-button" data-admin="start">START DISPOSABLE RUN</button>
+            <div class="admin-tools" id="admin-tools" hidden>
+              <fieldset><legend>Encounters</legend><label>Scenario <select id="admin-scenario"></select></label>
+                <button type="button" class="menu-button" data-admin="scenario">LOAD SCENARIO</button>
+                <button type="button" class="menu-button" data-admin="reset">RESET SCENARIO</button>
+              </fieldset>
+              <fieldset><legend>Combat</legend><label>Enemy <select id="admin-enemy"></select></label>
+                <button type="button" class="menu-button" data-admin="spawn">SPAWN ENEMY</button>
+                <button type="button" class="menu-button" data-admin="clear">CLEAR THREATS</button>
+                <label>Weapon <select id="admin-weapon"></select></label>
+                <button type="button" class="menu-button" data-admin="weapon">EQUIP WEAPON</button>
+                <button type="button" class="menu-button" data-admin="health">REFILL HEALTH</button>
+                <button type="button" class="menu-button" data-admin="ammo">REFILL AMMO</button>
+                <button type="button" class="menu-button" data-admin="infinite-ammo" aria-pressed="false">INFINITE AMMO</button>
+                <button type="button" class="menu-button" data-admin="invincible" aria-pressed="false">INVINCIBILITY</button>
+              </fieldset>
+              <fieldset><legend>Progression</legend><label>Mission <select id="admin-mission"></select></label>
+                <button type="button" class="menu-button" data-admin="mission">JUMP TO MISSION</button>
+                <label>Blueprint <select id="admin-blueprint"></select></label>
+                <button type="button" class="menu-button" data-admin="blueprint">UNLOCK BLUEPRINT</button>
+                <label>Material <select id="admin-material"></select></label>
+                <label>Amount <input id="admin-amount" type="number" min="1" max="10000" value="100"></label>
+                <button type="button" class="menu-button" data-admin="grant">GRANT MATERIAL</button>
+              </fieldset>
+              <fieldset><legend>Diagnostics</legend><textarea id="admin-report" rows="8" readonly aria-label="Test diagnostics"></textarea>
+                <button type="button" class="menu-button" data-admin="copy">COPY BUG REPORT</button>
+              </fieldset>
+            </div>
+            <div class="pause-secondary-actions">
+              <button type="button" class="menu-button" data-admin="close">BACK TO PAUSE</button>
+              <button type="button" class="menu-button" data-admin="discard" hidden>DISCARD TEST AND RETURN</button>
+            </div>
+          </div>
         </div>
         <div class="mobile-controls" aria-label="Touch controls">
           <div class="joystick" id="joystick"><span></span></div>

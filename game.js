@@ -8,6 +8,16 @@ const mapInstructions = document.querySelector('#map-instructions');
 const crosshair = document.querySelector('.crosshair');
 const gameShell = document.querySelector('.game-shell');
 const adminPanel = document.querySelector('#admin-panel');
+const adminOpenButton = document.querySelector('#open-admin');
+const adminStatus = document.querySelector('#admin-status');
+const adminBadge = document.querySelector('#admin-test-badge');
+const adminReport = document.querySelector('#admin-report');
+const exportRunButton = document.querySelector('#export-live-save');
+const adminTestRuns = new WeakSet();
+const adminInfiniteAmmoRuns = new WeakSet();
+let suspendedRun = null;
+let adminScenario = null;
+let adminPanelOpen = false;
 const ui = { wave: document.querySelector('#wave'), score: document.querySelector('#score'), high: document.querySelector('#high-score'), ammo: document.querySelector('#ammo'), ammoStorage: document.querySelector('#ammo-storage'), medkits: document.querySelector('#medkits'), weaponName: document.querySelector('#weapon-name'), ammoType: document.querySelector('#ammo-type'), weaponBar: document.querySelector('#weapon-bar'), health: document.querySelector('#health-bar'), healthValue: document.querySelector('#health-value'), threats: document.querySelector('#threat-count'), distance: document.querySelector('#distance'), salvage: document.querySelector('#salvage'), relics: document.querySelector('#relics'), objective: document.querySelector('#objective-text'), start: document.querySelector('#start-screen'), over: document.querySelector('#game-over'), pause: document.querySelector('#pause-screen'), final: document.querySelector('#final-score'), announcement: document.querySelector('#biome-announcement'), effects: document.querySelector('#biome-effects'), inventory: document.querySelector('#inventory-hud'), stations: document.querySelector('#sanctuary-stations'), stationOutput: document.querySelector('#station-output'), arsenal: document.querySelector('#arsenal-list'), craftDetails: document.querySelector('#craft-details'), manager: document.querySelector('#manager-mode'), managerInventory: document.querySelector('#manager-inventory') };
 const debugConsoleOutput = document.querySelector('#debug-console-output');
 const clearConsoleButton = document.querySelector('#clear-console');
@@ -34,6 +44,7 @@ const saveImportPreview = document.querySelector('#save-import-preview');
 const liveSaveStatus = document.querySelector('#live-save-status');
 const mainMenu = document.querySelector('#main-menu');
 const howToPlay = document.querySelector('#how-to-play');
+const changeLog = document.querySelector('#change-log');
 const questHud = document.querySelector('#quest-hud');
 const questPanel = document.querySelector('#quest-panel');
 const questDialog = document.querySelector('#quest-dialog');
@@ -103,6 +114,54 @@ const questTemplates = [
   { id: 'lost-records', npcId: 'archivist', prerequisite: 'unknown-country', title: 'LOST RECORDS', description: 'Recover relics from the frontier.', type: 'relic', target: 'relics', amount: 2, reward: { salvage: 28, atlasCrystals: 1 } },
   { id: 'light-the-way', npcId: 'beaconEngineer', prerequisite: 'working-order', title: 'LIGHT THE WAY', description: 'Reach a beacon station and repair it.', type: 'repairBeacon', target: 'beacon', amount: 1, reward: { salvage: 50, atlasCrystals: 2 } }
 ];
+const campaignChapters = ['A Light in the Dark', 'The Broken Chorus', 'Beyond the Beacons', 'The Last Signal'];
+const campaignMissions = [
+  { id: 'provisions', chapter: 0, npcId: 'quartermaster', title: 'Packing for the Frontier', type: 'count', counter: 'collected', amount: 12, legacy: 'supply-run',
+    brief: 'The old beacon network has gone quiet. Bring in enough frontier materials to put a survey team in the field.',
+    objective: 'Collect 12 frontier materials.', debrief: 'That buys us a survey. The Scout has a route ready.', reward: { salvage: 18, resources: { fuel: 4 } } },
+  { id: 'survey', chapter: 0, npcId: 'scout', title: 'A Route Through the Fog', type: 'survey', legacy: 'unknown-country',
+    brief: 'Before we cross the outer ring, mark three biome regions. If you have already charted them, your map will do.',
+    objective: 'Chart three biome regions.', debrief: 'Your map matches an old survey. An archive cache is still out there.', reward: { salvage: 20 } },
+  { id: 'field-archive', chapter: 0, npcId: 'archivist', title: 'The Field Archive', type: 'sites', legacy: 'lost-records',
+    sites: [{ x: 2350, y: 1450, label: 'Buried field archive' }],
+    brief: 'Bring me the maintenance log from the buried field archive. That is where they kept the beacon diagrams.',
+    objective: 'Recover the maintenance log at the marked archive.', debrief: 'This log calls the beacons a listening array. The Mechanic can use these diagrams to make a field kit.', reward: { salvage: 22, relics: 1 } },
+  { id: 'field-kit', chapter: 1, npcId: 'mechanic', title: 'A Kit for the Outer Ring', type: 'count', counter: 'repairs', amount: 1, legacy: 'working-order',
+    brief: 'Show me you can put a workshop together before I send you to the outer ring. Craft or place a station, or finish a beacon repair.',
+    objective: 'Complete one construction or beacon repair project.', debrief: 'The Engineer has a restoration kit ready. It will cover one beacon, not the whole ring.', reward: { salvage: 25, resources: { steel: 8 } } },
+  { id: 'first-light', chapter: 1, npcId: 'beaconEngineer', title: 'First Light', type: 'beacon', legacy: 'light-the-way',
+    brief: 'Take this kit to the marked beacon. It covers the full repair. If you already have a working beacon, we can use that one.',
+    objective: 'Use the kit at the marked beacon or report an already repaired beacon.', debrief: 'The beacon is answering. That voice is not a rescue call. It is the same sentence, repeated every eleven seconds.', reward: { salvage: 40, atlasCrystals: 2 } },
+  { id: 'triangulation', chapter: 1, npcId: 'scout', title: 'The Broken Chorus', type: 'sites',
+    sites: [{ x: 3500, y: 2750, label: 'Survey mast Alpha', scan: 4 }, { x: 3900, y: 5100, label: 'Survey mast Bravo', scan: 5 }, { x: 6900, y: 4250, label: 'Survey mast Charlie', scan: 6 }],
+    brief: 'Your restored beacon picked up a voice repeating the same sentence. Read the old survey masts in order and I can find its bearing.',
+    objective: 'Tune three survey masts. Stay close until each scan locks.', debrief: 'All three bearings point past the outer ring. Every time we tune a mast, the Horde turns toward it.', reward: { salvage: 55, ammo: { pistolAmmo: 4 } } },
+  { id: 'beacon-siege', chapter: 2, npcId: 'beaconEngineer', title: 'Hold the Frequency', type: 'defense', waves: [3, 5, 6],
+    brief: 'The beacon can hold a clean channel if we keep it transmitting. Stay in range and clear the three waves drawn to the test.',
+    objective: 'Start the beacon test and clear three waves without leaving its perimeter.', debrief: 'The test held. We pulled a location from the signal, but the repeater that could reach it is missing.', reward: { salvage: 65, medkits: 2 } },
+  { id: 'repeater', chapter: 2, npcId: 'mechanic', title: 'The Missing Repeater', type: 'sites',
+    sites: [{ x: 9450, y: 3850, label: 'Wrecked maintenance convoy' }],
+    brief: 'The convoy carrying the spare repeater never made it home. Its last position is on your map.',
+    objective: 'Recover the repeater core from the convoy wreck.', debrief: 'It still has power. The factory tags say this was built to send instructions, not just listen.', reward: { salvage: 42, resources: { crystal: 8 } } },
+  { id: 'uplink', chapter: 2, npcId: 'beaconEngineer', title: 'Build the Uplink', type: 'sites', beaconSite: { label: 'Beacon repeater socket', scan: 6 },
+    brief: 'Seat the core at the beacon and let it handshake. Once the uplink is stable, we can follow it to the source.',
+    objective: 'Install and calibrate the repeater at your beacon.', debrief: 'The signal leads to a facility called the Continuity Relay. Its access channel just opened.', reward: { salvage: 50, atlasCrystals: 1 } },
+  { id: 'expedition', chapter: 3, npcId: 'scout', title: 'The Outer Expedition', type: 'sites',
+    sites: [{ x: 10050, y: 8050, label: 'Expedition waystation' }, { x: 11250, y: 8800, label: 'Continuity access terminal', scan: 6 }],
+    brief: 'Follow the uplink past the outer ring. Check the waystation first; it has the terminal access code.',
+    objective: 'Find the access code and download the relay credentials.', debrief: 'The credentials are good. The Engineer can use them to cut the facility off from the ring.', reward: { salvage: 55, medkits: 2 } },
+  { id: 'continuity', chapter: 3, npcId: 'beaconEngineer', title: 'Cut the Loop', type: 'defense', waves: [4, 6, 8],
+    sites: [{ x: 11650, y: 9450, label: 'The Continuity Relay' }],
+    brief: 'Use the terminal to start the shutdown. The relay will call everything it can while we replace its control signal.',
+    objective: 'Start the shutdown and clear three waves at the Continuity Relay.', debrief: 'The loop is broken. The beacons are back under Sanctuary control. Take the recovered recording to the Archivist.', reward: { salvage: 100, atlasCrystals: 3 } },
+  { id: 'record', chapter: 3, npcId: 'archivist', title: 'What the Signal Woke', type: 'talk',
+    brief: 'The recording is intact. We finally know what the old world was trying to preserve.',
+    objective: 'Hear the recovered recording and close out the expedition.',
+    debrief: 'The Continuity project made the first Horde as a self-repairing workforce. When its operators stopped answering, the relay kept broadcasting the last order: rebuild, even if it meant turning the living into raw material. We stopped that order. The Horde is still out there, but now it has no one directing it.',
+    reward: { banked: 150, atlasCrystals: 5 } }
+];
+const campaignDefenseRadius = 290;
+const campaignFinaleId = 'continuity';
 const bountyTemplates = [
   { id: 'bounty-horde', title: 'HORDE CLEARANCE', description: 'Defeat hostile entities in the current frontier.', type: 'kill', target: 'any', amount: 18, reward: { salvage: 28 } },
   { id: 'bounty-salvage', title: 'SALVAGE RECOVERY', description: 'Return with collected materials.', type: 'collect', target: 'any', amount: 16, reward: { salvage: 24 } },
@@ -127,6 +186,26 @@ const beaconModuleBenchOffset = 55;
 const beaconRegionRadius = 1200;
 const sanctuaryTurretCount = 16;
 const mapRadius = 18000;
+const voidPortal = { x: 17920, y: -5660 };
+const voidSearch = { x: 17550, y: -5600, radius: 1200 };
+const stalkerTerritory = 1800;
+const dungeonRooms = {
+  entry: { name: 'Pressure Lock', w: 780, h: 480, doors: [['exit', -340, 0, 'Return to the Void'], ['works', 340, 0, 'Enter the Foundry']] },
+  works: { name: 'Foundry Floor', w: 980, h: 660, enemies: [0, 0, 1, 1, 2], doors: [['entry', -440, 0, 'Pressure Lock'], ['stores', 0, -280, 'Spare Parts Vault'], ['relay', 440, 0, 'Relay Gallery']] },
+  stores: { name: 'Spare Parts Vault', w: 700, h: 510, enemies: [1, 1, 2], loot: 'supplies', doors: [['works', -300, 0, 'Foundry Floor']] },
+  relay: { name: 'Relay Gallery', w: 900, h: 610, doors: [['works', -400, 0, 'Foundry Floor'], ['ward', 400, 0, 'Containment Ward']] },
+  ward: { name: 'Containment Ward', w: 1080, h: 700, enemies: [0, 1, 1, 2, 2, 3], doors: [['relay', -490, 0, 'Relay Gallery'], ['records', 0, -300, 'Records Annex'], ['staging', 490, 0, 'Safe Staging Room']] },
+  records: { name: 'Records Annex', w: 680, h: 490, enemies: [0, 1, 2], loot: 'records', doors: [['ward', -290, 0, 'Containment Ward']] },
+  staging: { name: 'Safe Staging Room', w: 720, h: 480, doors: [['ward', -310, 0, 'Containment Ward'], ['arena', 310, 0, 'Commit to the Foreman fight']] },
+  arena: { name: 'Continuity Crucible', w: 1450, h: 950, doors: [['exit', -650, 0, 'Return to the Void'], ['staging', 650, 0, 'Safe Staging Room']] }
+};
+const dungeonOrigin = 60000;
+const relayOrder = ['BLUE', 'AMBER', 'WHITE'];
+const dungeonWorldFields = [
+  'enemies', 'bullets', 'beams', 'projectiles', 'explosions', 'portals', 'enemyTrails', 'toxicBossZones',
+  'radioactiveBombZones', 'abyssalBossWaves', 'darkBossDashCircles', 'sparks', 'gems', 'drops', 'nodes',
+  'hazardZones', 'brambleZones', 'lightningStrikes'
+];
 const biomeBoundaries = [3000, 6000, 9500, 13000, 16000];
 const tacticalMapZoomLevels = [.4, .6, .8, 1, 1.25, 1.5, 2];
 let tacticalMapZoomIndex = 3;
@@ -135,7 +214,8 @@ function cycleTacticalMapZoom() {
 }
 function getTacticalMapZoom() {
   if (!mapOpen) return tacticalMapZoomLevels[tacticalMapZoomIndex];
-  return Math.min(1, mapRadius / (mapRadius + Math.hypot(game.player.x, game.player.y)));
+  const radius = hasContinuityKey() ? mapRadius + 2400 : mapRadius;
+  return Math.min(1, mapRadius / (radius + Math.hypot(game.player.x, game.player.y)));
 }
 function getTacticalMapScale() {
   const mapDimension = mapOpen ? Math.min(mapCanvas.width, mapCanvas.height) : mapCanvas.width;
@@ -162,10 +242,10 @@ function setMapOpen(open) {
   mapPanel.classList.toggle('expanded', open);
   const canFastTravel = isAtFastTravelHub();
   mapPanel.classList.toggle('fast-travel-enabled', open && canFastTravel);
-  mapPanel.classList.toggle('admin-teleport-enabled', open && adminMode);
+  mapPanel.classList.toggle('admin-teleport-enabled', open && isAdminTest());
   const mapBinding = settings.bindings.map;
   const closeHint = `${mapBinding === 'mouse0' ? '' : `${bindingLabel(mapBinding)} OR `}ESC TO CLOSE`;
-  mapInstructions.textContent = adminMode
+  mapInstructions.textContent = game.epilogue.dungeon ? `FACILITY MAP // ${closeHint}` : isAdminTest()
     ? `CLICK ANYWHERE TO TELEPORT // ${closeHint}`
     : canFastTravel ? `CLICK A BEACON TO TRAVEL // ${closeHint}` : closeHint;
   document.body.classList.toggle('map-open', open);
@@ -294,14 +374,16 @@ const armorCatalog = {
   reinforcedArmor: { name: 'REINFORCED ARMOR', contactDamageReduction: .15, description: '-15% contact damage' },
   hazardArmor: { name: 'HAZARD ARMOR', hazardDamageReduction: .35, statusDamageReduction: .35, description: '-35% hazard and status damage' },
   voidArmor: { name: 'VOID ARMOR', voidDamageReduction: .30, description: '-30% Void projectile damage' },
-  hazmatSuit: { name: 'HAZMAT SUIT', hazardDamageReduction: .25, radioactiveHazardDamageReduction: 1, radioactiveBlindImmunity: true, description: '-25% hazard damage; immune to radiation damage and blinding' }
+  hazmatSuit: { name: 'HAZMAT SUIT', hazardDamageReduction: .25, radioactiveHazardDamageReduction: 1, radioactiveBlindImmunity: true, description: '-25% hazard damage; immune to radiation damage and blinding' },
+  continuityWeave: { name: 'CONTINUITY WEAVE', moveMultiplier: 1.08, voidDamageReduction: .35, contactDamageReduction: .18, description: '+8% speed, -35% Void projectile damage, -18% contact damage' }
 };
 const armorRecipes = {
   scoutArmor: { name: 'SCOUT ARMOR', time: 8, cost: { steelPlate: 2, fiber: 3 }, armor: 'scoutArmor' },
   reinforcedArmor: { name: 'REINFORCED ARMOR', time: 10, cost: { steelPlate: 4, stone: 3 }, armor: 'reinforcedArmor' },
   hazardArmor: { name: 'HAZARD ARMOR', time: 12, cost: { steelPlate: 6, fiber: 4, crystal: 2 }, armor: 'hazardArmor' },
   voidArmor: { name: 'VOID ARMOR', time: 18, cost: { steelPlate: 8, relic: 1, atlasCrystal: 1 }, armor: 'voidArmor' },
-  hazmatSuit: { name: 'HAZMAT SUIT', time: 16, cost: { steelPlate: 8, fiber: 8, crystal: 6, atlasCrystal: 1 }, armor: 'hazmatSuit' }
+  hazmatSuit: { name: 'HAZMAT SUIT', time: 16, cost: { steelPlate: 8, fiber: 8, crystal: 6, atlasCrystal: 1 }, armor: 'hazmatSuit' },
+  continuityWeave: { name: 'CONTINUITY WEAVE', time: 20, cost: { steelPlate: 10, fiber: 8, atlasCrystal: 2 }, armor: 'continuityWeave' }
 };
 function getArmorEffects() { return armorCatalog[game.armor] || {}; }
 function getHazardDamageReduction(armor, hazard, biomeKey) {
@@ -472,12 +554,12 @@ function createBeaconStations() {
    });
 }
 function protectGameHealth(state) {
-  let health = adminInvincible ? 100 : state.health;
+  let health = state.health;
   Object.defineProperty(state, 'health', {
     configurable: true,
     enumerable: true,
     get() { return health; },
-    set(value) { if (!adminInvincible) health = value; }
+    set(value) { if (!adminInvincible || !adminTestRuns.has(state)) health = value; }
   });
   return state;
 }
@@ -523,6 +605,8 @@ function freshGame() {
     startingStationsGranted: true,
     placedStations: [],
     questState: { active: [], completed: [], available: [], bounties: [], armorerContractsCompleted: 0, tickTimer: 0, counters: { kills: 0, collected: 0, sectors: 0, relics: 0, travel: 0, survived: 0, heals: 0, repairs: 0, beaconRepairs: 0 } },
+    campaign: { completed: [], active: null, beaconId: null },
+    epilogue: { guardianCleared: false, portalFound: false, firstClear: false, loot: [], dungeon: null },
     managerMode: false,
     enemies: [], 
     bullets: [],
@@ -612,6 +696,218 @@ function ensureQuestState() {
     }
   });
 }
+function migrateCampaign(run) {
+  const { completed, counters } = run.questState;
+  const beacon = run.beaconStations.find(station => station.repaired);
+  run.campaign.beaconId = beacon?.id ?? null;
+  run.campaign.completed = campaignMissions.filter(mission => {
+    // A repaired station is required for subsequent missions even on very old saves.
+    if (mission.type === 'beacon') return Boolean(beacon);
+    if (mission.type === 'survey' && campaignSurveyCount(run) >= 3) return true;
+    if (mission.id === 'field-kit' && run.placedStations.length > 0) return true;
+    if (mission.type === 'count' && counters[mission.counter] >= mission.amount) return true;
+    return mission.legacy && completed.some(id => typeof id === 'string' && id.startsWith(`${mission.legacy}-story-`));
+  }).map(mission => mission.id);
+}
+function validateCampaign(run) {
+  const { completed, active, beaconId } = run.campaign;
+  const knownIds = new Set(campaignMissions.map(mission => mission.id));
+  if (!Array.isArray(completed) || completed.some(id => !knownIds.has(id)) || new Set(completed).size !== completed.length
+      || (beaconId !== null && !run.beaconStations.some(station => station.id === beaconId))) {
+    throw new Error('Save has invalid campaign milestones');
+  }
+  if (active === null) return;
+  const mission = campaignMissions.find(entry => !completed.includes(entry.id));
+  if (!active || active.id !== mission?.id || !Number.isFinite(active.baseline)
+      || !Number.isInteger(active.site) || active.site < 0 || active.site > (mission.sites?.length ?? 1)
+      || !Number.isInteger(active.wave) || active.wave < 0 || active.wave > (mission.waves?.length ?? 0)
+      || !Number.isFinite(active.scan) || active.scan < 0 || !Number.isFinite(active.delay) || active.delay < 0
+      || typeof active.defending !== 'boolean' || typeof active.waveStarted !== 'boolean'
+      || (active.scan > 0 && (mission.type !== 'sites' || active.site >= (mission.sites?.length ?? 1)))
+      || (active.defending && (mission.type !== 'defense' || active.wave === mission.waves.length))) {
+    throw new Error('Save has invalid active campaign progress');
+  }
+}
+function campaignSurveyCount(run = game) {
+  return [...run.discovered].filter(key => /^sector-[0-5]-[0-3]$/.test(key)).length;
+}
+function currentCampaignMission() {
+  return campaignMissions.find(mission => !game.campaign.completed.includes(mission.id));
+}
+function campaignBeacon(mission) {
+  const stations = game.beaconStations;
+  const assigned = stations.find(station => station.id === game.campaign.beaconId);
+  const repaired = stations.find(station => station.repaired);
+  return assigned?.repaired ? assigned : repaired || (mission?.type === 'beacon' ? assigned || stations[0] : null);
+}
+function campaignReady(mission) {
+  const active = game.campaign.active;
+  if (!mission || active?.id !== mission.id) return false;
+  if (mission.type === 'count') return game.questState.counters[mission.counter] - active.baseline >= mission.amount;
+  if (mission.type === 'survey') return campaignSurveyCount() >= 3;
+  if (mission.type === 'beacon') return Boolean(campaignBeacon(mission)?.repaired);
+  if (mission.type === 'sites') return active.site >= (mission.sites?.length ?? 1);
+  if (mission.type === 'defense') return active.wave >= mission.waves.length;
+  return mission.type === 'talk';
+}
+function campaignFieldTarget(mission = currentCampaignMission()) {
+  const active = game.campaign.active;
+  if (!mission || active?.id !== mission.id || campaignReady(mission)) return null;
+  if (mission.sites) return mission.sites[active.site];
+  if (mission.type === 'beacon' || mission.type === 'defense' || mission.beaconSite) {
+    const station = campaignBeacon(mission);
+    if (!station) return null;
+    return { x: station.x, y: station.y, radius: 32, ...(mission.beaconSite || { label: mission.type === 'defense' ? 'Beacon defense console' : 'Beacon repair console' }) };
+  }
+  return null;
+}
+function campaignTargetDistance(target) {
+  return Math.hypot(game.player.x - target.x, game.player.y - target.y);
+}
+function campaignInteractionRadius(target) {
+  return target.radius ?? stationInteractionRadius;
+}
+function campaignStatus(mission = currentCampaignMission()) {
+  if (!mission) return 'CAMPAIGN COMPLETE // NETWORK ONLINE';
+  const npc = questNpcById(mission.npcId).name;
+  const active = game.campaign.active;
+  if (!active) return `Talk to the ${npc}.`;
+  if (campaignReady(mission)) return `Return to the ${npc}.`;
+  if (mission.type === 'count') return `${mission.objective} ${game.questState.counters[mission.counter] - active.baseline} / ${mission.amount}`;
+  if (mission.type === 'survey') return `${mission.objective} ${campaignSurveyCount()} / 3`;
+  const target = campaignFieldTarget(mission);
+  if (target && active.scan > 0) return `Tuning ${target.label} // ${Math.ceil(active.scan)}s remaining`;
+  if (active.defending) {
+    const remaining = game.enemies.filter(enemy => enemy.campaignEncounter === mission.id && enemy.hp > 0).length;
+    return remaining
+      ? `Wave ${active.wave + 1} / ${mission.waves.length} // ${remaining} remaining`
+      : `Wave ${active.wave + 1} / ${mission.waves.length} incoming`;
+  }
+  if (!target) return mission.objective;
+  const bearing = Math.atan2(target.y - game.player.y, target.x - game.player.x);
+  const direction = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'][(Math.round(bearing / (Math.PI / 4)) + 8) % 8];
+  const distance = campaignTargetDistance(target);
+  return `${target.label} // ${distance <= campaignInteractionRadius(target) ? `${interactBindingLabel()} to interact` : `${direction} ${Math.ceil(distance / 10)}m`}`;
+}
+function activeQuestCount() {
+  return game.questState.active.length + Number(Boolean(game.campaign.active));
+}
+function acceptCampaign(id) {
+  const mission = currentCampaignMission();
+  if (mission?.id !== id || game.campaign.active || getNearbyQuestSource() !== mission.npcId) return;
+  if (activeQuestCount() >= 3) {
+    showQuestMessage('QUEST CAPACITY FULL // COMPLETE OR ABANDON AN ACTIVE QUEST');
+    return;
+  }
+  game.campaign.active = { id, baseline: game.questState.counters[mission.counter] || 0, site: 0, scan: 0, wave: 0, defending: false, waveStarted: false, delay: 0 };
+  renderQuestDialog(mission.npcId);
+  renderQuestHud();
+}
+function completeCampaign(id) {
+  const mission = currentCampaignMission();
+  if (mission?.id !== id || !campaignReady(mission) || getNearbyQuestSource() !== mission.npcId) return;
+  if (mission.type === 'beacon') game.campaign.beaconId = campaignBeacon(mission).id;
+  game.campaign.completed.push(id);
+  if (id === 'record') {
+    if (!game.epilogue.guardianCleared && !game.enemies.some(enemy => enemy.voidStalker && enemy.hp > 0)) game.enemies.push(createVoidStalker());
+    epilogueNotice('CONTINUITY KEY RECOVERED // CHECK THE QUEST LOG FOR THE ARCHIVIST’S CLUE');
+  }
+  game.campaign.active = null;
+  rewardQuest(mission);
+  gameLog('INFO', `Campaign completed: ${mission.title}`);
+  updateInventoryUI();
+  updateAmmoUI();
+  renderQuestDialog(mission.npcId);
+  renderQuestHud();
+}
+function campaignDialogMarkup(sourceId) {
+  const mission = currentCampaignMission();
+  const past = mission ? campaignMissions.slice(0, campaignMissions.indexOf(mission)) : campaignMissions;
+  const debrief = past.filter(entry => entry.npcId === sourceId).at(-1);
+  const keyReport = sourceId === 'archivist' && hasContinuityKey() ? `<p class="campaign-debrief">${epilogueClue()}</p>` : '';
+  const lastReport = (debrief ? `<p class="campaign-debrief">${debrief.debrief}</p>` : '') + keyReport;
+  if (mission?.npcId !== sourceId) return lastReport;
+  const active = game.campaign.active;
+  const action = !active
+    ? `<button type="button" data-campaign-accept="${mission.id}">ACCEPT MAIN QUEST</button>`
+    : campaignReady(mission) ? `<button type="button" data-campaign-complete="${mission.id}">TURN IN MAIN QUEST</button>` : '';
+  return `${lastReport}<div class="quest-card campaign-card"><small>THE LAST SIGNAL // CHAPTER ${mission.chapter + 1}: ${campaignChapters[mission.chapter]}</small><b>${mission.title}</b><span>${mission.brief}</span><small>${active ? campaignStatus(mission) : mission.objective}</small>${action}</div>`;
+}
+function interactCampaignSite() {
+  const mission = currentCampaignMission();
+  const target = campaignFieldTarget(mission);
+  if (!target || campaignTargetDistance(target) > campaignInteractionRadius(target)) return false;
+  const active = game.campaign.active;
+  if (mission.type === 'beacon') {
+    const station = campaignBeacon(mission);
+    if (game.crafting?.recipeKey === `repairBeacon:${station.id}`) return false;
+    finishBeaconRepair(station);
+    game.campaign.beaconId = station.id;
+    ui.stationOutput.textContent = 'FIELD KIT INSTALLED // BEACON ONLINE';
+  } else if (mission.type === 'defense') {
+    if (!active.defending) {
+      active.defending = true;
+      active.delay = 2;
+    }
+  } else if (target.scan) {
+    if (!active.scan) active.scan = target.scan;
+  } else {
+    active.site++;
+  }
+  renderQuestHud();
+  return true;
+}
+function updateCampaign(dt) {
+  const mission = currentCampaignMission();
+  const active = game.campaign.active;
+  if (!active || (!active.scan && !active.defending)) return;
+  const target = campaignFieldTarget(mission);
+  if (!target) return;
+  const distance = campaignTargetDistance(target);
+  if (active.scan > 0) {
+    const inRange = distance <= campaignInteractionRadius(target);
+    active.scan = inRange ? Math.max(0, active.scan - dt) : 0;
+    if (inRange && !active.scan) {
+      active.site++;
+      ui.stationOutput.textContent = `SCAN LOCKED // ${target.label.toUpperCase()}`;
+      renderQuestHud();
+    }
+  } else if (distance > campaignDefenseRadius) {
+    game.enemies = game.enemies.filter(enemy => enemy.campaignEncounter !== mission.id);
+    active.defending = false;
+    active.waveStarted = false;
+    active.wave = 0;
+    active.delay = 0;
+    ui.stationOutput.textContent = 'TRANSMISSION LOST // RETURN TO THE CONSOLE TO RETRY';
+    renderQuestHud();
+  } else if (!game.enemies.some(enemy => enemy.campaignEncounter === mission.id && enemy.hp > 0)) {
+    if (active.waveStarted) {
+      active.wave++;
+      active.waveStarted = false;
+      active.defending = active.wave < mission.waves.length;
+      active.delay = 3;
+      renderQuestHud();
+      return;
+    }
+    active.delay = Math.max(0, active.delay - dt);
+    if (active.delay > 0) return;
+    spawnCampaignWave(mission, target, active.wave);
+    active.waveStarted = true;
+    renderQuestHud();
+  }
+}
+function spawnCampaignWave(mission, target, wave) {
+  const count = mission.waves[wave];
+  for (let index = 0; index < count; index++) {
+    const angle = index * Math.PI * 2 / count + wave * .6;
+    const x = target.x + Math.cos(angle) * 360;
+    const y = target.y + Math.sin(angle) * 360;
+    const biome = getBiome(x, y);
+    const variant = enemyVariants[wave === 2 && index < 2 ? 2 : index % 2];
+    const enemy = createBiomeEnemy(x, y, { ...biome, enemyFamily: { name: 'SIGNAL HORDE', ability: null, effect: null } }, variant);
+    if (enemy) enemy.campaignEncounter = mission.id;
+  }
+}
 function questNpcById(id) { return sanctuaryNpcDefinitions.find(npc => npc.id === id) || null; }
 const questCounterKeys = { kill: 'kills', collect: 'collected', explore: 'sectors', survive: 'survived', travel: 'travel', relic: 'relics', heal: 'heals', repair: 'repairs', repairBeacon: 'beaconRepairs' };
 function questObjectiveTotal(quest, state = game.questState) {
@@ -664,7 +960,7 @@ function showQuestMessage(message) {
 }
 function acceptQuest(id) {
   ensureQuestState();
-  if (game.questState.active.length >= 3) {
+  if (activeQuestCount() >= 3) {
     showQuestMessage('QUEST CAPACITY FULL // COMPLETE OR ABANDON AN ACTIVE QUEST');
     return;
   }
@@ -719,9 +1015,10 @@ function completeQuest(id) {
 }
 function renderQuestHud() {
   if (!questHud || !game.questState) return;
-  questHud.innerHTML = game.questState.active.length
-    ? `<strong>ACTIVE QUESTS</strong>${game.questState.active.map(quest => `<div class="quest-hud-item"><span>${quest.title}</span><b>${getQuestProgressLabel(quest)}</b></div>`).join('')}`
-    : '<strong>NO ACTIVE QUESTS</strong>';
+  const mission = currentCampaignMission();
+  const campaign = `<div class="campaign-tracker"><strong>THE LAST SIGNAL${mission ? ` // CHAPTER ${mission.chapter + 1}` : ''}</strong>${mission ? `<b>${mission.title}</b>` : ''}<span>${campaignStatus(mission)}</span></div>`;
+  const sideQuests = game.questState.active.map(quest => `<div class="quest-hud-item"><span>${quest.title}</span><b>${getQuestProgressLabel(quest)}</b></div>`).join('');
+  questHud.innerHTML = campaign + (sideQuests ? `<strong>OTHER ACTIVE QUESTS</strong>${sideQuests}` : '');
 }
 function getQuestProgressLabel(quest) {
   const progress = `${Math.floor(Math.min(quest.progress, quest.amount))} / ${quest.amount}`;
@@ -730,7 +1027,9 @@ function getQuestProgressLabel(quest) {
 function showQuestPanel() {
   if (!questPanel) return;
   questPanel.hidden = false;
-  questPanel.innerHTML = `<div class="quest-panel-inner"><strong>QUEST LOG</strong>${game.questState.active.map(quest => `<div class="quest-row"><b>${quest.title}</b><span>${quest.description}</span><small>${getQuestProgressLabel(quest)}</small><button data-quest-abandon="${quest.id}">ABANDON</button></div>`).join('') || '<p>No active quests.</p>'}<button data-quest-close>CLOSE</button></div>`;
+  const mission = currentCampaignMission();
+  questPanel.innerHTML = `<div class="quest-panel-inner"><strong>QUEST LOG // ${activeQuestCount()} / 3 ACTIVE</strong><div class="quest-row campaign-card"><b>THE LAST SIGNAL // ${game.campaign.completed.length} / ${campaignMissions.length} MISSIONS</b>${mission ? `<span>Chapter ${mission.chapter + 1}: ${campaignChapters[mission.chapter]} / ${mission.title}</span><span>${mission.objective}</span>` : ''}<small>${campaignStatus(mission)}</small></div>${game.questState.active.map(quest => `<div class="quest-row"><b>${quest.title}</b><span>${quest.description}</span><small>${getQuestProgressLabel(quest)}</small><button data-quest-abandon="${quest.id}">ABANDON</button></div>`).join('') || '<p>No other active quests.</p>'}<button data-quest-close>CLOSE</button></div>`;
+  if (hasContinuityKey()) questPanel.querySelector('.quest-panel-inner').insertAdjacentHTML('afterbegin', `<div class="quest-row campaign-card"><b>EPILOGUE // CONTINUITY KEY</b><span>${epilogueClue()}</span><small>${epilogueObjective()}</small></div>`);
 }
 function renderQuestDialog(sourceId) {
   if (!questDialog) return;
@@ -743,7 +1042,7 @@ function renderQuestDialog(sourceId) {
   const active = game.questState.active.filter(quest => (isBoard ? quest.bounty : quest.npcId === sourceId));
   questDialog.hidden = false;
   questDialog.dataset.sourceId = sourceId;
-  questDialog.innerHTML = `<div class="quest-dialog-inner"><button type="button" class="quest-close" data-quest-close>×</button><strong>${sourceName}</strong><p>${isBoard ? 'Three contracts are pinned. Return here when the work is done.' : npc.lines[Math.floor(Math.random() * npc.lines.length)]}</p>${active.map(quest => `<div class="quest-card"><b>${quest.title}</b><span>${quest.description}</span><small>${getQuestProgressLabel(quest)}${quest.npcId === 'armorer' ? ` // +${quest.armorerRepReward} REP` : ''}${quest.progress >= quest.amount ? ' // READY TO TURN IN' : ''}</small>${quest.progress >= quest.amount ? `<button type="button" data-quest-complete="${quest.id}">TURN IN</button>` : ''}</div>`).join('')}${available.map(quest => `<div class="quest-card"><b>${quest.title}</b><span>${quest.description}</span><small>REWARD: ${quest.reward.salvage || 0} SALVAGE${quest.npcId === 'armorer' ? ` // +${quest.armorerRepReward} REP` : ''}</small><button type="button" data-quest-accept="${quest.id}">ACCEPT</button></div>`).join('') || '<p>NO NEW QUESTS AVAILABLE.</p>'}</div>${sourceId === 'armorer' ? renderBlueprintShop() : ''}`;
+  questDialog.innerHTML = `<div class="quest-dialog-inner"><button type="button" class="quest-close" data-quest-close>×</button><strong>${sourceName}</strong><p>${isBoard ? 'Three contracts are pinned. Return here when the work is done.' : npc.lines[Math.floor(Math.random() * npc.lines.length)]}</p>${campaignDialogMarkup(sourceId)}${active.map(quest => `<div class="quest-card"><b>${quest.title}</b><span>${quest.description}</span><small>${getQuestProgressLabel(quest)}${quest.npcId === 'armorer' ? ` // +${quest.armorerRepReward} REP` : ''}${quest.progress >= quest.amount ? ' // READY TO TURN IN' : ''}</small>${quest.progress >= quest.amount ? `<button type="button" data-quest-complete="${quest.id}">TURN IN</button>` : ''}</div>`).join('')}${available.map(quest => `<div class="quest-card"><b>${quest.title}</b><span>${quest.description}</span><small>REWARD: ${quest.reward.salvage || 0} SALVAGE${quest.npcId === 'armorer' ? ` // +${quest.armorerRepReward} REP` : ''}</small><button type="button" data-quest-accept="${quest.id}">ACCEPT</button></div>`).join('') || '<p>NO OTHER QUESTS AVAILABLE.</p>'}</div>${sourceId === 'armorer' ? renderBlueprintShop() : ''}`;
 }
 function getNearbyQuestSource() {
   const positions = getSanctuaryNpcPositions();
@@ -885,6 +1184,7 @@ function handleControlPress(action) {
   const held = keys[action];
   keys[action] = true;
   if (held) return true;
+  if ((action === 'interact' || hasContinuityKey()) && !epilogueAudio) enableEpilogueAudio();
   if (action === 'map') setMapOpen(true);
   else if (action === 'zoom') cycleTacticalMapZoom();
   else if (action === 'interact') toggleStation();
@@ -899,6 +1199,13 @@ function isFiring() { return pointer.down || keys.fire || keys.fireAlt; }
 window.addEventListener('keydown', event => {
   const key = event.key.toLowerCase();
   const action = actionForBinding(key);
+  if (adminPanelOpen) {
+    if (event.key === 'Escape' && !event.repeat) {
+      event.preventDefault();
+      closeAdminPanel();
+    }
+    return;
+  }
   if (settingsOpener) {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -951,7 +1258,7 @@ window.addEventListener('keydown', event => {
     if (adminUnlockIndex === adminUnlockSequence.length) {
       adminUnlockIndex = 0;
       const code = window.prompt('ADMIN ACCESS CODE');
-      if (code === 'iAmAdmin') { adminMode = true; adminPanel.hidden = false; gameLog('INFO', 'Admin panel unlocked'); }
+      if (code === 'iAmAdmin') { adminMode = true; refreshAdminRunUI(); gameLog('INFO', 'Admin test lab unlocked in Pause'); }
       else { gameLog('WARN', 'Admin access denied'); }
     }
   } else { adminUnlockIndex = event.key === adminUnlockSequence[0] ? 1 : 0; }
@@ -967,9 +1274,11 @@ questDialog?.addEventListener('click', event => {
   event.preventDefault();
   event.stopPropagation();
   const target = event.target instanceof Element
-    ? event.target.closest('[data-quest-accept], [data-quest-complete], [data-buy-blueprint], [data-quest-close]')
+    ? event.target.closest('[data-campaign-accept], [data-campaign-complete], [data-quest-accept], [data-quest-complete], [data-buy-blueprint], [data-quest-close]')
     : null;
   if (!target) return;
+  if (target.dataset.campaignAccept) acceptCampaign(target.dataset.campaignAccept);
+  if (target.dataset.campaignComplete) completeCampaign(target.dataset.campaignComplete);
   if (target.dataset.questAccept) acceptQuest(target.dataset.questAccept);
   if (target.dataset.questComplete) completeQuest(target.dataset.questComplete);
   if (target.dataset.buyBlueprint) buyBlueprint(target.dataset.buyBlueprint);
@@ -1066,15 +1375,16 @@ function isAtFastTravelHub() {
 }
 mapCanvas.addEventListener('pointermove', event => {
   if (!mapOpen) return;
+  if (game.epilogue.dungeon) return;
   const { x, y } = getMapWorldPosition(event);
   const biome = getBiome(x, y);
   const biomeKey = getDiscoveryKey(x, y);
   mapBiomeName.textContent = game.discovered.has(biomeKey) ? biome.name : 'UNDISCOVERED';
 });
 mapCanvas.addEventListener('click', event => {
-  if (!mapOpen || event.button !== 0) return;
+  if (!mapOpen || event.button !== 0 || game.epilogue.dungeon) return;
   const { x, y } = getMapWorldPosition(event);
-  if (adminMode) {
+  if (isAdminTest()) {
     teleportPlayer(x, y);
     game.stationOpen = null;
     game.activeBeaconStationId = null;
@@ -1111,6 +1421,7 @@ function readLocalValue(key) {
   }
 }
 function writeLegacyValue(key, value) {
+  if (isAdminTest()) return;
   try {
     localStorage.setItem(key, value);
   } catch (error) {
@@ -1278,6 +1589,7 @@ function showMainMenu() {
   clearSaveImport();
   saveSlotsPanel.classList.add('hidden');
   howToPlay.classList.add('hidden');
+  changeLog.classList.add('hidden');
   mainMenu.classList.remove('hidden');
   const lastSlot = saveData.lastSlot;
   continueButton.disabled = !savesReady || !Number.isInteger(lastSlot) || !readSaveSlots()[lastSlot];
@@ -1287,12 +1599,20 @@ function showHowToPlay() {
   document.querySelector('#controls-help').textContent =
     `${['w', 'a', 's', 'd'].map(label).join(' / ')} move. Mouse aims. ${label('fire')} or ${label('fireAlt')} fires. `
     + `${label('pulse')} uses pulse, ${label('medkit')} uses a medkit, and ${label('interact')} interacts. `
-    + `${label('map')} opens the tactical map, ${label('zoom')} changes mini-map zoom, and ${label('quests')} opens the quest log. Esc pauses.`;
+    + `${label('map')} opens the tactical map, ${label('zoom')} changes mini-map zoom, and ${label('quests')} opens the quest log. `
+    + `${['slot1', 'slot2', 'slot3', 'slot4'].map(label).join(' / ')} select weapons. ${label('shift')} sprints. Esc pauses.`;
+  showMenuInfo(howToPlay);
+}
+function showMenuInfo(panel) {
   mainMenu.classList.add('hidden');
   saveSlotsPanel.classList.add('hidden');
-  howToPlay.classList.remove('hidden');
+  howToPlay.classList.toggle('hidden', panel !== howToPlay);
+  changeLog.classList.toggle('hidden', panel !== changeLog);
+  panel.querySelector('.how-to-play-content').scrollTop = 0;
+  panel.querySelector('.menu-info-title').focus();
 }
 async function returnToMainMenu() {
+  if (isAdminTest()) return discardAdminTest();
   const run = game;
   if (game.active && currentSaveSlot !== null && !await saveGame()) {
     if (game === run) saveButton.textContent = 'SAVE FAILED';
@@ -1436,20 +1756,27 @@ function restoreGame(savedState) {
     delete quest.expiresAt;
   });
   restored.discovered = restored.discovered instanceof Set ? restored.discovered : new Set(restored.discovered || ['sanctuary']);
+  if (!Object.hasOwn(parsed, 'campaign')) migrateCampaign(restored);
+  else if (!restored.campaign || typeof restored.campaign !== 'object') throw new Error('Save has invalid campaign data');
+  else validateCampaign(restored);
   restored.blueprints = { ...(parsed.blueprints || {}) };
+  restoreEpilogue(restored, defaults);
   restored.armorerRep = Math.max(0, Number(parsed.armorerRep) || 0);
   restored.enemies = restored.enemies.filter(Boolean);
-  restored.enemies.forEach(enemy => {
+  const savedEnemies = [...restored.enemies, ...(restored.epilogue.dungeon?.world.enemies || [])];
+  savedEnemies.forEach(enemy => {
     if (enemy.wraithGuards) enemy.wraithGuards = enemy.wraithGuards.filter(Boolean);
     if (enemy.wraithPests) enemy.wraithPests = enemy.wraithPests.filter(Boolean);
     const children = [...(enemy.wraithGuards || []), ...(enemy.wraithPests || []), ...(enemy.pest ? [enemy.pest] : [])].filter(Boolean);
     children.forEach(child => {
       if (child.wraithGuard) child.guardOwner = enemy;
       if (child.wraithPest) child.pestOwner = enemy;
-      if (!child.defeated && !restored.enemies.includes(child)) restored.enemies.push(child);
+      const ownerGroup = restored.enemies.includes(enemy) ? restored.enemies : restored.epilogue.dungeon.world.enemies;
+      if (!child.defeated && !ownerGroup.includes(child)) ownerGroup.push(child);
     });
   });
-  restored.enemies.forEach(enemy => {
+  const enemyGroups = [restored.enemies, restored.epilogue.dungeon?.world.enemies].filter(Boolean);
+  enemyGroups.flat().forEach(enemy => {
     if (enemy.voidWorm || enemy.voidWalker || enemy.voidStalker
         || (Number.isInteger(enemy.familyIndex) && !enemy.wraithGuard && !enemy.wraithPest && !enemy.nebulaMissile)) {
       if (!Number.isFinite(enemy.hp)) gameLog('WARN', `Legacy save omitted enemy health; restoring maximum HP: ${enemy.family}`);
@@ -1457,18 +1784,20 @@ function restoreGame(savedState) {
     }
   });
   restored.bullets?.forEach(bullet => { if (Array.isArray(bullet.hitEnemies)) bullet.hitEnemies = new Set(bullet.hitEnemies); });
-  restored.projectiles?.forEach(projectile => {
+  [...restored.projectiles, ...(restored.epilogue.dungeon?.world.projectiles || [])].forEach(projectile => {
     if (projectile?.followTarget && projectile.life === null) projectile.life = Infinity;
   });
   return protectGameHealth(restored);
 }
 async function saveGame(slot = currentSaveSlot) {
+  if (isAdminTest()) return false;
   const run = game;
   if (salvageDeposit) await salvageDeposit;
   if (game !== run || !game.active) return false;
   return persistGame(slot);
 }
 async function persistGame(slot, overrides) {
+  if (isAdminTest()) return false;
   if (!Number.isInteger(slot) || slot < 0 || slot >= saveSlotCount) {
     gameLog('WARN', 'Cannot save without a valid slot');
     return false;
@@ -1496,6 +1825,11 @@ async function persistGame(slot, overrides) {
   }
 }
 function bankSalvage() {
+  if (isAdminTest()) {
+    game.banked += game.salvage;
+    game.salvage = 0;
+    return;
+  }
   if (!game.salvage || salvageDeposit || Date.now() < salvageRetryAt) return;
   const run = game;
   const amount = run.salvage;
@@ -1566,6 +1900,7 @@ function downloadSaveBackup(kind, entries, status, label) {
 }
 function exportCurrentRun() {
   try {
+    if (isAdminTest()) throw new Error('Disposable test runs cannot be exported.');
     if (!game.active) throw new Error('No active run to export.');
     downloadSaveBackup('slot', [{
       slot: currentSaveSlot,
@@ -1680,13 +2015,17 @@ async function handleMenuAction(action) {
   if (action === 'new') renderSaveSlots('new');
   if (action === 'load') renderSaveSlots('load');
   if (action === 'how-to-play') showHowToPlay();
+  if (action === 'change-log') showMenuInfo(changeLog);
   if (action === 'continue') {
     const slot = saveData.lastSlot;
     if (Number.isInteger(slot) && readSaveSlots()[slot]) loadSave(slot);
     else renderSaveSlots('load');
   }
   if (action === 'back') showMainMenu();
-  if (action === 'back-from-help') showMainMenu();
+  if (action === 'back-from-help' || action === 'back-from-change-log') {
+    showMainMenu();
+    mainMenu.querySelector(`[data-menu-action="${action === 'back-from-help' ? 'how-to-play' : 'change-log'}"]`).focus();
+  }
 }
 document.querySelectorAll('[data-menu-action]').forEach(button => button.addEventListener('click', () => handleMenuAction(button.dataset.menuAction)));
 saveSlotsPanel.querySelector('[data-menu-action="back"]').addEventListener('click', event => {
@@ -1777,8 +2116,12 @@ saveImportPreview.addEventListener('click', event => {
     return applySaveImport(preview);
   }
 });
-document.querySelector('#export-live-save').addEventListener('click', exportCurrentRun);
+exportRunButton.addEventListener('click', exportCurrentRun);
 saveButton?.addEventListener('click', async () => {
+  if (isAdminTest()) {
+    liveSaveStatus.textContent = 'DISPOSABLE TEST RUN // SAVING DISABLED';
+    return;
+  }
   if (currentSaveSlot === null) {
     togglePause();
     renderSaveSlots('new');
@@ -1788,7 +2131,9 @@ saveButton?.addEventListener('click', async () => {
   }
   saveButton.disabled = true;
   saveButton.textContent = 'SAVING...';
+  const savingRun = game;
   const saved = await saveGame();
+  if (game !== savingRun) return;
   saveButton.disabled = false;
   saveButton.textContent = saved ? 'GAME SAVED' : 'SAVE FAILED';
   window.setTimeout(() => { saveButton.textContent = 'SAVE GAME'; }, 1200);
@@ -1842,28 +2187,20 @@ saveStorageReady.then(() => {
   const lastSlot = saveData.lastSlot;
   continueButton.disabled = !Number.isInteger(lastSlot) || !readSaveSlots()[lastSlot];
 });
-document.querySelector('#restart-button').onclick = () => start(); adminPanel.hidden = !adminMode; adminPanel.querySelectorAll('[data-admin]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); adminAction(button.dataset.admin, button.dataset.value); })); document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const quantityButton = event.target.closest('[data-craft-quantity]'); if (quantityButton) { event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(quantityButton.dataset.craftQuantity), Number(ui.craftDetails.dataset.weaponSlot || 0)); return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm, Number(ui.craftDetails.dataset.quantity || 1), Number(ui.craftDetails.dataset.weaponSlot || 0)); } });
+document.querySelector('#restart-button').onclick = () => {
+  if (!isAdminTest()) return start();
+  start(null, null, true);
+  if (adminScenario) loadAdminScenario(adminScenario);
+};
+document.querySelectorAll('[data-craft]').forEach(button => button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); openCraftDetails(button.dataset.craft); })); ui.craftDetails.addEventListener('click', event => { const closeButton = event.target.closest('[data-close-details]'); if (closeButton) { event.preventDefault(); event.stopPropagation(); ui.craftDetails.hidden = true; ui.craftDetails.innerHTML = ''; return; } const quantityButton = event.target.closest('[data-craft-quantity]'); if (quantityButton) { event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(quantityButton.dataset.craftQuantity), Number(ui.craftDetails.dataset.weaponSlot || 0)); return; } const craftButton = event.target.closest('[data-craft-confirm]'); if (craftButton) { event.preventDefault(); event.stopPropagation(); craftItem(craftButton.dataset.craftConfirm, Number(ui.craftDetails.dataset.quantity || 1), Number(ui.craftDetails.dataset.weaponSlot || 0)); } });
 ui.weaponBar?.addEventListener('click', event => { const slotButton = event.target.closest('[data-weapon-slot]'); if (!slotButton) return; switchWeapon(Number(slotButton.dataset.weaponSlot)); });
 ui.craftDetails.addEventListener('click', event => { const slotButton = event.target.closest('[data-craft-slot]'); if (!slotButton) return; event.preventDefault(); event.stopPropagation(); openCraftDetails(ui.craftDetails.dataset.recipeKey, Number(ui.craftDetails.dataset.quantity || 1), Number(slotButton.dataset.craftSlot)); });
-function adminAction(action, value) { if (!game.active) start(); if (action === 'spawn') for (let i = 0; i < 20; i++) spawn(); if (action === 'refill') { game.health = 100; game.ammo = clipSize; game.ammoReserve.pistolAmmo = startingAmmoReserve * clipSize; game.ammoReserve.magicGauntletAmmo = 6; game.cosmosGauntletRechargeTimer = 6; game.magicGauntletRechargeTimer = 5; game.salvage = 0; game.relics = 0; } if (action === 'invincible') { if (!adminInvincible) game.health = 100; adminInvincible = !adminInvincible; adminPanel.querySelector('[data-admin="invincible"]').textContent = `INVINCIBLE: ${adminInvincible ? 'ON' : 'OFF'}`; } if (action === 'reset') { teleportPlayer(0, 0); game.enemies = []; game.bullets = []; game.discovered = new Set(['sanctuary']); game.biomeKey = null; } }
-const baseAdminAction = adminAction;
-adminAction = function(action, value) {
-  if (action !== 'grant') return baseAdminAction(action, value);
-  if (!game.active) start();
-  resourceTypes.forEach(resource => { game.vault[resource.key] = (game.vault[resource.key] || 0) + 100; });
-  game.relics += 10;
-  game.atlasCrystals += 5;
-  writeLegacyValue('horde-vault', JSON.stringify(game.vault));
-  writeLegacyValue('horde-relics', game.relics);
-  writeLegacyValue('horde-atlas-crystals', game.atlasCrystals);
-  updateInventoryUI();
-  updateAmmoUI();
-  ui.stationOutput.textContent = 'ADMIN GRANT // MATERIALS +100 // RELICS +10 // ATLAS +5';
-};
 function getBiomeSector(distance) { return biomeBoundaries.findIndex(boundary => distance < boundary) === -1 ? sectorRegions.length - 1 : biomeBoundaries.findIndex(boundary => distance < boundary); }
 function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camera.x = x; game.camera.y = y; game.biomeKey = null; game.biomeName = null; }
-function start(savedState = null, slot = currentSaveSlot) {
+function start(savedState = null, slot = currentSaveSlot, testRun = false) {
   const loadedRun = savedState ? restoreGame(savedState) : freshGame();
+  if (testRun) adminTestRuns.add(loadedRun);
+  adminInvincible = false;
   setMapOpen(false);
   if (questDialog) questDialog.hidden = true;
   if (questPanel) questPanel.hidden = true;
@@ -1876,11 +2213,12 @@ function start(savedState = null, slot = currentSaveSlot) {
   gameShell.classList.remove('manager-view');
   ui.manager.hidden = true;
   managerDrag = null;
-  currentSaveSlot = slot;
+  currentSaveSlot = testRun ? null : slot;
   runSaveBaselines = new Map(slot === null ? [] : [[slot, readSaveSlots()[slot]]]);
   game.active = true;
   randomizeBiomeData(game.seed);
-  if (!savedState || game.hazardZones === null) game.hazardZones = generateHazardZones();
+  const overworld = game.epilogue.dungeon?.world ?? game;
+  if (!savedState || overworld.hazardZones === null) overworld.hazardZones = generateHazardZones();
   if (!savedState) {
     game.enemies.push(createVoidStalker());
     const random = seededRandom(game.seed + 17);
@@ -1897,6 +2235,7 @@ function start(savedState = null, slot = currentSaveSlot) {
   ui.start.classList.add('hidden');
   ui.over.classList.add('hidden');
   ui.pause.classList.add('hidden');
+  refreshAdminRunUI();
   lastTime = performance.now();
   cancelAnimationFrame(animation);
   animation = requestAnimationFrame(loop);
@@ -1906,8 +2245,317 @@ function togglePause() {
   game.paused = !game.paused;
   clearControlInput();
   ui.pause.classList.toggle('hidden', !game.paused);
+  refreshAdminRunUI();
   if (game.paused) resumeButton?.focus();
 }
+function isAdminTest(run = game) { return adminTestRuns.has(run); }
+function hasInfiniteAmmo() { return isAdminTest() && adminInfiniteAmmoRuns.has(game); }
+function refreshAdminRunUI() {
+  const test = isAdminTest();
+  adminOpenButton.hidden = !adminMode;
+  adminBadge.hidden = !test;
+  document.querySelector('#discard-test-after-death').hidden = !test;
+  saveButton.disabled = test;
+  exportRunButton.disabled = test;
+  mainMenuButton.textContent = test ? 'DISCARD TEST AND RETURN' : 'MAIN MENU';
+  if (test) {
+    saveButton.textContent = 'SAVE GAME';
+    liveSaveStatus.textContent = 'DISPOSABLE TEST RUN // SAVING DISABLED';
+  }
+  else if (liveSaveStatus.textContent === 'DISPOSABLE TEST RUN // SAVING DISABLED') liveSaveStatus.textContent = '';
+}
+function openAdminPanel() {
+  if (!adminMode || !game.active || !game.paused) return;
+  adminPanelOpen = true;
+  ui.pause.classList.add('hidden');
+  adminPanel.classList.remove('hidden');
+  renderAdminPanel(isAdminTest() ? 'Changes apply only to this disposable run.' : 'Your current run stays paused in memory while you test.');
+  adminPanel.querySelector('[data-admin="close"]').focus();
+}
+function closeAdminPanel() {
+  adminPanelOpen = false;
+  adminPanel.classList.add('hidden');
+  if (game.active && game.paused) {
+    ui.pause.classList.remove('hidden');
+    adminOpenButton.focus();
+  }
+}
+async function beginAdminTest() {
+  if (!adminMode || !adminPanelOpen || !game.paused || isAdminTest()) return;
+  const normal = game;
+  if (salvageDeposit) await salvageDeposit;
+  if (game !== normal || !adminPanelOpen || !game.paused) return;
+  suspendedRun = { game, slot: currentSaveSlot, baselines: runSaveBaselines, salvageRetryAt, salvageSaveFailed, saveStatus: liveSaveStatus.textContent };
+  adminScenario = null;
+  start(null, null, true);
+  togglePause();
+  openAdminPanel();
+}
+function discardAdminTest() {
+  if (!isAdminTest() || !suspendedRun) return;
+  closeAdminPanel();
+  const previous = suspendedRun;
+  suspendedRun = null;
+  adminScenario = null;
+  adminInvincible = false;
+  setMapOpen(false);
+  game = previous.game;
+  currentSaveSlot = previous.slot;
+  runSaveBaselines = previous.baselines;
+  salvageRetryAt = previous.salvageRetryAt;
+  salvageSaveFailed = previous.salvageSaveFailed;
+  liveSaveStatus.textContent = previous.saveStatus;
+  randomizeBiomeData(game.seed);
+  clearControlInput();
+  if (questPanel) questPanel.hidden = true;
+  if (questDialog) questDialog.hidden = true;
+  ui.over.classList.add('hidden');
+  ui.pause.classList.remove('hidden');
+  refreshAdminRunUI();
+  updateInventoryUI();
+  updateAmmoUI();
+  renderWeaponBar();
+  renderQuestHud();
+  const biome = getBiome(game.player.x, game.player.y);
+  updateBiomeEffects(biome);
+  updateBiomeHazard(biome);
+  updateUI(Math.hypot(game.player.x, game.player.y), false, biome);
+  drawGameWorld();
+  resumeButton.focus();
+  lastTime = performance.now();
+  cancelAnimationFrame(animation);
+  animation = requestAnimationFrame(loop);
+}
+function resetAdminCombat(keepEncounter = false) {
+  game.enemies = keepEncounter ? game.enemies.filter(enemy => !enemy.defeated && (enemy.foreman || enemy.voidStalker)) : [];
+  for (const key of dungeonWorldFields) {
+    if (!['enemies', 'hazardZones', 'nodes'].includes(key)) game[key] = [];
+  }
+  game.meleeAttack = null;
+  game.radBeamActive = false;
+  game.enemyStatus = null;
+  game.radioactiveBlindTimer = game.attackDisabledTimer = game.decayTimer = 0;
+  game.spawnTimer = game.voidSpawnTimer = 0;
+}
+function setAdminHealth() {
+  const invincible = adminInvincible;
+  adminInvincible = false;
+  game.health = 100;
+  adminInvincible = invincible;
+}
+function loadAdminScenario(scenario) {
+  if (!isAdminTest()) return 'Start a disposable test run first.';
+  const { kind, id } = scenario;
+  const missionIndex = kind === 'mission' ? campaignMissions.findIndex(mission => mission.id === id) : -1;
+  if ((kind === 'mission' && missionIndex < 0) || (kind === 'room' && !Object.hasOwn(dungeonRooms, id))
+      || (kind === 'foreman' && ![1, 2, 3].includes(id)) || !['mission', 'room', 'foreman', 'stalker'].includes(kind)) {
+    return 'Select a valid testing scenario.';
+  }
+  if (game.epilogue.dungeon) leaveDungeon();
+  resetAdminCombat();
+  game.crafting = null;
+  game.stationOpen = null;
+  game.activeBeaconStationId = null;
+  game.questState.active = [];
+  game.campaign.active = null;
+  setAdminHealth();
+  if (kind === 'mission') {
+    game.campaign.completed = campaignMissions.slice(0, missionIndex).map(mission => mission.id);
+    game.epilogue.guardianCleared = false;
+    game.epilogue.firstClear = false;
+    game.epilogue.portalFound = false;
+    if (game.campaign.completed.includes('first-light') && !campaignBeacon()) finishBeaconRepair(game.beaconStations[0]);
+    game.campaign.beaconId = campaignBeacon()?.id ?? null;
+    const contact = sanctuaryNpcDefinitions.findIndex(npc => npc.id === campaignMissions[missionIndex].npcId);
+    const { x, y } = getSanctuaryNpcPositions()[contact];
+    teleportPlayer(x, y);
+    game.enemies.push(createVoidStalker());
+  } else {
+    game.campaign.completed = campaignMissions.map(mission => mission.id);
+    game.epilogue.guardianCleared = kind !== 'stalker';
+    game.epilogue.firstClear = false;
+    game.epilogue.portalFound = true;
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    if (kind === 'stalker') game.enemies.push(createVoidStalker());
+    else {
+      enterDungeon();
+      const dungeon = game.epilogue.dungeon;
+      const room = kind === 'foreman' ? 'arena' : id;
+      const afterFoundry = !['entry', 'works'].includes(room);
+      const afterRelay = ['ward', 'records', 'staging', 'arena'].includes(room);
+      if (afterFoundry) dungeon.cleared.push('works');
+      if (afterRelay) dungeon.relayStep = relayOrder.length;
+      if (['records', 'staging', 'arena'].includes(room)) dungeon.cleared.push('ward');
+      if (room === 'arena') dungeon.checkpoint = 'staging';
+      switchDungeonRoom(room, room === 'arena' ? 'staging' : undefined);
+      if (kind === 'foreman' && id > 1) {
+        const boss = game.enemies.find(enemy => enemy.foreman);
+        for (let phase = 1; phase < id; phase++) {
+          boss.hp = 0;
+          updateForeman(boss, 0);
+        }
+      }
+    }
+  }
+  adminScenario = scenario;
+  game.spawnTimer = 1;
+  game.voidSpawnTimer = 3;
+  if (questDialog) questDialog.hidden = true;
+  if (questPanel) questPanel.hidden = true;
+  updateStationUI();
+  renderQuestHud();
+  drawGameWorld();
+  return 'Scenario loaded. Back to Pause, then Resume to test.';
+}
+function spawnAdminEnemy(id) {
+  const { x, y } = game.player;
+  const dungeon = game.epilogue.dungeon;
+  const spawn = { x: x + 135, y: y + 100 };
+  if (dungeon) constrainDungeonPosition(spawn);
+  if (id === 'walker' || id === 'worm') {
+    const enemy = id === 'walker' ? createVoidWalker(spawn.x, spawn.y) : createVoidWorm(spawn.x, spawn.y);
+    if (dungeon) enemy.dungeonEnemy = true;
+    return addEnemy(enemy);
+  }
+  const variant = enemyVariants.find(entry => entry.name === id);
+  if (!variant) return null;
+  const local = getBiome(spawn.x, spawn.y);
+  const biome = local.enemyFamily ? local : getBiome(beaconRegionRadius + 400, 200);
+  const enemy = createBiomeEnemy(spawn.x, spawn.y, biome, variant);
+  if (enemy && dungeon) enemy.dungeonEnemy = true;
+  return enemy;
+}
+function adminDiagnosticText() {
+  const dungeon = game.epilogue.dungeon;
+  const boss = game.enemies.find(enemy => !enemy.defeated && (enemy.foreman || enemy.voidStalker));
+  return [
+    'Fight the Horde - disposable test run',
+    `Seed: ${game.seed} | Time: ${game.elapsedTime.toFixed(2)}s`,
+    `Position: ${game.player.x.toFixed(1)}, ${game.player.y.toFixed(1)} | ${getBiome(game.player.x, game.player.y).name}`,
+    `Campaign: ${currentCampaignMission()?.title ?? 'complete'}${game.campaign.active ? ' (active)' : ''}`,
+    `Other active quests: ${game.questState.active.map(quest => quest.title).join(', ') || 'none'}`,
+    `Dungeon: ${dungeon?.room ?? 'outside'} | Checkpoint: ${dungeon?.checkpoint ?? 'none'}`,
+    `Boss: ${boss ? `${boss.family} | ${boss.foreman ? `Phase ${boss.phase}: ${boss.moveState}` : boss.huntState} | ${boss.hp.toFixed(1)} HP` : 'none'}`,
+    `Health: ${game.health.toFixed(1)} | Weapon: ${weaponCatalog[game.weapon].name} | Ammo: ${getAmmoLabel()} | Invincible: ${adminInvincible ? 'on' : 'off'}`,
+    `Threats: ${game.enemies.filter(enemy => !enemy.defeated).length}`
+  ].join('\n');
+}
+function renderAdminPanel(message) {
+  const test = isAdminTest();
+  document.querySelector('#admin-tools').hidden = !test;
+  adminPanel.querySelector('[data-admin="start"]').hidden = test;
+  adminPanel.querySelector('[data-admin="discard"]').hidden = !test;
+  adminPanel.querySelector('[data-admin="invincible"]').setAttribute('aria-pressed', String(adminInvincible));
+  adminPanel.querySelector('[data-admin="infinite-ammo"]').setAttribute('aria-pressed', String(hasInfiniteAmmo()));
+  adminReport.value = test ? adminDiagnosticText() : '';
+  adminStatus.textContent = message;
+}
+async function copyAdminReport() {
+  adminReport.value = adminDiagnosticText();
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(adminReport.value);
+      if (adminPanelOpen) adminStatus.textContent = 'Bug report copied.';
+      return;
+    } catch (error) {
+      gameLog('WARN', 'Could not copy admin diagnostics', error.message);
+    }
+  }
+  if (adminPanelOpen) {
+    adminReport.focus();
+    adminReport.select();
+    adminStatus.textContent = 'Clipboard unavailable. The report is selected for manual copy.';
+  }
+}
+function adminAction(action, value, amount) {
+  if (!adminMode || !adminPanelOpen || !isAdminTest() || !game.paused) return;
+  let message;
+  if (action === 'scenario') {
+    const [kind, id] = (value || '').split(':');
+    message = loadAdminScenario({ kind, id: kind === 'foreman' ? Number(id) : id });
+  } else if (action === 'reset') message = adminScenario ? loadAdminScenario(adminScenario) : 'Load a scenario before resetting it.';
+  else if (action === 'mission') message = loadAdminScenario({ kind: 'mission', id: value });
+  else if (action === 'spawn') message = spawnAdminEnemy(value) ? 'Enemy spawned.' : 'Cannot spawn that enemy here.';
+  else if (action === 'clear') {
+    resetAdminCombat(true);
+    message = 'Threats cleared. Scenario bosses are preserved.';
+  } else if (action === 'health') {
+    setAdminHealth();
+    message = 'Health refilled.';
+  } else if (action === 'weapon') {
+    if (!Object.hasOwn(weaponCatalog, value)) message = 'Select a valid weapon.';
+    else {
+      const weapon = weaponCatalog[value];
+      let slot = game.weaponSlots.indexOf(value);
+      if (slot < 0) slot = game.weaponSlots.indexOf(null);
+      if (slot < 0) slot = game.weaponSlots.indexOf(game.weapon);
+      game.weaponSlots[slot] = value;
+      game.unlockedWeapons[value] = true;
+      switchWeapon(slot + 1);
+      game.ammo = game.weaponAmmo[value] = weapon.kind === 'melee' ? 0 : weapon.magazine;
+      game.reloadPending = game.weaponReloadPending[value] = false;
+      message = `${weapon.name} equipped in slot ${slot + 1}.`;
+    }
+  } else if (action === 'ammo') {
+    const weapon = weaponCatalog[game.weapon];
+    for (const [key, recipe] of Object.entries(ammoCatalog)) game.ammoReserve[key] = Math.max(game.ammoReserve[key] || 0, recipe.amount);
+    if (weapon.kind !== 'melee') game.ammo = weapon.magazine;
+    game.weaponAmmo[game.weapon] = game.ammo;
+    game.reloadPending = game.weaponReloadPending[game.weapon] = false;
+    message = 'Magazine and ammo reserves refilled.';
+  } else if (action === 'infinite-ammo') {
+    if (hasInfiniteAmmo()) adminInfiniteAmmoRuns.delete(game);
+    else adminInfiniteAmmoRuns.add(game);
+    message = `Infinite ammo ${hasInfiniteAmmo() ? 'on' : 'off'}.`;
+  } else if (action === 'invincible') {
+    if (!adminInvincible) setAdminHealth();
+    adminInvincible = !adminInvincible;
+    message = `Invincibility ${adminInvincible ? 'on' : 'off'}.`;
+  } else if (action === 'blueprint') {
+    if (requiresBlueprint(value)) {
+      game.blueprints[value] = true;
+      message = `${getBlueprintName(value)} blueprint unlocked.`;
+    } else message = 'Select a valid blueprint.';
+  } else if (action === 'grant') {
+    if (!Number.isInteger(amount) || amount < 1 || amount > 10000) message = 'Enter a whole amount from 1 to 10,000.';
+    else if (resourceTypes.some(resource => resource.key === value)) {
+      game.vault[value] = (game.vault[value] || 0) + amount;
+      message = `Granted ${amount} ${value} to the vault.`;
+    } else if (['salvage', 'relics', 'atlasCrystals', 'steelPlate'].includes(value)) {
+      if (value === 'steelPlate') game.stationItems.steelPlate = (game.stationItems.steelPlate || 0) + amount;
+      else if (value === 'salvage') game.banked += amount;
+      else game[value] += amount;
+      message = `Granted ${amount} ${value}.`;
+    } else message = 'Select a valid material.';
+  } else if (action === 'copy') return copyAdminReport();
+  else return;
+  updateInventoryUI();
+  updateAmmoUI();
+  renderAdminPanel(message);
+}
+function fillAdminSelect(id, entries) {
+  document.querySelector(`#${id}`).innerHTML = entries.map(([value, name]) => `<option value="${value}">${name}</option>`).join('');
+}
+fillAdminSelect('admin-scenario', [['stalker', 'Void Stalker'], ...Object.entries(dungeonRooms).map(([id, room]) => [`room:${id}`, room.name]),
+  ...[1, 2, 3].map(phase => [`foreman:${phase}`, `Foreman - Phase ${phase}`])]);
+fillAdminSelect('admin-mission', campaignMissions.map(mission => [mission.id, mission.title]));
+fillAdminSelect('admin-enemy', [...enemyVariants.map(enemy => [enemy.name, enemy.name]), ['walker', 'Void Walker'], ['worm', 'Void Worm']]);
+fillAdminSelect('admin-weapon', Object.entries(weaponCatalog).map(([id, weapon]) => [id, weapon.name]));
+fillAdminSelect('admin-blueprint', [...Object.entries(weaponRecipes), ...Object.entries(armorRecipes)].map(([key, recipe]) => [key, recipe.name]));
+fillAdminSelect('admin-material', [...resourceTypes.map(resource => [resource.key, resource.name]),
+  ['steelPlate', 'Steel Plate'], ['salvage', 'Banked Salvage'], ['relics', 'Relics'], ['atlasCrystals', 'Atlas Crystals']]);
+adminOpenButton.addEventListener('click', openAdminPanel);
+document.querySelector('#discard-test-after-death').addEventListener('click', discardAdminTest);
+adminPanel.addEventListener('click', event => {
+  const action = event.target.closest('[data-admin]')?.dataset.admin;
+  if (action === 'start') return beginAdminTest();
+  if (action === 'close') return closeAdminPanel();
+  if (action === 'discard') return discardAdminTest();
+  if (!action) return;
+  const selectors = { scenario: 'scenario', spawn: 'enemy', weapon: 'weapon', mission: 'mission', blueprint: 'blueprint', grant: 'material' };
+  const value = selectors[action] ? document.querySelector(`#admin-${selectors[action]}`).value : '';
+  return adminAction(action, value, Number(document.querySelector('#admin-amount').value));
+});
 function switchWeapon(index) {
   const weaponId = game.weaponSlots[index - 1];
   if (!weaponId || !game.unlockedWeapons[weaponId]) return;
@@ -2118,12 +2766,13 @@ function fireBeam(weapon) {
 }
 function updateRadBeam(dt) {
   const weapon = weaponCatalog.radBeam;
-  if (game.attackDisabledTimer > 0 || game.weapon !== 'radBeam' || game.ammo <= 0) {
+  const unlimited = hasInfiniteAmmo();
+  if (game.attackDisabledTimer > 0 || game.weapon !== 'radBeam' || (!unlimited && game.ammo <= 0)) {
     game.radBeamActive = false;
     return;
   }
 
-  const firingTime = Math.min(dt, game.ammo - game.radBeamDrainTimer);
+  const firingTime = unlimited ? dt : Math.min(dt, game.ammo - game.radBeamDrainTimer);
   if (firingTime <= 0) {
     game.radBeamActive = false;
     return;
@@ -2153,6 +2802,7 @@ function updateRadBeam(dt) {
     if (enemy.hp <= 0) defeatEnemy(enemy);
   });
 
+  if (unlimited) return;
   game.radBeamDrainTimer += firingTime;
   while (game.radBeamDrainTimer >= 1 && game.ammo > 0) {
     game.ammo--;
@@ -2283,8 +2933,9 @@ function updateVoidBatarBullet(bullet, dt) {
 function shoot() { 
   if (!game.active || game.attackDisabledTimer > 0) return;
   const weapon = weaponCatalog[game.weapon]; 
+  const unlimited = hasInfiniteAmmo();
   if (weapon.continuousBeam) {
-    game.radBeamActive = game.ammo > 0;
+    game.radBeamActive = unlimited || game.ammo > 0;
     return;
   }
   if (game.fireTimer > 0) return;
@@ -2297,12 +2948,14 @@ function shoot() {
     return; 
   } 
 
-  if (game.ammo <= 0) { 
-    game.reloadPending = true; 
-    return; 
-  } 
-  game.ammo--; 
-  if (game.ammo === 0) game.reloadPending = true; 
+  if (!unlimited) {
+    if (game.ammo <= 0) {
+      game.reloadPending = true;
+      return;
+    }
+    game.ammo--;
+    if (game.ammo === 0) game.reloadPending = true;
+  }
   game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier; 
 
   if (weapon.beam) {
@@ -2403,28 +3056,24 @@ function createVoidWalker(x, y) {
   return enemy;
 }
 function createVoidStalker() {
-  const orbitRadius = mapRadius + 3000;
-  const orbitAngle = Math.random() * Math.PI * 2;
-  const maxHp = 900;
+  const maxHp = 220;
   const enemy = {
-    x: Math.cos(orbitAngle) * orbitRadius,
-    y: Math.sin(orbitAngle) * orbitRadius,
-    r: 120,
-    speed: 280,
+    x: voidPortal.x + 450,
+    y: voidPortal.y - 180,
+    r: 58,
+    speed: 205,
     voidStalker: true,
     isAggroed: false,
-    orbitRadius,
-    orbitAngle,
-    orbitSpeed: .05,
-    attackTimer: 4,
-    attackFlashTimer: 0,
+    huntState: 'patrol',
+    huntTimer: 0,
+    huntAngle: 0,
     maxHp,
     color: '#b34dff',
     family: 'VOID STALKER',
     familyIndex: 24,
-    variant: 'THE VOID BOSS',
+    variant: 'PORTAL GUARDIAN',
     boss: true,
-    contactDamage: 28,
+    contactDamage: 10,
     score: 2500,
     drops: 25,
     abilityTimer: 0,
@@ -2434,6 +3083,428 @@ function createVoidStalker() {
   attachEnemyHealth(enemy, maxHp);
 
   return enemy;
+}
+
+function hasContinuityKey(run = game) { return run.campaign.completed.includes('record'); }
+function epilogueClue() {
+  return 'The key answers northeast of Sanctuary, just past the map edge. Look for an indigo arch. The Stalker is its guard.';
+}
+function epilogueNotice(text) {
+  ui.announcement.textContent = text;
+  ui.announcement.className = 'biome-announcement show';
+  game.announcementTimer = 4;
+  ui.stationOutput.textContent = text;
+}
+function epilogueObjective() {
+  const { dungeon, guardianCleared, portalFound, firstClear } = game.epilogue;
+  if (!dungeon) return firstClear ? 'FOREMAN DEFEATED // REMATCH AVAILABLE'
+    : !guardianCleared ? 'FIND AND DEFEAT THE VOID STALKER' : portalFound ? 'ENTER THE VOID PORTAL' : 'FIND THE INDIGO ARCH';
+  if (dungeon.room === 'arena') {
+    if (dungeon.victory) return 'THE FOREMAN IS DOWN // EXIT OR RETURN TO STAGING';
+    const boss = game.enemies.find(enemy => enemy.foreman);
+    return `THE FOREMAN // PHASE ${boss?.phase ?? 1} OF 3 // ${boss?.waveGates.length ? 'HORDE INCOMING' : `HORDE WAVE ${boss?.wave ?? 0}`}`;
+  }
+  if (dungeonRooms[dungeon.room].enemies && !dungeon.cleared.includes(dungeon.room)) return 'CLEAR THE ROOM TO OPEN THE FORWARD DOORS';
+  if (dungeon.room === 'relay' && dungeon.relayStep < relayOrder.length) return 'ALIGN THE RELAYS // READ THE PANEL AT THE CENTER';
+  return `${dungeonRooms[dungeon.room].name.toUpperCase()} // ${interactBindingLabel()} AT MARKED DOORS`;
+}
+function restoreEpilogue(run, defaults) {
+  if (Object.hasOwn(run, 'epilogue') && (!run.epilogue || typeof run.epilogue !== 'object')) throw new Error('Invalid epilogue state');
+  const state = run.epilogue;
+  if (['guardianCleared', 'portalFound', 'firstClear'].some(key => typeof state[key] !== 'boolean')
+      || !Array.isArray(state.loot) || state.loot.some(id => !['supplies', 'records'].includes(id))
+      || (state.firstClear && (!hasContinuityKey(run) || !state.guardianCleared))) throw new Error('Invalid epilogue progress');
+  const dungeon = state.dungeon;
+  if (dungeon !== null) {
+    if (!dungeon || !hasContinuityKey(run) || !state.guardianCleared || !['entry', 'staging'].includes(dungeon.checkpoint)
+        || !dungeon.world || dungeonWorldFields.some(key => !Array.isArray(dungeon.world[key]) && !(key === 'hazardZones' && dungeon.world[key] === null))
+        || !Array.isArray(dungeon.cleared) || dungeon.cleared.some(id => !Object.hasOwn(dungeonRooms, id) || !dungeonRooms[id].enemies)
+        || !Number.isInteger(dungeon.relayStep) || dungeon.relayStep < 0 || dungeon.relayStep > relayOrder.length) throw new Error('Invalid dungeon checkpoint');
+    // Keep saved supplies and health, but discard transient room and combat state.
+    for (const key of dungeonWorldFields) run[key] = defaults[key];
+    dungeon.room = dungeon.checkpoint;
+    dungeon.victory = false;
+    run.player = { x: dungeonOrigin, y: 0, angle: run.player.angle };
+    run.camera = { x: dungeonOrigin, y: 0 };
+    run.meleeAttack = null;
+    run.radBeamActive = false;
+    run.biomeKey = null;
+    run.stationOpen = null;
+    run.activeBeaconStationId = null;
+  }
+  const overworld = dungeon?.world ?? run;
+  overworld.enemies = overworld.enemies.filter(Boolean);
+  const previous = overworld.enemies.find(enemy => enemy.voidStalker && !enemy.defeated);
+  if (state.guardianCleared) overworld.enemies = overworld.enemies.filter(enemy => !enemy.voidStalker);
+  else if (previous && !previous.huntState) {
+    const updated = createVoidStalker();
+    if (Number.isFinite(previous.hp) && previous.maxHp > 0) updated.hp *= Math.max(.01, Math.min(1, previous.hp / previous.maxHp));
+    overworld.enemies[overworld.enemies.indexOf(previous)] = updated;
+  } else if (!previous && hasContinuityKey(run) && !dungeon) {
+    overworld.enemies.push(createVoidStalker());
+  }
+  if (state.firstClear) run.blueprints.continuityWeave = true;
+}
+function clearDungeonCombat() {
+  for (const key of dungeonWorldFields) game[key] = [];
+  game.meleeAttack = null;
+  game.radBeamActive = false;
+}
+function enterDungeon() {
+  if (game.crafting || game.campaign.active) {
+    epilogueNotice('FINISH ACTIVE CRAFTING AND STORY MISSIONS BEFORE ENTERING');
+    return;
+  }
+  const world = Object.fromEntries(dungeonWorldFields.map(key => [key, game[key]]));
+  game.epilogue.dungeon = { world, checkpoint: 'entry', room: 'entry', cleared: [], relayStep: 0, victory: false };
+  game.stationOpen = null;
+  game.activeBeaconStationId = null;
+  switchDungeonRoom('entry');
+}
+function leaveDungeon() {
+  const { world } = game.epilogue.dungeon;
+  clearDungeonCombat();
+  Object.assign(game, world);
+  game.epilogue.dungeon = null;
+  teleportPlayer(voidPortal.x - 110, voidPortal.y);
+}
+function switchDungeonRoom(id, from) {
+  clearDungeonCombat();
+  const dungeon = game.epilogue.dungeon;
+  const room = dungeonRooms[id];
+  dungeon.room = id;
+  dungeon.victory = false;
+  if (id === 'entry' || id === 'staging') dungeon.checkpoint = id;
+  const arrival = room.doors.find(([target]) => target === from);
+  teleportPlayer(dungeonOrigin + (arrival?.[1] ?? 0) * .78, (arrival?.[2] ?? 0) * .78);
+  if (id === 'arena') game.enemies.push(createForeman());
+  else if (room.enemies && !dungeon.cleared.includes(id)) {
+    room.enemies.forEach((variant, index) => {
+      const angle = index * Math.PI * 2 / room.enemies.length;
+      const x = dungeonOrigin + Math.cos(angle) * room.w * .24;
+      const y = Math.sin(angle) * room.h * .24;
+      const enemy = createBiomeEnemy(x, y, {
+        ...getDungeonBiome(), sector: 5, key: 'sector-4-0', enemyFamily: { name: 'CONTINUITY SENTINEL', ability: null, effect: null }
+      }, enemyVariants[variant]);
+      enemy.dungeonEnemy = true;
+    });
+  }
+}
+function dungeonControls() {
+  const dungeon = game.epilogue.dungeon;
+  const room = dungeonRooms[dungeon.room];
+  const controls = room.doors.map(([id, x, y, label]) => ({ id, x, y, label, kind: 'door' }));
+  if (dungeon.room === 'relay' && dungeon.relayStep < relayOrder.length) {
+    controls.push({ x: 0, y: -70, label: 'Read maintenance panel', kind: 'panel' });
+    controls.push(...['AMBER', 'WHITE', 'BLUE'].map((id, i) => ({ id, x: (i - 1) * 170, y: 140, kind: 'relay', label: `${id} relay` })));
+  }
+  if (room.loot && !game.epilogue.loot.includes(room.loot)) controls.push({ id: room.loot, x: 95, y: -95, label: 'Open sealed cache', kind: 'loot' });
+  return controls;
+}
+function dungeonDoorLocked(id) {
+  const dungeon = game.epilogue.dungeon;
+  if (dungeon.room === 'arena') return !dungeon.victory;
+  if (dungeon.room === 'relay' && id === 'ward') return dungeon.relayStep !== relayOrder.length;
+  return Boolean(dungeonRooms[dungeon.room].enemies && !dungeon.cleared.includes(dungeon.room)
+    && !((dungeon.room === 'works' && id === 'entry') || (dungeon.room === 'ward' && id === 'relay')
+      || (dungeon.room === 'stores' && id === 'works') || (dungeon.room === 'records' && id === 'ward')));
+}
+function interactEpilogue() {
+  const { dungeon, guardianCleared } = game.epilogue;
+  if (dungeon) {
+    const control = dungeonControls().find(({ x, y }) => Math.hypot(game.player.x - dungeonOrigin - x, game.player.y - y) <= 68);
+    if (!control) return true;
+    if (control.kind === 'door') {
+      if (dungeonDoorLocked(control.id)) epilogueNotice('SEALED // COMPLETE THIS ROOM FIRST');
+      else if (control.id === 'exit') leaveDungeon();
+      else switchDungeonRoom(control.id, dungeon.room);
+    } else if (control.kind === 'panel') {
+      epilogueNotice('MAINTENANCE ORDER // BLUE (COOLING) → AMBER (POWER) → WHITE (SIGNAL)');
+    } else if (control.kind === 'relay') {
+      if (control.id === relayOrder[dungeon.relayStep]) dungeon.relayStep++;
+      else dungeon.relayStep = Number(control.id === relayOrder[0]);
+      epilogueNotice(dungeon.relayStep === relayOrder.length ? 'RELAY ALIGNED // WARD OPEN' : `RELAY ALIGNMENT // ${dungeon.relayStep} OF 3`);
+    } else if (dungeon.cleared.includes(dungeon.room)) {
+      game.epilogue.loot.push(control.id);
+      rewardQuest({ reward: control.id === 'supplies' ? { medkits: 2, ammo: { pistolAmmo: 4 } } : { atlasCrystals: 2, relics: 1 } });
+      epilogueNotice(control.id === 'supplies' ? 'CACHE RECOVERED // MEDKITS AND PISTOL CLIPS' : 'CACHE RECOVERED // ATLAS CRYSTALS AND A RELIC');
+    } else epilogueNotice('CLEAR THE ROOM BEFORE OPENING THE CACHE');
+    return true;
+  }
+  if (!hasContinuityKey() || Math.hypot(game.player.x - voidPortal.x, game.player.y - voidPortal.y) > 85) return false;
+  game.epilogue.portalFound = true;
+  if (!guardianCleared) epilogueNotice('PORTAL SEALED // DEFEAT THE VOID STALKER');
+  else enterDungeon();
+  return true;
+}
+function getDungeonBiome() {
+  const base = getVoidBiome();
+  return { ...base, name: dungeonRooms[game.epilogue.dungeon.room].name, key: 'continuity-dungeon',
+    dark: '#111820', animationKey: 'dungeon', effects: { ...base.effects, moveMultiplier: 1 } };
+}
+function constrainDungeonPosition(entity, room = dungeonRooms[game.epilogue.dungeon.room]) {
+  const padding = entity.r ?? 14;
+  entity.x = Math.max(dungeonOrigin - room.w / 2 + padding, Math.min(dungeonOrigin + room.w / 2 - padding, entity.x));
+  entity.y = Math.max(-room.h / 2 + padding, Math.min(room.h / 2 - padding, entity.y));
+}
+let epilogueAudio;
+function enableEpilogueAudio() {
+  if (!window.AudioContext) return;
+  try {
+    epilogueAudio ??= new window.AudioContext();
+  } catch (error) {
+    gameLog('WARN', 'Could not start boss audio', error.message);
+    return;
+  }
+  if (epilogueAudio.state === 'suspended') epilogueAudio.resume().catch(error => gameLog('WARN', 'Could not enable boss audio', error.message));
+}
+function epilogueWarning(frequency) {
+  if (epilogueAudio?.state !== 'running') return;
+  const oscillator = epilogueAudio.createOscillator();
+  const volume = epilogueAudio.createGain();
+  const now = epilogueAudio.currentTime;
+  oscillator.frequency.setValueAtTime(frequency, now);
+  oscillator.frequency.exponentialRampToValueAtTime(frequency * .55, now + .3);
+  volume.gain.setValueAtTime(.055, now);
+  volume.gain.exponentialRampToValueAtTime(.001, now + .35);
+  oscillator.connect(volume);
+  volume.connect(epilogueAudio.destination);
+  oscillator.start(now);
+  oscillator.stop(now + .35);
+}
+function bossCharge(enemy, dt, speed, damage) {
+  const x = enemy.x;
+  const y = enemy.y;
+  enemy.x += Math.cos(enemy.chargeAngle) * speed * dt;
+  enemy.y += Math.sin(enemy.chargeAngle) * speed * dt;
+  if (game.epilogue.dungeon) constrainDungeonPosition(enemy);
+  const player = game.player;
+  if (!enemy.chargeHit && projectileImpactTime(x, y, enemy.x, enemy.y, player.x, player.y, enemy.r + 10) !== null) {
+    enemy.chargeHit = true;
+    game.health -= damage * (1 - (getArmorEffects().contactDamageReduction || 0));
+  }
+}
+function insideStalkerTerritory(player = game.player) {
+  return Math.hypot(player.x, player.y) > mapRadius && Math.hypot(player.x - voidPortal.x, player.y - voidPortal.y) <= stalkerTerritory;
+}
+function updateVoidStalker(enemy, dt) {
+  const p = game.player;
+  const inTerritory = enemy.foremanReinforcement || insideStalkerTerritory(p);
+  const distance = Math.hypot(p.x - enemy.x, p.y - enemy.y);
+  const facing = Math.atan2(p.y - enemy.y, p.x - enemy.x);
+  const remaining = enemy.huntTimer;
+  enemy.huntTimer -= dt;
+  if (!inTerritory || (!enemy.foremanReinforcement && Math.hypot(enemy.x - voidPortal.x, enemy.y - voidPortal.y) > stalkerTerritory + 200)) {
+    enemy.isAggroed = false;
+    enemy.huntState = 'patrol';
+  }
+  if (enemy.huntState === 'patrol') {
+    if (inTerritory && (enemy.isAggroed || distance < 650)) {
+      enemy.isAggroed = true;
+      enemy.huntState = 'circle';
+      enemy.huntTimer = 2.2;
+      return;
+    }
+    enemy.huntAngle = (enemy.huntAngle + dt * .20) % (Math.PI * 2);
+    const x = voidPortal.x + Math.cos(enemy.huntAngle) * 510;
+    const y = voidPortal.y + Math.sin(enemy.huntAngle) * 510;
+    const angle = Math.atan2(y - enemy.y, x - enemy.x);
+    const step = Math.min(240 * dt, Math.hypot(x - enemy.x, y - enemy.y));
+    enemy.x += Math.cos(angle) * step;
+    enemy.y += Math.sin(angle) * step;
+    return;
+  }
+  if (enemy.huntState === 'circle') {
+    const direction = facing + (distance > 400 ? .38 : distance < 190 ? 1.8 : 1.16);
+    enemy.x += Math.cos(direction) * enemy.speed * dt;
+    enemy.y += Math.sin(direction) * enemy.speed * dt;
+    if (enemy.huntTimer <= 0 && distance < 540) {
+      enemy.huntState = 'windup';
+      enemy.huntTimer = .85;
+      enemy.chargeAngle = facing;
+      epilogueWarning(150);
+    }
+  } else if (enemy.huntState === 'windup' && enemy.huntTimer <= 0) {
+    enemy.huntState = 'lunge';
+    enemy.huntTimer = .67;
+    enemy.chargeHit = false;
+  } else if (enemy.huntState === 'lunge') {
+    bossCharge(enemy, Math.min(dt, remaining), 960, 24);
+    if (enemy.huntTimer <= 0) {
+      enemy.huntState = 'recover';
+      enemy.huntTimer = 2.4;
+    }
+  } else if (enemy.huntState === 'recover' && enemy.huntTimer <= 0) {
+    enemy.huntState = 'circle';
+    enemy.huntTimer = 2.3;
+  }
+}
+const foremanPhases = [
+  { interval: 13, waveSize: 4, limit: 9, attacks: ['slam', 'fan', 'sweep'] },
+  { interval: 10, waveSize: 6, limit: 14, attacks: ['charge', 'burst', 'slam', 'charge'] },
+  { interval: 7, waveSize: 8, limit: 19, attacks: ['grid', 'charge', 'cross', 'burst', 'fan'] }
+];
+const foremanArenaLimit = 32;
+const foremanReinforcements = [
+  ['skirmisher', 42], ['hunter', 30], ['tank', 13], ['elite', 9],
+  ['worm', 4], ['walker', 2], ['mini-boss', 1], ['stalker', .15]
+];
+function rollForemanReinforcement(roll, stalkerAvailable) {
+  const pool = foremanReinforcements.filter(([type]) => type !== 'stalker' || stalkerAvailable);
+  let ticket = roll * pool.reduce((total, [, weight]) => total + weight, 0);
+  return pool.find(([, weight]) => (ticket -= weight) < 0)[0];
+}
+function updateForemanHorde(enemy, dt, phase) {
+  enemy.waveTimer -= dt;
+  if (enemy.waveTimer > 0) return;
+  const living = game.enemies.filter(add => add !== enemy && add.hp > 0 && !add.defeated).length;
+  if (!enemy.waveGates.length) {
+    if (living >= phase.limit) {
+      enemy.waveTimer = 2;
+      return;
+    }
+    const { w, h } = dungeonRooms.arena;
+    enemy.waveGates = [-1, 1].flatMap(side => [-1, 1].map(row => ({
+      x: dungeonOrigin + side * (w / 2 - 100), y: row * (h / 2 - 90)
+    })));
+    enemy.waveTimer = 1.15;
+    epilogueWarning(125);
+    return;
+  }
+  const gates = enemy.waveGates.filter(gate => Math.hypot(game.player.x - gate.x, game.player.y - gate.y) >= 210);
+  const count = gates.length ? Math.min(phase.waveSize, phase.limit - living) : 0;
+  for (let i = 0; i < count; i++) {
+    const gate = gates[i % gates.length];
+    const angle = i * Math.PI * .75;
+    const { x, y } = { x: gate.x + Math.cos(angle) * 28, y: gate.y + Math.sin(angle) * 28 };
+    const type = rollForemanReinforcement(Math.random(), !enemy.summonedStalker);
+    if (type === 'stalker') {
+      const stalker = createVoidStalker();
+      Object.assign(stalker, { x, y, foremanReinforcement: true, isAggroed: true, huntState: 'circle', huntTimer: 2 });
+      stalker.hp = stalker.maxHp = 125;
+      if (addEnemy(stalker)) enemy.summonedStalker = true;
+    } else if (type === 'worm' || type === 'walker') {
+      addEnemy(type === 'worm' ? createVoidWorm(x, y) : createVoidWalker(x, y));
+    } else {
+      const sector = Math.floor(Math.random() * sectorRegions.length);
+      const region = Math.floor(Math.random() * sectorRegions[sector].length);
+      const variant = enemyVariants.find(entry => entry.name.toLowerCase() === type);
+      createBiomeEnemy(x, y, { ...sectorRegions[sector][region], sector: sector + 1, key: `sector-${sector}-${region}` }, variant);
+    }
+  }
+  if (count > 0) enemy.wave++;
+  enemy.waveGates = [];
+  enemy.waveTimer = count > 0 ? phase.interval : 2;
+}
+function createForeman() {
+  const maxHp = 660;
+  const enemy = { x: dungeonOrigin, y: -125, r: 60, hp: maxHp, maxHp, family: 'THE FOREMAN',
+    variant: 'CONTINUITY OVERSEER', familyIndex: 24, boss: true, foreman: true, phase: 1,
+    pattern: 0, moveState: 'recover', moveTimer: 2, contactDamage: 14, color: '#ff925e', shieldTimer: 0,
+    wave: 0, waveTimer: 3, waveGates: [], summonedStalker: false };
+  attachEnemyHealth(enemy);
+  return enemy;
+}
+function updateForeman(enemy, dt) {
+  const player = game.player;
+  if (enemy.phase < 3 && enemy.hp <= enemy.maxHp * (3 - enemy.phase) / 3) {
+    enemy.phase++;
+    enemy.pattern = 0;
+    enemy.moveState = 'recover';
+    enemy.moveTimer = 1.7;
+    enemy.r = enemy.phase === 2 ? 49 : 68;
+    enemy.zones = [];
+    enemy.waveTimer = Math.min(enemy.waveTimer, 1.7);
+    epilogueNotice(enemy.phase === 2 ? 'THE FOREMAN // CONTAINMENT BROKEN' : 'THE FOREMAN // EMERGENCY OVERRIDE');
+    epilogueWarning(260);
+    return;
+  }
+  const phase = foremanPhases[enemy.phase - 1];
+  if (game.epilogue.dungeon?.room === 'arena') updateForemanHorde(enemy, dt, phase);
+  const remaining = enemy.moveTimer;
+  enemy.moveTimer -= dt;
+  if (enemy.moveState === 'charge') {
+    bossCharge(enemy, Math.min(dt, remaining), enemy.phase === 2 ? 1080 : 1160, 34);
+    if (enemy.moveTimer > 0) return;
+    enemy.moveState = 'recover';
+    enemy.moveTimer = 1.15;
+    return;
+  }
+  if (enemy.moveTimer > 0) {
+    if (enemy.moveState === 'recover' && enemy.phase > 1 && enemy.moveTimer < .8
+        && Math.hypot(player.x - enemy.x, player.y - enemy.y) > 160) {
+      const direction = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+      enemy.x += Math.cos(direction) * 145 * dt;
+      enemy.y += Math.sin(direction) * 145 * dt;
+    }
+    return;
+  }
+  if (enemy.moveState === 'windup') {
+    if (enemy.attack === 'charge') {
+      enemy.moveState = 'charge';
+      enemy.moveTimer = .65;
+      enemy.chargeHit = false;
+      return;
+    }
+    if (enemy.attack === 'fan' || enemy.attack === 'burst') {
+      const radial = enemy.attack === 'burst';
+      const count = radial ? 16 : 7;
+      for (let i = 0; i < count; i++) {
+        const angle = enemy.chargeAngle + (radial ? i * Math.PI * 2 / count : (i - 3) * .17);
+        const speed = radial ? 485 : 660;
+        game.projectiles.push({ x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+          life: 1.9, radius: 8, damage: radial ? 17 : 14, color: '#ffcb81' });
+      }
+    } else if (enemy.zones.some(zone => zone.radius
+      ? Math.hypot(player.x - zone.x, player.y - zone.y) <= zone.radius
+      : Math.abs(player.x - zone.x) <= zone.w / 2 && Math.abs(player.y - zone.y) <= zone.h / 2)) {
+      game.health -= (enemy.phase === 1 ? 25 : 35) * (1 - (getArmorEffects().voidDamageReduction || 0));
+    }
+    enemy.moveState = 'impact';
+    enemy.moveTimer = .24;
+    return;
+  }
+  if (enemy.moveState === 'impact') {
+    enemy.moveState = 'recover';
+    enemy.moveTimer = enemy.phase === 3 ? .85 : 1.2;
+    enemy.zones = [];
+    return;
+  }
+  enemy.moveState = 'windup';
+  enemy.attack = phase.attacks[enemy.pattern++ % phase.attacks.length];
+  enemy.moveTimer = enemy.attack === 'charge' ? .72 : enemy.attack === 'cross' ? 1.15 : 1;
+  enemy.chargeAngle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+  enemy.zones = [];
+  if (enemy.attack === 'slam') enemy.zones.push({ x: player.x, y: player.y, radius: 138 });
+  if (enemy.attack === 'sweep' || enemy.attack === 'cross') {
+    const { w, h } = dungeonRooms.arena;
+    enemy.zones.push({ x: player.x, y: 0, w: 156, h });
+    if (enemy.attack === 'cross') enemy.zones.push({ x: dungeonOrigin, y: player.y, w, h: 140 });
+  }
+  if (enemy.attack === 'grid') {
+    enemy.zones.push({ x: player.x, y: player.y, radius: 155 });
+    for (const x of [-490, -245, 0, 245, 490]) {
+      enemy.zones.push({ x: dungeonOrigin + x, y: -228, radius: 105 }, { x: dungeonOrigin + x, y: 228, radius: 105 });
+    }
+  }
+  epilogueWarning(enemy.phase === 1 ? 340 : 210);
+}
+function finishForeman() {
+  const state = game.epilogue;
+  state.dungeon.victory = true;
+  clearDungeonCombat();
+  game.enemyStatus = null;
+  game.decayTimer = game.attackDisabledTimer = game.radioactiveBlindTimer = 0;
+  if (state.firstClear) {
+    epilogueNotice('THE FOREMAN DEFEATED // REMATCH COMPLETE');
+    return;
+  }
+  state.firstClear = true;
+  game.blueprints.continuityWeave = true;
+  epilogueNotice('FIRST CLEAR // CONTINUITY WEAVE BLUEPRINT UNLOCKED');
+  questDialog.dataset.sourceId = '';
+  questDialog.innerHTML = `<div class="quest-dialog-inner"><strong>EPILOGUE // THE LAST SHIFT</strong><p>The Foreman's voice breaks through the static: “Shift complete. You can go home now.” The remaining machinery powers down. For the first time, the Continuity facility is quiet.</p><p>Blueprint recovered: Continuity Weave. The armour can now be crafted at an Arsenal.</p><button type="button" class="quest-close" data-quest-close>CLOSE</button></div>`;
+  questDialog.hidden = false;
 }
 
 function spawn() {
@@ -2561,7 +3632,7 @@ function createBiomeEnemy(x, y, biome, variant = null) {
   };
 
   attachEnemyHealth(enemy, scaledHp);
-  addEnemy(enemy);
+  if (!addEnemy(enemy)) return null;
   if (hasEnemyEffect(enemy, 'death-fireballs')) attachEmberFireballs(enemy);
   if (enemy.effect === 'wraith-boss-guards') spawnWraithBossGuards(enemy);
   return enemy;
@@ -2574,6 +3645,8 @@ function attachEnemyHealth(enemy, initialHealth = enemy.hp ?? enemy.maxHp) {
     enumerable: true,
     get: () => health,
     set: value => {
+      if (enemy.voidStalker && !enemy.foremanReinforcement && value < health && !insideStalkerTerritory()) return;
+      if (enemy.foreman && value < health && enemy.phase < 3) value = Math.max(value, enemy.maxHp * (3 - enemy.phase) / 3);
       const attemptedDamage = health - value;
       if (attemptedDamage > 0 && hasEnemyEffect(enemy, 'wraith-boss-guards') && enemy.wraithGuards.some(guard => !guard.defeated)) return;
       if (attemptedDamage > 0 && hasEnemyEffect(enemy, 'damage-ignore') && Math.random() < .05) return;
@@ -3251,6 +4324,18 @@ function triggerGlassDesertDeath(enemy) {
 function defeatEnemy(enemy, bonus = 0, source = 'player') {
   if (!enemy || enemy.defeated || enemy.hp > 0) return;
   enemy.defeated = true;
+  if (enemy.voidStalker && !enemy.foremanReinforcement) {
+    game.epilogue.guardianCleared = true;
+    if (hasContinuityKey()) epilogueNotice('VOID STALKER DEFEATED // PORTAL UNSEALED');
+  }
+  if (enemy.foreman) {
+    finishForeman();
+    return;
+  }
+  if (enemy.dungeonEnemy) {
+    if (source === 'player') updateQuestProgress('kill');
+    return;
+  }
   if (enemy.wraithGuard && enemy.guardOwner && !enemy.guardOwner.defeated
       && enemy.guardOwner.wraithGuards.every(guard => guard.defeated)) {
     enemy.guardOwner.wraithGuardRespawnCooldown = 20;
@@ -3275,12 +4360,17 @@ function defeatEnemy(enemy, bonus = 0, source = 'player') {
       enemy.pestOwner.pestCooldown = 7;
     }
   }
+  const arena = game.epilogue.dungeon?.room === 'arena';
   if (enemy.voidWorm) {
-    if (Math.random() < .33) game.atlasCrystals++;
+    if (!arena && Math.random() < .33) game.atlasCrystals++;
     if (enemy.canSplit && Math.random() < .15) {
       const activeWorms = game.enemies.filter(candidate => candidate.voidWorm && !candidate.defeated).length;
       const splitCount = Math.min(2, Math.max(0, 8 - activeWorms));
       for (let i = 0; i < splitCount; i++) addEnemy(createVoidWorm(enemy.x + (i ? 26 : -26), enemy.y, false));
+    }
+    if (arena) {
+      if (source === 'player') updateQuestProgress('kill');
+      return;
     }
   }
   if (!enemy.wraithPest && !enemy.nebulaMissile && !enemy.wraithGuard) dropResource(enemy.x, enemy.y, enemy.drops || 1);
@@ -3319,7 +4409,7 @@ function dropResource(x, y, amount = 1) { const resource = randomResource(); gam
 function openChest(node) { node.taken = true; for (let i = 0; i < 3; i++) dropResource(node.x, node.y, 2 + Math.floor(Math.random() * 4)); game.salvage += 2; burst(node.x, node.y, 18, 190); }
 function collectDrop(drop) { game.inventory[drop.type] += drop.amount; updateQuestProgress('collect', drop.amount); drop.life = 0; }
 function reloadAmmo() {
-  if (!game.reloadPending || game.fireTimer > 0) return;
+  if (hasInfiniteAmmo() || !game.reloadPending || game.fireTimer > 0) return;
   const weapon = weaponCatalog[game.weapon];
   if (weapon.kind === 'melee') {
     game.reloadPending = false;
@@ -3336,7 +4426,8 @@ function reloadAmmo() {
   if (game.weapon === 'cosmosGauntlet') releaseCosmosExplosion();
   game.reloadPending = false;
 }
-function updateAmmoUI() { const weapon = weaponCatalog[game.weapon]; ui.ammo.textContent = weapon.kind === 'melee' ? 'MELEE' : game.ammo; ui.ammoStorage.textContent = weapon.kind === 'melee' ? '-' : game.ammoReserve[weapon.ammo] || 0; ui.medkits.textContent = game.stationItems.medkit || 0; ui.weaponName.textContent = weapon.name; ui.ammoType.textContent = weapon.kind === 'melee' ? 'CLOSE RANGE' : ammoCatalog[weapon.ammo].name; }
+function getAmmoLabel() { return weaponCatalog[game.weapon].kind === 'melee' ? 'MELEE' : hasInfiniteAmmo() ? '∞' : game.ammo; }
+function updateAmmoUI() { const weapon = weaponCatalog[game.weapon]; ui.ammo.textContent = getAmmoLabel(); ui.ammoStorage.textContent = weapon.kind === 'melee' ? '-' : game.ammoReserve[weapon.ammo] || 0; ui.medkits.textContent = game.stationItems.medkit || 0; ui.weaponName.textContent = weapon.name; ui.ammoType.textContent = weapon.kind === 'melee' ? 'CLOSE RANGE' : ammoCatalog[weapon.ammo].name; }
 function updateAtlasCrystalUI() { if (atlasCrystalCounter) atlasCrystalCounter.textContent = String(game.atlasCrystals || 0).padStart(2, '0'); }
 const baseUpdateAmmoUI = updateAmmoUI;
 updateAmmoUI = function() { baseUpdateAmmoUI(); updateAtlasCrystalUI(); };
@@ -3451,6 +4542,7 @@ function finishManagerDrag(event) {
       x: world.x,
       y: world.y
     });
+    updateQuestProgress('repair');
   }
   renderManagerInventory();
 }
@@ -3473,6 +4565,8 @@ function getNearbyBeaconBench() {
     .sort((a, b) => a.distance - b.distance)[0] || null;
 }
 function toggleStation() {
+  if (interactEpilogue()) return;
+  if (interactCampaignSite()) return;
   const questSource = getNearbyQuestSource();
   if (questSource) {
     updateStationUI();
@@ -3522,7 +4616,6 @@ function updateStationUI() {
   if (activeBeaconStation && repairButton) repairButton.dataset.craft = `repairBeacon:${activeBeaconStation.id}`;
   ui.stations.hidden = !game.stationOpen;
   ui.stations.classList.toggle('beacon-menu', Boolean(game.activeBeaconStationId));
-  adminPanel.hidden = !adminMode || Boolean(game.stationOpen);
   document.querySelectorAll('[data-station]').forEach(card => { card.hidden = card.dataset.station !== game.stationOpen; });
   const title = ui.stations.querySelector('.station-title');
   if (title) title.textContent = game.stationOpen === 'beacon-repair'
@@ -3564,6 +4657,7 @@ function getBlueprintSalvageCost(recipeKey) {
   return 10 + Math.ceil(getBlueprintRepCost(recipeKey) * 1.5 / 5) * 5;
 }
 function getBlueprintRequirementLabel(recipeKey) {
+  if (recipeKey === 'continuityWeave') return 'BLUEPRINT REQUIRED // DEFEAT THE FOREMAN';
   return recipeKey === 'radBeam'
     ? 'BLUEPRINT REQUIRED // RADIOACTIVE MINI-BOSS DROP (35%)'
     : `BLUEPRINT REQUIRED // ARMORER: ${getBlueprintRepCost(recipeKey)} REP + ${getBlueprintSalvageCost(recipeKey)} SALVAGE`;
@@ -3579,8 +4673,8 @@ function buyBlueprint(recipeKey) {
     showQuestMessage('BANKING SALVAGE // TRY AGAIN IN A MOMENT');
     return false;
   }
-  if (!requiresBlueprint(recipeKey) || recipeKey === 'radBeam') {
-    showQuestMessage(recipeKey === 'radBeam' ? 'RAD BEAM BLUEPRINT // RADIOACTIVE MINI-BOSS DROP ONLY' : 'THIS RECIPE DOES NOT REQUIRE A BLUEPRINT');
+  if (!requiresBlueprint(recipeKey) || ['radBeam', 'continuityWeave'].includes(recipeKey)) {
+    showQuestMessage(requiresBlueprint(recipeKey) ? getBlueprintRequirementLabel(recipeKey) : 'THIS RECIPE DOES NOT REQUIRE A BLUEPRINT');
     gameLog('WARN', `Blueprint purchase unavailable: ${recipeKey}`);
     return;
   }
@@ -3610,8 +4704,8 @@ function renderBlueprintShop() {
     const rep = getBlueprintRepCost(recipeKey);
     const price = getBlueprintSalvageCost(recipeKey);
     const owned = isBlueprintUnlocked(recipeKey);
-    const dropOnly = recipeKey === 'radBeam';
-    return `<div class="blueprint-row"><span>${getBlueprintName(recipeKey)}</span><small>${owned ? 'OWNED' : dropOnly ? 'RADIOACTIVE MINI-BOSS // 35% DROP' : `${rep} REP // ${price} SALVAGE`}</small>${owned || dropOnly ? '' : `<button type="button" data-buy-blueprint="${recipeKey}" ${game.armorerRep < rep || salvage < price ? 'disabled' : ''}>BUY</button>`}</div>`;
+    const dropOnly = ['radBeam', 'continuityWeave'].includes(recipeKey);
+    return `<div class="blueprint-row"><span>${getBlueprintName(recipeKey)}</span><small>${owned ? 'OWNED' : dropOnly ? getBlueprintRequirementLabel(recipeKey) : `${rep} REP // ${price} SALVAGE`}</small>${owned || dropOnly ? '' : `<button type="button" data-buy-blueprint="${recipeKey}" ${game.armorerRep < rep || salvage < price ? 'disabled' : ''}>BUY</button>`}</div>`;
   }).join('')}</div>`;
 }
 function openCraftDetails(recipeKey, requestedQuantity = 1) { const recipe = stationRecipes[recipeKey]; if (!recipe) return; const repeatable = !recipe.weapon && !recipe.armor; const quantity = repeatable ? Math.max(1, Math.min(5, requestedQuantity)) : 1; const costEntries = Object.entries(recipe.cost || {}); const materialRows = costEntries.map(([key, amount]) => { const resource = resourceTypes.find(item => item.key === key) || { name: key === 'steelPlate' ? 'STEEL PLATE' : key.toUpperCase() }; const required = amount * quantity; const owned = getCraftResourceAmount(key); const ready = owned >= required; return `<li class="${ready ? 'ready' : 'missing'}"><span>${resource.name}</span><strong>${owned} / ${required}</strong></li>`; }).join(''); const missing = costEntries.find(([key, amount]) => getCraftResourceAmount(key) < amount * quantity); const capacityExceeded = recipe.output?.medkit && (game.stationItems.medkit || 0) + quantity > 5; const canCraft = !missing && !capacityExceeded && !game.crafting; const quantityControls = repeatable ? `<div class="craft-quantity-controls"><span>QUANTITY</span>${[1, 2, 3, 4, 5].map(value => `<button type="button" data-craft-quantity="${value}" class="${value === quantity ? 'selected' : ''}" ${game.crafting ? 'disabled' : ''}>${value}</button>`).join('')}</div>` : ''; const actionLabel = game.crafting ? 'CRAFTING' : capacityExceeded ? 'STORAGE FULL' : canCraft ? `CRAFT x${quantity}` : 'NEED MATERIALS'; ui.craftDetails.dataset.recipeKey = recipeKey; ui.craftDetails.dataset.quantity = quantity; ui.craftDetails.innerHTML = `
@@ -3841,6 +4935,13 @@ function updateBeaconStationModules(dt) {
     }
   });
 }
+function finishBeaconRepair(station) {
+  station.repaired = true;
+  createBeaconTurrets(station);
+  saveBeaconStations();
+  updateQuestProgress('repairBeacon');
+  updateQuestProgress('repair');
+}
 function updateCrafting(dt) {
   if (!game.crafting) return;
   game.crafting.remaining -= dt;
@@ -3855,13 +4956,9 @@ function updateCrafting(dt) {
   if (recipe.beaconRepairId) {
     const station = game.beaconStations.find(candidate => candidate.id === recipe.beaconRepairId);
     if (station) {
-      station.repaired = true;
-      createBeaconTurrets(station);
-      saveBeaconStations();
+      finishBeaconRepair(station);
       game.stationOpen = 'crafting';
       updateStationUI();
-      updateQuestProgress('repairBeacon');
-      updateQuestProgress('repair');
     }
   } else if (recipe.managerStationType) {
     game.craftedStations[recipe.managerStationType] =
@@ -4273,6 +5370,7 @@ function drawVoidMapRegions() {
   mapCtx.restore();
 }
 function drawHazardMap() {
+  if (game.epilogue.dungeon) return;
   drawVoidMapRegions();
   if (!game.hazardZones.length) return;
   const scale = getTacticalMapScale();
@@ -4383,6 +5481,7 @@ function drawSanctuaryNpcs() {
   const camY = game.camera.y - canvas.clientHeight / 2;
   const time = game.elapsedTime;
   const positions = getSanctuaryNpcPositions(time);
+  const mission = currentCampaignMission();
   ctx.save();
   ctx.translate(-camX, -camY);
   sanctuaryNpcDefinitions.forEach((npc, index) => {
@@ -4404,6 +5503,10 @@ function drawSanctuaryNpcs() {
     ctx.font = 'bold 9px Space Mono';
     ctx.fillStyle = '#f4eee5';
     ctx.fillText(npc.name, wanderX, wanderY + 31);
+    if (mission?.npcId === npc.id && (!game.campaign.active || campaignReady(mission))) {
+      ctx.fillStyle = '#b9f4ff';
+      ctx.fillText(game.campaign.active ? 'MAIN QUEST TURN-IN' : 'MAIN QUEST', wanderX, wanderY + 57);
+    }
     if (Math.hypot(game.player.x - wanderX, game.player.y - wanderY) <= stationInteractionRadius) {
       ctx.fillStyle = npc.color;
       ctx.fillText(`${interactBindingLabel()} // TALK`, wanderX, wanderY + 44);
@@ -4671,6 +5774,7 @@ function drawBeaconStations() {
   ctx.restore();
 }
 function drawBeaconStationMapMarkers() {
+  if (game.epilogue.dungeon) return;
   if (!game.discovered.has(getSectorKey(3))) return;
   const scale = getTacticalMapScale();
   mapCtx.save();
@@ -4694,6 +5798,7 @@ function drawBeaconStationMapMarkers() {
 }
 function drawGameWorld() {
   draw();
+  if (game.epilogue.dungeon) return;
   drawBrambleZones();
   drawSectorFourEffects();
   drawHazardZones();
@@ -4701,7 +5806,85 @@ function drawGameWorld() {
   drawSanctuaryBuildStations();
   drawSanctuaryNpcs();
   drawBeaconStations();
+  drawCampaignSite();
+  drawVoidPortal();
   drawRadioactiveBlindOverlay();
+}
+function drawVoidPortal() {
+  if (!hasContinuityKey() || Math.hypot(game.player.x - voidPortal.x, game.player.y - voidPortal.y) > 1600) return;
+  const x = voidPortal.x - game.camera.x + canvas.clientWidth / 2;
+  const y = voidPortal.y - game.camera.y + canvas.clientHeight / 2;
+  ctx.save();
+  ctx.strokeStyle = ctx.fillStyle = game.epilogue.guardianCleared ? '#b9f4ff' : '#b794ff';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.ellipse(x, y, 34, 58, 0, Math.PI, 0);
+  ctx.lineTo(x + 34, y + 32);
+  ctx.moveTo(x - 34, y);
+  ctx.lineTo(x - 34, y + 32);
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 12px Space Mono';
+  ctx.fillText('CONTINUITY PORTAL', x, y - 70);
+  if (Math.hypot(game.player.x - voidPortal.x, game.player.y - voidPortal.y) <= 85) {
+    ctx.fillText(`${interactBindingLabel()} // ${game.epilogue.guardianCleared ? 'ENTER' : 'INSPECT SEAL'}`, x, y + 48);
+  }
+  ctx.restore();
+}
+function drawDungeonRoom() {
+  const room = dungeonRooms[game.epilogue.dungeon.room];
+  ctx.fillStyle = '#172831';
+  ctx.strokeStyle = '#536a80';
+  ctx.lineWidth = 7;
+  ctx.fillRect(dungeonOrigin - room.w / 2, -room.h / 2, room.w, room.h);
+  ctx.strokeRect(dungeonOrigin - room.w / 2, -room.h / 2, room.w, room.h);
+  ctx.strokeStyle = '#243b48';
+  ctx.lineWidth = 1;
+  for (let x = -room.w / 2 + 55; x < room.w / 2; x += 55) {
+    ctx.beginPath();
+    ctx.moveTo(dungeonOrigin + x, -room.h / 2);
+    ctx.lineTo(dungeonOrigin + x, room.h / 2);
+    ctx.stroke();
+  }
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 12px Space Mono';
+  for (const control of dungeonControls()) {
+    const x = dungeonOrigin + control.x;
+    const y = control.y;
+    const locked = control.kind === 'door' && dungeonDoorLocked(control.id);
+    const palette = { BLUE: '#9dc6ff', AMBER: '#ffc575', WHITE: '#ffffff' };
+    ctx.strokeStyle = ctx.fillStyle = locked ? '#ff978b' : (palette[control.id] ?? '#b9f4ff');
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x - 16, y - 16, 32, 32);
+    ctx.fillText(control.label, x, y - 23);
+    if (Math.hypot(game.player.x - x, game.player.y - y) <= 68) ctx.fillText(`${interactBindingLabel()} // ${locked ? 'SEALED' : 'USE'}`, x, y + 32);
+  }
+}
+function drawCampaignSite() {
+  const target = campaignFieldTarget();
+  if (!target) return;
+  const active = game.campaign.active;
+  const x = target.x - game.camera.x + canvas.clientWidth / 2;
+  const y = target.y - game.camera.y + canvas.clientHeight / 2;
+  ctx.save();
+  ctx.strokeStyle = ctx.fillStyle = '#b9f4ff';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, 18, 0, Math.PI * 2);
+  ctx.stroke();
+  if (active.defending) {
+    ctx.setLineDash([12, 8]);
+    ctx.beginPath();
+    ctx.arc(x, y, campaignDefenseRadius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 12px Space Mono';
+  ctx.fillText(target.label, x, y - 25);
+  if (!active.scan && !active.defending && campaignTargetDistance(target) <= campaignInteractionRadius(target)) {
+    ctx.fillText(`${interactBindingLabel()} // USE`, x, y + 34);
+  }
+  ctx.restore();
 }
 function drawRadioactiveBlindOverlay() {
   if (game.radioactiveBlindTimer <= 0 || getArmorEffects().radioactiveBlindImmunity) return;
@@ -4751,11 +5934,13 @@ function loop(now) {
 }
 function updateBiomeAnnouncement(dt) {
   const biome = getBiome(game.player.x, game.player.y);
-  const discoveryKey = getDiscoveryKey(game.player.x, game.player.y);
-  const newlyDiscovered = !game.discovered.has(discoveryKey);
-  game.discovered.add(discoveryKey);
-  game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(getBiomeSector(Math.hypot(game.player.x, game.player.y))));
-  if (newlyDiscovered && biome.key !== 'sanctuary') updateQuestProgress('explore');
+  if (!game.epilogue.dungeon) {
+    const discoveryKey = getDiscoveryKey(game.player.x, game.player.y);
+    const newlyDiscovered = !game.discovered.has(discoveryKey);
+    game.discovered.add(discoveryKey);
+    game.discovered.add(biome.key === 'sanctuary' ? 'sanctuary' : getSectorKey(getBiomeSector(Math.hypot(game.player.x, game.player.y))));
+    if (newlyDiscovered && biome.key !== 'sanctuary') updateQuestProgress('explore');
+  }
   if (biome.key !== game.biomeKey || biome.name !== game.biomeName) {
     game.biomeKey = biome.key;
     game.biomeName = biome.name;
@@ -4845,6 +6030,7 @@ function update(dt) {
 
   p.x += dx / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * enemySlowMultiplier * dt;
   p.y += dy / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * enemySlowMultiplier * dt;
+  if (game.epilogue.dungeon) constrainDungeonPosition(p);
   p.angle = Math.atan2(pointer.y - canvas.clientHeight / 2, pointer.x - canvas.clientWidth / 2);
 
   game.camera.x += (p.x - game.camera.x) * Math.min(1, dt * 7);
@@ -4918,7 +6104,9 @@ function update(dt) {
   });
 
   const inVoid = biome.key === 'void';
-  if (inVoid) {
+  if (game.epilogue.dungeon) {
+    // Dungeon encounters are authored per room.
+  } else if (inVoid) {
     game.voidSpawnTimer -= dt;
     const activeWorms = game.enemies.filter(enemy => enemy.voidWorm && !enemy.defeated).length;
     const activeWalkers = game.enemies.filter(enemy => enemy.voidWalker && !enemy.defeated).length;
@@ -5025,23 +6213,10 @@ function update(dt) {
       const orbitRadius = owner.r + 58;
       e.x = owner.x + Math.cos(angle) * orbitRadius;
       e.y = owner.y + Math.sin(angle) * orbitRadius;
-    } else if (e.voidStalker && !e.isAggroed) {
-      const playerDistance = Math.hypot(p.x, p.y);
-      if (Math.hypot(p.x - e.x, p.y - e.y) <= 250 || playerDistance >= 30000) {
-        e.isAggroed = true;
-      } else {
-        e.orbitAngle += e.orbitSpeed * dt;
-        e.x = Math.cos(e.orbitAngle) * e.orbitRadius;
-        e.y = Math.sin(e.orbitAngle) * e.orbitRadius;
-      }
-    }
-    else if (e.voidStalker && e.isAggroed) {
-      const angle = Math.atan2(p.y - e.y, p.x - e.x);
-      const distance = Math.hypot(p.x - e.x, p.y - e.y);
-      const chaseSpeed = distance > 250 ? 900 : e.speed;
-      const travel = Math.min(distance, chaseSpeed * dt);
-      e.x += Math.cos(angle) * travel;
-      e.y += Math.sin(angle) * travel;
+    } else if (e.voidStalker) {
+      updateVoidStalker(e, dt);
+    } else if (e.foreman) {
+      updateForeman(e, dt);
     }
     else if (e.voidWalker && !e.isAggroed) {
       // Wander in random directions without tracking the player
@@ -5200,13 +6375,14 @@ function update(dt) {
       e.x = e.previousX;
       e.y = e.previousY;
     }
-    if ((e.knockbackX || e.knockbackY) && !wraithShieldDown) {
+    if (!e.foreman && !e.voidStalker && (e.knockbackX || e.knockbackY) && !wraithShieldDown) {
       e.x += e.knockbackX * dt;
       e.y += e.knockbackY * dt;
       const knockbackDecay = Math.exp(-5 * dt);
       e.knockbackX *= knockbackDecay;
       e.knockbackY *= knockbackDecay;
     }
+    if (game.epilogue.dungeon) constrainDungeonPosition(e);
 
     if (hasEnemyEffect(e, 'damage-trail') && Math.hypot(e.x - e.previousX, e.y - e.previousY) > 1) {
       e.trailTimer -= dt;
@@ -5225,15 +6401,6 @@ function update(dt) {
         e.attackTimer = 3;
       }
     }
-    if (e.voidStalker && e.isAggroed) {
-      e.attackTimer -= dt;
-      if (e.attackTimer <= 0) {
-        triggerVoidStalkerAttack(e);
-        e.attackFlashTimer = .5;
-        e.attackTimer = 5;
-      }
-    }
-
     // Contact damage to player
     if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + 12) {
       game.health -= (e.contactDamage || 0) * effects.damageMultiplier * (1 - (armor.contactDamageReduction || 0)) * dt;
@@ -5467,9 +6634,18 @@ function update(dt) {
   });
   game.projectiles = game.projectiles.filter(p => p.life > 0);
 
-  updateBeaconTurrets(dt);
-  updateBeaconStationModules(dt);
+  if (!game.epilogue.dungeon) {
+    updateBeaconTurrets(dt);
+    updateBeaconStationModules(dt);
+  }
   game.enemies = game.enemies.filter(e => e.hp > 0);
+  const dungeon = game.epilogue.dungeon;
+  if (dungeon) {
+    if (dungeonRooms[dungeon.room].enemies && !game.enemies.length && !dungeon.cleared.includes(dungeon.room)) {
+      dungeon.cleared.push(dungeon.room);
+      epilogueNotice('ROOM CLEAR // FORWARD DOORS UNSEALED');
+    }
+  } else updateCampaign(dt);
 
   game.gems.forEach(g => {
     const angle = Math.atan2(p.y - g.y, p.x - g.x);
@@ -5846,27 +7022,8 @@ function triggerVoidShockwave(enemy) {
         });
     }
 }
-function triggerVoidStalkerAttack(enemy) {
-  const projectileCount = 10;
-  const speed = 700;
-  for (let i = 0; i < projectileCount; i++) {
-    const angle = (Math.PI * 2 / projectileCount) * i;
-    game.projectiles.push({
-      x: enemy.x,
-      y: enemy.y,
-      vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      life: 1.2,
-      radius: 11,
-      damage: 7,
-      color: '#00fff2',
-      split: true
-    });
-  }
-}
-
 const baseUpdate = update;
-update = function(dt) { const wasEmpty = game.ammo === 0 && weaponCatalog[game.weapon].kind !== 'melee'; baseUpdate(dt); if (wasEmpty) { game.ammo = 0; game.reloadPending = true; } if (game.active) { applyEnemyAbilities(dt); const status = game.enemyStatus; const reduction = getArmorEffects().statusDamageReduction || 0; if (status && reduction) { const statusDamagePerSecond = (status.burn > 0 ? 6 : 0) + (status.acid > 0 ? 4 : 0) + (status.bleed > 0 ? 3 : 0) + (status.freeze > 0 || status.root > 0 ? 1 : 0); game.health = Math.min(100, game.health + statusDamagePerSecond * reduction * dt); } } };
+update = function(dt) { const wasEmpty = !hasInfiniteAmmo() && game.ammo === 0 && weaponCatalog[game.weapon].kind !== 'melee'; baseUpdate(dt); if (wasEmpty) { game.ammo = 0; game.reloadPending = true; } if (game.active) { applyEnemyAbilities(dt); const status = game.enemyStatus; const reduction = getArmorEffects().statusDamageReduction || 0; if (status && reduction) { const statusDamagePerSecond = (status.burn > 0 ? 6 : 0) + (status.acid > 0 ? 4 : 0) + (status.bleed > 0 ? 3 : 0) + (status.freeze > 0 || status.root > 0 ? 1 : 0); game.health = Math.min(100, game.health + statusDamagePerSecond * reduction * dt); } } };
 function renderEnemySystem() {
   const camX = game.camera.x - canvas.clientWidth / 2;
   const camY = game.camera.y - canvas.clientHeight / 2;
@@ -5876,7 +7033,7 @@ function renderEnemySystem() {
   ctx.textAlign = 'center';
 
   // 1. Standard Enemies
-  game.enemies.filter(enemy => !enemy.voidWorm && !enemy.voidWalker && !enemy.voidStalker).forEach(enemy => {
+  game.enemies.filter(enemy => !enemy.voidWorm && !enemy.voidWalker && !enemy.voidStalker && !enemy.foreman).forEach(enemy => {
     const shape = (enemy.familyIndex + enemy.variant.length) % 6;
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
@@ -6075,33 +7232,87 @@ function renderEnemySystem() {
     ctx.fillText(`${enemy.family} // ${enemy.variant}`, enemy.x, barY - 7);
   });
 
-  // 3. Void Stalker
-  game.enemies.filter(enemy => enemy.voidStalker).forEach(enemy => {
+  game.enemies.filter(enemy => enemy.voidStalker || enemy.foreman).forEach(enemy => {
+    const stalker = enemy.voidStalker;
+    const windup = stalker ? enemy.huntState === 'windup' : enemy.moveState === 'windup';
+    const zones = enemy.zones ?? [];
+    if (enemy.foreman && enemy.waveGates.length) {
+      ctx.save();
+      ctx.strokeStyle = '#bf9bff';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([6, 5]);
+      for (const gate of enemy.waveGates) ctx.strokeRect(gate.x - 42, gate.y - 42, 84, 84);
+      ctx.restore();
+    }
+    if (windup || enemy.moveState === 'impact') {
+      ctx.save();
+      ctx.strokeStyle = '#ffcb81';
+      ctx.fillStyle = '#ff8b6140';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([12, 9]);
+      if (zones.length) {
+        zones.forEach(zone => {
+          if (zone.radius) {
+            ctx.beginPath();
+            ctx.arc(zone.x, zone.y, zone.radius, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.stroke();
+          } else {
+            ctx.fillRect(zone.x - zone.w / 2, zone.y - zone.h / 2, zone.w, zone.h);
+            ctx.strokeRect(zone.x - zone.w / 2, zone.y - zone.h / 2, zone.w, zone.h);
+          }
+        });
+      } else if (enemy.attack === 'fan' || enemy.attack === 'burst') {
+        ctx.translate(enemy.x, enemy.y);
+        ctx.beginPath();
+        if (enemy.attack === 'burst') ctx.arc(0, 0, enemy.r + 54, 0, 2 * Math.PI);
+        else {
+          ctx.moveTo(0, 0);
+          ctx.arc(0, 0, 510, enemy.chargeAngle - .55, enemy.chargeAngle + .55);
+          ctx.closePath();
+        }
+        ctx.fill();
+        ctx.stroke();
+      } else if (windup) {
+        ctx.translate(enemy.x, enemy.y);
+        ctx.rotate(enemy.chargeAngle);
+        const range = stalker ? 644 : enemy.phase === 2 ? 702 : 754;
+        const halfWidth = enemy.r + 10;
+        ctx.fillRect(0, -halfWidth, range, halfWidth * 2);
+        ctx.strokeRect(0, -halfWidth, range, halfWidth * 2);
+      }
+      ctx.restore();
+    }
     ctx.save();
     ctx.translate(enemy.x, enemy.y);
-    ctx.rotate(Date.now() * .0004);
-    const pulse = Math.sin(Date.now() * .006) * 8;
-    ctx.shadowBlur = 24;
-    ctx.shadowColor = '#0e6b5c';
-    ctx.strokeStyle = '#0e6b5c';
-    ctx.fillStyle = '#17131a';
+    ctx.rotate(windup ? enemy.chargeAngle : Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x));
+    const r = enemy.r;
+    const articulated = stalker || enemy.phase > 1;
+    const color = windup ? '#ffd895' : stalker ? '#a688ff' : '#ff925e';
+    ctx.strokeStyle = color;
+    ctx.fillStyle = stalker ? '#221733' : '#35252c';
     ctx.lineWidth = 4;
+    if (articulated) {
+      for (const side of [-1, 1]) for (const offset of [-.6, -.15, .3]) {
+        ctx.beginPath();
+        ctx.moveTo(offset * r, side * r * .38);
+        ctx.lineTo((offset - .15) * r, side * r * .82);
+        ctx.lineTo((offset + .3) * r, side * r * 1.12);
+        ctx.stroke();
+      }
+    }
     ctx.beginPath();
-    ctx.arc(0, 0, enemy.r + pulse, 0, Math.PI * 2);
+    ctx.moveTo(r, 0);
+    ctx.lineTo(r * .33, -r * .62);
+    ctx.lineTo(-r * .72, -r * .68);
+    ctx.lineTo(-r, 0);
+    ctx.lineTo(-r * .72, r * .68);
+    ctx.lineTo(r * .33, r * .62);
+    ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    ctx.shadowBlur = 0;
-    for (let i = 0; i < 8; i++) {
-      const angle = i * Math.PI / 4;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(angle) * 35, Math.sin(angle) * 35);
-      ctx.lineTo(Math.cos(angle) * (enemy.r + 18), Math.sin(angle) * (enemy.r + 18));
-      ctx.stroke();
-    }
-    ctx.fillStyle = enemy.isAggroed ? '#49a797' : '#49a797';
-    ctx.beginPath();
-    ctx.arc(0, 0, 22, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.fillRect(r * .25, -5, r * .45, 10);
     ctx.restore();
 
     ctx.save();
@@ -6110,13 +7321,13 @@ function renderEnemySystem() {
     const barY = enemy.y - enemy.r - 25;
     ctx.fillStyle = '#17131a';
     ctx.fillRect(enemy.x - barWidth / 2, barY, barWidth, 7);
-    ctx.fillStyle = '#b34dff';
+    ctx.fillStyle = color;
     ctx.fillRect(enemy.x - barWidth / 2, barY, barWidth * Math.max(0, enemy.hp / enemy.maxHp), 7);
     ctx.strokeStyle = '#e0aaff';
     ctx.strokeRect(enemy.x - barWidth / 2 - .5, barY - .5, barWidth + 1, 8);
     ctx.fillStyle = '#f7e5c5';
     ctx.font = 'bold 12px Space Mono';
-    ctx.fillText(`${enemy.family} // ${enemy.variant}`, enemy.x, barY - 8);
+    ctx.fillText(stalker ? `${enemy.family} // ${enemy.huntState.toUpperCase()}` : `${enemy.family} // PHASE ${enemy.phase}`, enemy.x, barY - 8);
     ctx.restore();
   });
 
@@ -6222,10 +7433,15 @@ function getPlayerDamageMultiplier() {
 }
 function addEnemy(enemy) {
   if (!enemy || isInsideBeaconStation(enemy.x, enemy.y)) return null;
+  if (game.epilogue.dungeon?.room === 'arena') {
+    if (game.epilogue.dungeon.victory || game.enemies.filter(entry => entry.hp > 0 && !entry.defeated).length >= foremanArenaLimit) return null;
+    constrainDungeonPosition(enemy);
+  }
   game.enemies.push(enemy);
   return enemy;
 }
 function getBiome(x, y) {
+  if (game.epilogue.dungeon && Math.abs(x - dungeonOrigin) < 3000) return getDungeonBiome();
   const distance = Math.hypot(x, y);
   if (distance < beaconRegionRadius) return { name: 'BEACON SANCTUARY', color: '#f9c779', dark: '#172d2d', key: 'sanctuary', sector: 0, animationKey: 'sanctuary', effects: { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { name: 'NO HAZARD', description: 'The beacon protects you from environmental hazards.', damagePerSecond: 0 } } };
   if (distance > mapRadius) return getVoidBiome();
@@ -6265,7 +7481,7 @@ function getBiome(x, y) {
         enemySpeedMultiplier: 1,
         fireCooldownMultiplier: 1 / (1 + supportModules * .1),
         pulseCooldownMultiplier: 1,
-        healthRegen: 1.5 + supportModules * 3,
+        healthRegen: 1.5 + supportModules * 3 + (game.campaign.completed.includes(campaignFinaleId) ? 2 : 0),
         playerDamageMultiplier: 1 + supportModules * .1,
         salvageMultiplier: 1,
         hazard: {
@@ -6303,14 +7519,16 @@ function updateUI(distance, safe, biome) {
   updateStationUI();
   ui.wave.textContent = String(sector).padStart(2, '0');
   ui.score.textContent = String(game.score).padStart(6, '0');
-  ui.ammo.textContent = game.ammo;
+  ui.ammo.textContent = getAmmoLabel();
   ui.health.style.width = `${health}%`;
   ui.healthValue.textContent = `${health}%`;
   ui.threats.textContent = String(game.enemies.length).padStart(2, '0');
   ui.distance.textContent = `${String(Math.floor(distance / 10)).padStart(3, '0')}m`;
   ui.salvage.textContent = String(game.salvage).padStart(2, '0');
   ui.relics.textContent = String(game.relics).padStart(2, '0');
-  if (salvageDeposit) ui.objective.textContent = 'BANKING SALVAGE...';
+  if (game.epilogue.dungeon) ui.objective.textContent = epilogueObjective();
+  else if (hasContinuityKey() && Math.hypot(game.player.x - voidSearch.x, game.player.y - voidSearch.y) < stalkerTerritory + 500) ui.objective.textContent = epilogueObjective();
+  else if (salvageDeposit) ui.objective.textContent = 'BANKING SALVAGE...';
   else if (salvageSaveFailed && game.salvage) ui.objective.textContent = 'SALVAGE NOT BANKED // SAVE FAILED';
   else ui.objective.textContent = safe ? 'SANCTUARY // SALVAGE BANKED' : 'RETURN TO BEACON // SALVAGE';
 }
@@ -6333,6 +7551,10 @@ function drawVoidBatarProjectile(bullet) {
   ctx.restore();
 }
 function drawMap() {
+  if (game.epilogue.dungeon) {
+    drawDungeonMap();
+    return;
+  }
   const w = mapCanvas.width;
   const h = mapCanvas.height;
   const scale = getTacticalMapScale();
@@ -6405,18 +7627,95 @@ function drawMap() {
   mapCtx.fill();
   mapCtx.stroke();
   mapCtx.restore();
+  const campaignTarget = campaignFieldTarget();
+  if (campaignTarget) {
+    mapCtx.save();
+    mapCtx.translate(campaignTarget.x, campaignTarget.y);
+    mapCtx.scale(1 / scale, 1 / scale);
+    mapCtx.fillStyle = '#b9f4ff';
+    mapCtx.strokeStyle = '#100d13';
+    mapCtx.beginPath();
+    mapCtx.moveTo(0, -7);
+    mapCtx.lineTo(7, 0);
+    mapCtx.lineTo(0, 7);
+    mapCtx.lineTo(-7, 0);
+    mapCtx.closePath();
+    mapCtx.fill();
+    mapCtx.stroke();
+    if (mapOpen) {
+      mapCtx.font = 'bold 11px Space Mono';
+      mapCtx.strokeText(campaignTarget.label, 12, 4);
+      mapCtx.fillText(campaignTarget.label, 12, 4);
+    }
+    mapCtx.restore();
+  }
   mapCtx.restore();
 }
 function drawStalkerMapMarker() {
+  if (game.epilogue.dungeon) return;
   const stalker = game.enemies.find(enemy => enemy.voidStalker && !enemy.defeated);
-  if (!stalker) return;
   const scale = getTacticalMapScale();
   mapCtx.save();
   applyMapTransform(scale);
-  mapCtx.fillStyle = '#d78cff';
-  mapCtx.beginPath();
-  mapCtx.arc(stalker.x, stalker.y, 4 / scale, 0, Math.PI * 2);
-  mapCtx.fill();
+  if (hasContinuityKey()) {
+    const found = game.epilogue.portalFound;
+    const { x, y } = found ? voidPortal : voidSearch;
+    mapCtx.lineWidth = 2 / scale;
+    mapCtx.strokeStyle = '#b794ff';
+    mapCtx.fillStyle = '#8056c035';
+    mapCtx.setLineDash(found ? [] : [5 / scale, 4 / scale]);
+    mapCtx.beginPath();
+    mapCtx.arc(x, y, found ? 5 / scale : voidSearch.radius, 0, Math.PI * 2);
+    mapCtx.fill();
+    mapCtx.stroke();
+    if (mapOpen) {
+      mapCtx.fillStyle = '#e0cfff';
+      mapCtx.font = `${11 / scale}px Space Mono`;
+      mapCtx.fillText(found ? 'Continuity Portal' : 'Continuity Key search area', x - 5 / scale, y - 10 / scale);
+    }
+  }
+  if (stalker && game.elapsedTime % 6 < 1.4 && Math.hypot(game.player.x - stalker.x, game.player.y - stalker.y) < 2800) {
+    mapCtx.setLineDash([]);
+    mapCtx.lineWidth = 1.5 / scale;
+    mapCtx.strokeStyle = '#e0aaff';
+    mapCtx.beginPath();
+    mapCtx.arc(stalker.x, stalker.y, 7 / scale, 0, Math.PI * 2);
+    mapCtx.stroke();
+  }
+  mapCtx.restore();
+}
+function drawDungeonMap() {
+  const { width, height } = mapCanvas;
+  const { room, checkpoint, cleared } = game.epilogue.dungeon;
+  const rooms = { entry: [0, 0], works: [1, 0], relay: [2, 0], ward: [3, 0], staging: [4, 0], arena: [5, 0], stores: [1, -1], records: [3, -1] };
+  const interval = width / 7;
+  const point = ([column, row]) => [interval * (column + 1), height * .63 + row * height * .29];
+  mapCtx.save();
+  mapCtx.fillStyle = '#111820';
+  mapCtx.fillRect(0, 0, width, height);
+  mapCtx.strokeStyle = '#536a80';
+  mapCtx.lineWidth = 2;
+  for (const [id, coords] of Object.entries(rooms)) {
+    const [x, y] = point(coords);
+    for (const [target] of dungeonRooms[id].doors) {
+      if (!rooms[target]) continue;
+      const [toX, toY] = point(rooms[target]);
+      mapCtx.beginPath();
+      mapCtx.moveTo(x, y);
+      mapCtx.lineTo(toX, toY);
+      mapCtx.stroke();
+    }
+  }
+  mapCtx.textAlign = 'center';
+  mapCtx.font = `${mapOpen ? 11 : 8}px Space Mono`;
+  for (const [id, coords] of Object.entries(rooms)) {
+    const [x, y] = point(coords);
+    mapCtx.fillStyle = id === room ? '#b9f4ff' : id === checkpoint ? '#9fe4b5' : cleared.includes(id) ? '#729a9c' : '#54667e';
+    mapCtx.fillRect(x - 5, y - 5, 10, 10);
+    if (mapOpen) mapCtx.fillText(dungeonRooms[id].name, x, y + 23, interval - 4);
+  }
+  mapCtx.fillStyle = '#b9f4ff';
+  mapCtx.fillText(dungeonRooms[room].name, width / 2, height * .85);
   mapCtx.restore();
 }
 function draw() {
@@ -6434,6 +7733,8 @@ function draw() {
   ctx.save();
   ctx.translate(-camX, -camY);
 
+  if (game.epilogue.dungeon) drawDungeonRoom();
+  else {
   // Grid
   ctx.strokeStyle = `${biome.color}18`;
   for (let x = -mapRadius; x < mapRadius; x += 160) {
@@ -6469,6 +7770,7 @@ function draw() {
     ctx.stroke();
   });
   ctx.setLineDash([]);
+  }
 
   // Nodes (Relics & Gems)
   game.nodes.forEach(n => {
@@ -6551,7 +7853,7 @@ function draw() {
     ctx.stroke();
     ctx.restore();
   });
-  if (game.radBeamActive && game.weapon === 'radBeam' && game.ammo > 0) {
+  if (game.radBeamActive && game.weapon === 'radBeam' && (hasInfiniteAmmo() || game.ammo > 0)) {
     const directionX = Math.cos(game.player.angle);
     const directionY = Math.sin(game.player.angle);
     const startX = game.player.x + directionX * 20;

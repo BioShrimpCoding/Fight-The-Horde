@@ -250,6 +250,374 @@ test('Armorer contracts scale and preserve their reputation reward through saves
   assert.equal(run("game.questState.available.filter(q => q.npcId === 'armorer').length"), 1);
 });
 
+test('The Last Signal progresses from the Quartermaster through the relay finale', () => {
+  const { run, drawingCalls } = loadGame();
+  run(`
+    function visitCampaignContact() {
+      const mission = currentCampaignMission();
+      const index = sanctuaryNpcDefinitions.findIndex(npc => npc.id === mission.npcId);
+      const { x, y } = getSanctuaryNpcPositions()[index];
+      teleportPlayer(x, y);
+      toggleStation();
+    }
+    function visitCampaignSite() {
+      const { x, y } = campaignFieldTarget();
+      teleportPlayer(x, y);
+      toggleStation();
+    }
+    updateQuestProgress('collect', 12);
+    visitCampaignContact();
+  `);
+  assert.match(run('questDialog.innerHTML'), /data-campaign-accept="provisions"/);
+  run("acceptCampaign('survey');");
+  assert.equal(run('game.campaign.active'), null);
+  run("acceptCampaign('provisions'); completeCampaign('provisions');");
+  assert.equal(run('game.campaign.completed.length'), 0);
+
+  const objectives = [
+    ['provisions', "updateQuestProgress('collect', 12);"],
+    ['survey', "['sector-0-0', 'sector-0-1', 'sector-1-0'].forEach(key => game.discovered.add(key));"],
+    ['field-archive', 'visitCampaignSite();'],
+    ['field-kit', "game.stationOpen = 'designer'; craftItem('buildFurnace'); updateCrafting(10);"],
+    ['first-light', 'visitCampaignSite();'],
+    ['triangulation', 'for (let i = 0; i < 3; i++) { visitCampaignSite(); updateCampaign(6); }'],
+    ['beacon-siege', 'clearCampaignEncounter();'],
+    ['repeater', 'visitCampaignSite();'],
+    ['uplink', 'visitCampaignSite(); updateCampaign(6);'],
+    ['expedition', 'visitCampaignSite(); visitCampaignSite(); updateCampaign(6);'],
+    ['continuity', 'clearCampaignEncounter();'],
+    ['record', '']
+  ];
+  run(`
+    function clearCampaignEncounter() {
+      visitCampaignSite();
+      const encounter = currentCampaignMission();
+      for (let wave = 0; wave < encounter.waves.length; wave++) {
+        updateCampaign(3);
+        const enemies = game.enemies.filter(enemy => enemy.campaignEncounter === encounter.id && enemy.hp > 0);
+        if (enemies.length !== encounter.waves[wave]) throw new Error('Defense wave did not spawn');
+        enemies.forEach(enemy => { enemy.hp = 0; defeatEnemy(enemy); });
+        updateCampaign(.04);
+      }
+    }
+  `);
+  for (const [id, objective] of objectives) {
+    assert.equal(run('currentCampaignMission().id'), id);
+    run(`visitCampaignContact(); acceptCampaign('${id}');`);
+    if (id === 'field-kit') run("game.vault.iron = 10; game.vault.stone = 50; game.vault.fuel = 20;");
+    if (id === 'field-archive') {
+      run('setMapOpen(true); drawMap(); setMapOpen(false);');
+      assert.ok(drawingCalls.some(([method, text]) => method === 'fillText' && text === 'Buried field archive'));
+    }
+    run(objective);
+    assert.equal(run('campaignReady(currentCampaignMission())'), true, id);
+    run(`visitCampaignContact(); completeCampaign('${id}');`);
+  }
+  assert.equal(run('game.beaconStations.filter(station => station.repaired).length'), 1);
+  assert.equal(run('getBiome(game.beaconStations[0].x, game.beaconStations[0].y).effects.healthRegen'), 3.5);
+  assert.match(run('questDialog.innerHTML'), /Continuity project made the first Horde/);
+  assert.equal(run('game.banked'), 150);
+  run("game = restoreGame(serializeGame()); completeCampaign('record');");
+  assert.equal(run('currentCampaignMission()'), undefined);
+  assert.equal(run('game.banked'), 150);
+});
+
+test('campaign scans and live waves survive reload, and retreat resets only the current encounter', () => {
+  const { run } = loadGame();
+  run(`
+    function acceptNextCampaign() {
+      const mission = currentCampaignMission();
+      const { x, y } = getSanctuaryNpcPositions()[sanctuaryNpcDefinitions.findIndex(npc => npc.id === mission.npcId)];
+      teleportPlayer(x, y);
+      acceptCampaign(mission.id);
+    }
+    function startCampaignSite() {
+      const { x, y } = campaignFieldTarget();
+      teleportPlayer(x, y);
+      toggleStation();
+    }
+    game.campaign.completed = ['provisions', 'survey', 'field-archive', 'field-kit', 'first-light'];
+    const station = game.beaconStations[0];
+    finishBeaconRepair(station);
+    game.campaign.beaconId = station.id;
+    acceptNextCampaign();
+    startCampaignSite();
+    updateCampaign(2);
+    start(serializeGame());
+    setMapOpen(true);
+    loop(1090);
+  `);
+  assert.equal(run('game.campaign.active.scan'), 2);
+  run('setMapOpen(false); teleportPlayer(0, 0); updateCampaign(2);');
+  assert.equal(run('game.campaign.active.site'), 0);
+  assert.equal(run('game.campaign.active.scan'), 0);
+  run('startCampaignSite(); updateCampaign(4); start(serializeGame());');
+  assert.equal(run('campaignFieldTarget().label'), 'Survey mast Bravo');
+  run(`
+    startCampaignSite(); updateCampaign(5);
+    startCampaignSite(); updateCampaign(6);
+    const scout = getSanctuaryNpcPositions()[sanctuaryNpcDefinitions.findIndex(npc => npc.id === 'scout')];
+    teleportPlayer(scout.x, scout.y);
+    completeCampaign('triangulation');
+    acceptNextCampaign();
+    startCampaignSite(); updateCampaign(2);
+    game.enemies.find(enemy => enemy.campaignEncounter).hp = .25;
+    start(serializeGame());
+    updateCampaign(1);
+  `);
+  assert.equal(run("game.enemies.filter(enemy => enemy.campaignEncounter === 'beacon-siege').length"), 3);
+  assert.equal(run('game.enemies.find(enemy => enemy.campaignEncounter).hp'), .25);
+  run('teleportPlayer(0, 0); updateCampaign(.04);');
+  assert.equal(run('game.enemies.some(enemy => enemy.campaignEncounter)'), false);
+  assert.equal(run('game.enemies.some(enemy => enemy.voidStalker)'), true);
+  assert.equal(run('game.campaign.active.defending'), false);
+  run('startCampaignSite(); updateCampaign(2);');
+  assert.equal(run('game.enemies.filter(enemy => enemy.campaignEncounter).length'), 3);
+});
+
+test('old saves keep optional quests and earn equivalent campaign milestones without a payout', () => {
+  const { run } = loadGame();
+  run(`
+    const sideQuest = game.questState.available.find(quest => quest.id.startsWith('tested-steel'));
+    acceptQuest(sideQuest.id);
+    updateQuestProgress('kill', 4);
+    game.questState.completed = ['supply-run-story-0', 'unknown-country-story-3', 'working-order-story-4',
+      'lost-records-story-6', 'light-the-way-story-7'];
+    game.beaconStations[2].repaired = true;
+    game.banked = 97;
+    game.relics = 12;
+    delete game.campaign;
+    start(serializeGame());
+  `);
+  assert.equal(run('currentCampaignMission().id'), 'triangulation');
+  assert.equal(run('game.campaign.beaconId'), 'sector4-2');
+  assert.equal(run('game.questState.active[0].progress'), 4);
+  assert.equal(run('game.questState.completed.length'), 5);
+  assert.equal(run('game.banked'), 97);
+  assert.equal(run('game.relics'), 12);
+  run(`
+    const scout = getSanctuaryNpcPositions()[sanctuaryNpcDefinitions.findIndex(npc => npc.id === 'scout')];
+    teleportPlayer(scout.x, scout.y);
+    acceptCampaign('triangulation');
+    acceptQuest(game.questState.bounties[0].id);
+    acceptQuest(game.questState.bounties[1].id);
+  `);
+  assert.equal(run('activeQuestCount()'), 3);
+  assert.equal(run('game.questState.active.length'), 2);
+});
+
+test('completed legacy campaigns receive the Continuity Key, but the Void Stalker still guards the portal', () => {
+  const { run, drawingCalls } = loadGame();
+  run(`
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    toggleStation();
+  `);
+  assert.equal(run('game.epilogue.portalFound'), false);
+  run(`
+    game.campaign.completed = campaignMissions.map(mission => mission.id);
+    game.enemies = [];
+    delete game.epilogue;
+    start(serializeGame());
+    setMapOpen(true); drawStalkerMapMarker(); setMapOpen(false);
+    toggleStation();
+  `);
+  assert.ok(drawingCalls.some(([method, text]) => method === 'fillText' && text === 'Continuity Key search area'));
+  assert.equal(run('game.epilogue.portalFound'), true);
+  assert.equal(run('game.epilogue.dungeon'), null);
+  run(`
+    const stalker = game.enemies.find(enemy => enemy.voidStalker);
+    updateVoidStalker(stalker, .04);
+    updateVoidStalker(stalker, 2.3);
+  `);
+  assert.equal(run('stalker.huntState'), 'windup');
+  run('updateVoidStalker(stalker, .86);');
+  assert.equal(run('stalker.huntState'), 'lunge');
+  run(`
+    const aim = stalker.chargeAngle;
+    teleportPlayer(stalker.x - Math.sin(aim) * 150, stalker.y + Math.cos(aim) * 150);
+    for (let frame = 0; frame < 18; frame++) updateVoidStalker(stalker, .04);
+  `);
+  assert.equal(run('stalker.huntState'), 'recover');
+  assert.equal(run('game.health'), 100);
+  run('teleportPlayer(0, 0); updateVoidStalker(stalker, .04); stalker.hp = 0;');
+  assert.equal(run('stalker.huntState'), 'patrol');
+  assert.ok(run('stalker.hp > 0'));
+  run(`
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    stalker.hp = 0; defeatEnemy(stalker);
+    start(serializeGame());
+    toggleStation();
+  `);
+  assert.equal(run('game.epilogue.dungeon.room'), 'entry');
+  assert.equal(run('game.epilogue.dungeon.world.enemies.some(enemy => enemy.voidStalker)'), false);
+});
+
+test('the Continuity facility gates forward doors, saves safe checkpoints, and keeps first-clear loot unique', async () => {
+  const { run, downloads, drawingCalls } = loadGame();
+  run(`
+    function useDungeonControl(id) {
+      const { x, y } = dungeonControls().find(control => control.id === id);
+      teleportPlayer(dungeonOrigin + x, y);
+      toggleStation();
+    }
+    function clearDungeonRoom() {
+      for (const enemy of game.enemies) { enemy.hp = 0; defeatEnemy(enemy); }
+      update(.04);
+    }
+    game.campaign.completed = campaignMissions.map(mission => mission.id);
+    game.epilogue.guardianCleared = true;
+    const walker = createVoidWalker(voidPortal.x + 660, voidPortal.y);
+    walker.hp *= .6;
+    const savedWalkerHP = walker.hp;
+    game.enemies = [walker];
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    toggleStation();
+    useDungeonControl('works');
+    useDungeonControl('relay');
+  `);
+  assert.equal(run('game.epilogue.dungeon.room'), 'works');
+  run('buyBlueprint("continuityWeave");');
+  assert.equal(run('isBlueprintUnlocked("continuityWeave")'), false);
+  run(`
+    clearDungeonRoom();
+    useDungeonControl('stores');
+    clearDungeonRoom();
+    useDungeonControl('supplies');
+    useDungeonControl('works');
+    useDungeonControl('relay');
+    useDungeonControl('ward');
+  `);
+  assert.equal(run('game.epilogue.dungeon.room'), 'relay');
+  run(`
+    useDungeonControl('BLUE'); useDungeonControl('WHITE');
+    useDungeonControl('BLUE'); useDungeonControl('AMBER'); useDungeonControl('WHITE');
+    useDungeonControl('ward');
+    clearDungeonRoom();
+    useDungeonControl('records');
+    clearDungeonRoom();
+    useDungeonControl('records');
+    useDungeonControl('ward');
+    useDungeonControl('staging');
+    useDungeonControl('arena');
+    useDungeonControl('exit');
+  `);
+  assert.equal(run('game.epilogue.dungeon.room'), 'arena');
+  run(`
+    const boss = game.enemies[0];
+    boss.hp = 0;
+    assertPhaseOne();
+    function assertPhaseOne() { if (boss.hp <= 0) throw new Error('Damage skipped phase one'); }
+    update(.04);
+    drawGameWorld(); drawMap();
+  `);
+  assert.equal(run('game.enemies[0].phase'), 2);
+  assert.ok(drawingCalls.some(([method, text]) => method === 'fillText' && text === 'THE FOREMAN // PHASE 2'));
+  run('game.ammo = 2; game.ammoReserve.pistolAmmo = 3; game.health = 41; exportCurrentRun();');
+  const backup = await downloads.at(-1).blob.text();
+  run(`start(parseSaveBackup(${JSON.stringify(backup)}).entries[0].save.state);`);
+  assert.equal(run('game.epilogue.dungeon.room'), 'staging');
+  assert.equal(run('game.enemies.length'), 0);
+  assert.equal(run('game.health'), 41);
+  assert.equal(run('game.ammo'), 2);
+  assert.equal(run('game.ammoReserve.pistolAmmo'), 3);
+  assert.equal(run('game.epilogue.dungeon.world.enemies[0].hp'), run('savedWalkerHP'));
+  run(`
+    function defeatForemanInThreePhases() {
+      const foreman = game.enemies[0];
+      for (let phase = 1; phase <= 2; phase++) {
+        foreman.hp = 0; defeatEnemy(foreman); update(.04);
+        if (foreman.phase !== phase + 1) throw new Error('Foreman skipped an encounter phase');
+      }
+      foreman.hp = 0; defeatEnemy(foreman);
+    }
+    useDungeonControl('arena');
+    defeatForemanInThreePhases();
+  `);
+  assert.match(run('questDialog.innerHTML'), /Shift complete/);
+  assert.equal(run('isBlueprintUnlocked("continuityWeave")'), true);
+  run(`
+    useDungeonControl('staging'); useDungeonControl('arena'); defeatForemanInThreePhases();
+    useDungeonControl('exit');
+  `);
+  assert.equal(run('game.epilogue.dungeon'), null);
+  assert.match(run('ui.stationOutput.textContent'), /REMATCH COMPLETE/);
+  assert.equal(run('game.epilogue.loot.length'), 2);
+  assert.equal(run('game.enemies[0].hp'), run('savedWalkerHP'));
+  run(`
+    start(serializeGame());
+    teleportPlayer(voidPortal.x, voidPortal.y); toggleStation();
+    useDungeonControl('works'); clearDungeonRoom(); useDungeonControl('stores'); clearDungeonRoom();
+  `);
+  assert.equal(run("dungeonControls().some(control => control.id === 'supplies')"), false);
+  run('game.health = 0; update(.04);');
+  assert.equal(run('game.active'), false);
+});
+
+test('the Foreman locks attack targets during wind-up and only hits once per charge', () => {
+  const { run } = loadGame();
+  run(`
+    enterDungeon();
+    switchDungeonRoom('arena', 'staging');
+    const foreman = game.enemies[0];
+    teleportPlayer(dungeonOrigin + 220, -125);
+    updateForeman(foreman, 2);
+    teleportPlayer(dungeonOrigin + 220, 100);
+    updateForeman(foreman, 1);
+  `);
+  assert.equal(run('game.health'), 100);
+  run(`
+    foreman.hp = 0;
+    updateForeman(foreman, .04);
+    teleportPlayer(dungeonOrigin + 220, -125);
+    updateForeman(foreman, 1.7);
+    updateForeman(foreman, .72);
+    for (let frame = 0; frame < 17; frame++) updateForeman(foreman, .04);
+  `);
+  assert.equal(run('game.health'), 66);
+  assert.equal(run('foreman.moveState'), 'recover');
+});
+
+test('Foreman reinforcements escalate, stay capped, and can summon one rare arena Stalker', () => {
+  const { run } = loadGame();
+  run(`
+    enterDungeon();
+    switchDungeonRoom('arena', 'staging');
+    const boss = game.enemies[0];
+    teleportPlayer(dungeonOrigin, 0);
+    function rollWave(roll) {
+      const originalRandom = Math.random;
+      try {
+        Math.random = () => roll;
+        const phase = foremanPhases[boss.phase - 1];
+        updateForemanHorde(boss, boss.waveTimer, phase);
+        updateForemanHorde(boss, boss.waveTimer, phase);
+      } finally { Math.random = originalRandom; }
+    }
+    rollWave(0);
+  `);
+  assert.equal(run('game.enemies.length - 1'), 4);
+  assert.equal(run("game.enemies.slice(1).every(enemy => enemy.variant === 'SKIRMISHER')"), true);
+  run(`
+    boss.hp = 0; updateForeman(boss, 0);
+    boss.hp = 0; updateForeman(boss, 0);
+    rollWave(.9999);
+    const summon = game.enemies.find(enemy => enemy.voidStalker);
+  `);
+  assert.equal(run('game.enemies.length - 1'), 12);
+  assert.equal(run('game.enemies.filter(enemy => enemy.voidStalker).length'), 1);
+  assert.equal(run('game.enemies.some(enemy => !enemy.foreman && !enemy.voidStalker && enemy.boss && enemy.familyIndex === 23)'), true);
+  run('updateVoidStalker(summon, .04); summon.hp = 0; defeatEnemy(summon);');
+  assert.equal(run('summon.huntState'), 'circle');
+  assert.equal(run('summon.defeated'), true);
+  assert.equal(run('game.epilogue.guardianCleared'), false);
+  run('rollWave(.9999); rollWave(.9999);');
+  assert.equal(run('game.enemies.filter(enemy => enemy.voidStalker).length'), 1);
+  assert.equal(run('game.enemies.filter(enemy => enemy !== boss && enemy.hp > 0).length'), 19);
+  run('boss.hp = 0; defeatEnemy(boss);');
+  assert.equal(run('game.enemies.length'), 0);
+  assert.equal(run('game.epilogue.dungeon.victory'), true);
+});
+
 test('quests only count post-acceptance actions, including fresh exploration', () => {
   const { run } = loadGame();
   run(`
@@ -568,6 +936,189 @@ test('map rings follow the actual sector boundaries', () => {
   assert.ok(radii.includes(16000));
   assert.ok(!radii.includes(9000));
   assert.ok(!radii.includes(12000));
+});
+
+test('the Admin Test Lab isolates saves, exports, and legacy writes from the suspended run', async () => {
+  const storage = new Map();
+  const { run, downloads } = loadGame({ storage });
+  run('start(null, 0); game.vault.steel = 7; game.health = 81;');
+  assert.equal(await run('saveGame()'), true);
+  const before = [...storage];
+  run(`
+    const normal = game;
+    game.vault.steel = 8;
+    adminMode = true;
+    togglePause();
+    openAdminPanel();
+    adminAction('grant', 'steel', 200);
+  `);
+  assert.equal(run('game.vault.steel'), 8);
+  await run('beginAdminTest();');
+  run(`
+    adminAction('grant', 'steel', 200);
+    game.salvage = 39;
+    bankSalvage();
+    exportCurrentRun();
+    writeLegacyValue('horde-high', '123456');
+  `);
+  assert.equal(run('game.vault.steel'), 200);
+  assert.equal(run('game.banked'), 39);
+  assert.equal(run('saveButton.disabled && exportRunButton.disabled'), true);
+  assert.equal(await run('saveGame(0)'), false);
+  assert.equal(await run('persistGame(0)'), false);
+  assert.equal(downloads.length, 0);
+  assert.deepEqual([...storage], before);
+  run('closeAdminPanel(); togglePause(); end();');
+  assert.deepEqual([...storage], before);
+  run("document.querySelector('#discard-test-after-death').click();");
+  assert.equal(run('game === normal && game.active && game.paused'), true);
+  assert.equal(run('game.vault.steel'), 8);
+  assert.equal(run('game.health'), 81);
+  assert.equal(run('currentSaveSlot'), 0);
+  assert.equal(await run('saveGame()'), true);
+  assert.notDeepEqual([...storage], before);
+});
+
+test('the Admin Test Lab can equip ranged and melee weapons without changing the original loadout', async () => {
+  const { run } = loadGame();
+  run("adminMode = true; togglePause(); openAdminPanel(); adminAction('weapon', 'radBeam');");
+  assert.equal(run('game.weapon'), 'sidearm');
+  await run('beginAdminTest();');
+  run(`
+    document.querySelector('#admin-weapon').value = 'radBeam';
+    const equip = () => adminPanel.listeners.get('click')[0]({
+      target: { closest: () => ({ dataset: { admin: 'weapon' } }) }
+    });
+    equip();
+  `);
+  assert.equal(run('game.weapon'), 'radBeam');
+  assert.equal(run('game.ammo'), run('weaponCatalog.radBeam.magazine'));
+  assert.equal(run('game.weaponSlots[1]'), 'radBeam');
+  assert.equal(run('game.reloadPending'), false);
+  assert.equal(run('Boolean(game.blueprints.radBeam)'), false);
+  run(`
+    equip();
+    game.weaponSlots[2] = 'smg';
+    game.weaponSlots[3] = 'railgun';
+    adminAction('weapon', 'machete');
+  `);
+  assert.equal(run('JSON.stringify(game.weaponSlots)'), '["sidearm","machete","smg","railgun"]');
+  assert.equal(run('game.weapon'), 'machete');
+  assert.equal(run('ui.ammo.textContent'), 'MELEE');
+  run('discardAdminTest();');
+  assert.equal(run('game.weapon'), 'sidearm');
+  assert.equal(run('game.weaponSlots[1]'), null);
+});
+
+test('admin infinite ammo fires from empty magazines without consuming ammo or changing the normal run', async () => {
+  const { run } = loadGame();
+  run("adminMode = true; togglePause(); openAdminPanel(); adminAction('infinite-ammo');");
+  assert.equal(run('hasInfiniteAmmo()'), false);
+  const originalAmmo = run('game.ammo');
+  await run('beginAdminTest();');
+  run(`
+    game.ammo = 0;
+    game.ammoReserve.pistolAmmo = 2;
+    game.reloadPending = true;
+    adminAction('infinite-ammo');
+    closeAdminPanel(); togglePause();
+    reloadAmmo();
+    shoot();
+    shoot();
+  `);
+  assert.equal(run('game.bullets.length'), 1);
+  assert.equal(run('game.ammo'), 0);
+  assert.equal(run('game.ammoReserve.pistolAmmo'), 2);
+  run(`
+    togglePause(); openAdminPanel();
+    adminAction('weapon', 'radBeam');
+    closeAdminPanel(); togglePause();
+    game.ammo = 0;
+    game.radBeamDrainTimer = .75;
+    const target = { x: game.player.x + 100, y: game.player.y, hp: 100, r: 12 };
+    game.enemies = [target];
+    game.player.angle = 0;
+    updateRadBeam(2);
+    updateAmmoUI();
+  `);
+  assert.equal(run('ui.ammo.textContent'), '∞');
+  assert.equal(run('game.radBeamActive'), true);
+  assert.ok(run('Math.abs(target.hp - 99.9) < 1e-8'));
+  assert.equal(run('game.ammo'), 0);
+  assert.equal(run('game.radBeamDrainTimer'), .75);
+  run(`
+    togglePause(); openAdminPanel(); adminAction('infinite-ammo');
+    adminAction('weapon', 'sidearm');
+    closeAdminPanel(); togglePause();
+    game.fireTimer = 0;
+    shoot();
+  `);
+  assert.equal(run('game.ammo'), run('weaponCatalog.sidearm.magazine - 1'));
+  run('togglePause(); openAdminPanel(); adminAction("infinite-ammo"); discardAdminTest();');
+  assert.equal(run('hasInfiniteAmmo()'), false);
+  assert.equal(run('game.ammo'), originalAmmo);
+});
+
+test('admin scenarios reset named encounters and progression without resetting the test loadout', async () => {
+  const { run } = loadGame();
+  run('adminMode = true; togglePause(); openAdminPanel();');
+  await run('beginAdminTest();');
+  run(`
+    adminAction('scenario', 'foreman:3');
+    adminAction('blueprint', 'smg');
+    adminAction('grant', 'steel', 12);
+    adminAction('spawn', 'walker');
+  `);
+  assert.equal(run('game.epilogue.dungeon.room'), 'arena');
+  assert.equal(run('game.enemies.find(enemy => enemy.foreman).phase'), 3);
+  assert.equal(run('game.enemies.some(enemy => enemy.voidWalker)'), true);
+  assert.match(run('adminReport.value'), /Checkpoint: staging/);
+  assert.match(run('adminReport.value'), /Phase 3/);
+  run('let copiedReport; navigator.clipboard = { writeText: async text => { copiedReport = text; } };');
+  await run("adminAction('copy');");
+  assert.equal(run('copiedReport'), run('adminReport.value'));
+  run(`
+    adminAction('clear');
+    game.enemies[0].hp -= 10;
+    adminAction('reset');
+  `);
+  assert.equal(run('game.enemies.length'), 1);
+  assert.equal(run('game.enemies[0].hp'), run('game.enemies[0].maxHp / 3'));
+  assert.equal(run('game.blueprints.smg'), true);
+  assert.equal(run('game.vault.steel'), 12);
+  run(`
+    adminAction('mission', 'beacon-siege');
+    game.health = 23; game.ammo = 0;
+    adminAction('ammo');
+  `);
+  assert.equal(run('currentCampaignMission().id'), 'beacon-siege');
+  assert.equal(run('getNearbyQuestSource()'), 'beaconEngineer');
+  assert.equal(run('campaignBeacon().repaired'), true);
+  assert.equal(run('game.ammo'), run('weaponCatalog[game.weapon].magazine'));
+  assert.equal(run('game.health'), 23);
+  run(`adminAction('invincible'); game.health -= 40;`);
+  assert.equal(run('game.health'), 100);
+});
+
+test('main-menu help reflects remapped controls and both info screens return focus to their openers', async () => {
+  const { run } = loadGame();
+  await run('returnToMainMenu();');
+  run("settings.bindings.quests = 'k';");
+  await run("handleMenuAction('how-to-play');");
+  assert.match(run("document.querySelector('#controls-help').textContent"), /K opens the quest log/);
+  assert.equal(run("mainMenu.classList.contains('hidden') && !howToPlay.classList.contains('hidden') && changeLog.classList.contains('hidden')"), true);
+  await run("handleMenuAction('back-from-help');");
+  assert.equal(run(`document.activeElement === mainMenu.querySelector('[data-menu-action="how-to-play"]')`), true);
+
+  await run("handleMenuAction('change-log');");
+  assert.equal(run("mainMenu.classList.contains('hidden') && howToPlay.classList.contains('hidden') && !changeLog.classList.contains('hidden')"), true);
+  assert.equal(run("document.activeElement === changeLog.querySelector('.menu-info-title')"), true);
+  run("changeLog.querySelector('.how-to-play-content').scrollTop = 100;");
+  await run("handleMenuAction('back-from-change-log');");
+  assert.equal(run("!mainMenu.classList.contains('hidden') && changeLog.classList.contains('hidden')"), true);
+  assert.equal(run(`document.activeElement === mainMenu.querySelector('[data-menu-action="change-log"]')`), true);
+  await run("handleMenuAction('change-log');");
+  assert.equal(run("changeLog.querySelector('.how-to-play-content').scrollTop"), 0);
 });
 
 test('pause focuses Resume and clicking it resumes the same run without saving', () => {
