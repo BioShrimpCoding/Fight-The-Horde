@@ -48,6 +48,16 @@ const changeLog = document.querySelector('#change-log');
 const questHud = document.querySelector('#quest-hud');
 const questPanel = document.querySelector('#quest-panel');
 const questDialog = document.querySelector('#quest-dialog');
+const journalPanel = document.querySelector('#journal-panel');
+const journalContent = document.querySelector('#journal-content');
+const journalButton = document.querySelector('#journal-button');
+const worldEventHud = document.querySelector('#world-event-hud');
+const worldEventStatus = document.querySelector('#world-event-status');
+const abandonEventButton = document.querySelector('#abandon-world-event');
+const pauseJournalButton = document.querySelector('#pause-journal-button');
+let journalView = 'enemies';
+let journalOpener = null;
+let journalWasPaused = false;
 const continueButton = document.querySelector('[data-menu-action="continue"]');
 const saveButton = document.querySelector('#save-button');
 const resumeButton = document.querySelector('#resume-button');
@@ -62,7 +72,7 @@ const controlDefaults = {
   w: ['Move up', 'w'], s: ['Move down', 's'], a: ['Move left', 'a'], d: ['Move right', 'd'],
   shift: ['Sprint', 'shift'], fire: ['Fire', ' '], fireAlt: ['Alternate fire', 'mouse0'],
   pulse: ['Pulse', 'q'], interact: ['Interact', 'e'], medkit: ['Medkit', 'h'],
-  map: ['Tactical map', 'm'], zoom: ['Mini-map zoom', 'j'], quests: ['Quest log', 'l'],
+  map: ['Tactical map', 'm'], zoom: ['Mini-map zoom', 'j'], quests: ['Quest log', 'l'], journal: ['Discovery journal', 'b'],
   slot1: ['Weapon slot 1', '1'], slot2: ['Weapon slot 2', '2'],
   slot3: ['Weapon slot 3', '3'], slot4: ['Weapon slot 4', '4']
 };
@@ -162,6 +172,14 @@ const campaignMissions = [
 ];
 const campaignDefenseRadius = 290;
 const campaignFinaleId = 'continuity';
+const worldEventTypes = {
+  distress: { name: 'DISTRESS SIGNAL', minSector: 1, defense: 90, record: 'Defend a stranded survivor while their transmitter calls for extraction.' },
+  wreck: { name: 'SUPPLY WRECK', minSector: 1, defense: 0, record: 'Three cargo locks draw separate ambushes. Clear each before opening the next.' },
+  horde: { name: 'ROAMING HORDE', minSector: 1, defense: 0, record: 'Intercept a moving horde trail, then defeat its elite leader and escort.' },
+  convoy: { name: 'DISABLED CONVOY', minSector: 1, defense: 60, record: 'Restore two components using parts on site, then defend the extraction.' },
+  breach: { name: 'VOID BREACH', minSector: 3, defense: 0, record: 'Destroy three anchors and their defenders, then defeat the breach guardian.' }
+};
+const worldEventRadius = 900;
 const bountyTemplates = [
   { id: 'bounty-horde', title: 'HORDE CLEARANCE', description: 'Defeat hostile entities in the current frontier.', type: 'kill', target: 'any', amount: 18, reward: { salvage: 28 } },
   { id: 'bounty-salvage', title: 'SALVAGE RECOVERY', description: 'Return with collected materials.', type: 'collect', target: 'any', amount: 16, reward: { salvage: 24 } },
@@ -186,9 +204,17 @@ const beaconModuleBenchOffset = 55;
 const beaconRegionRadius = 1200;
 const sanctuaryTurretCount = 16;
 const mapRadius = 18000;
-const voidPortal = { x: 17920, y: -5660 };
-const voidSearch = { x: 17550, y: -5600, radius: 1200 };
-const stalkerTerritory = 1800;
+const voidPortalDistance = mapRadius + 10000 * 10;
+const voidPortalAngle = -Math.PI / 10;
+const voidPortal = { x: Math.cos(voidPortalAngle) * voidPortalDistance, y: Math.sin(voidPortalAngle) * voidPortalDistance };
+const voidSearch = { x: voidPortal.x - 450, y: voidPortal.y + 250, radius: 1800 };
+const stalkerTerritory = 2400;
+const stalkerMaxHealth = 1400;
+const stalkerPhases = [
+  { speed: 285, windup: .85, recovery: 1.5, approach: .9, combo: 1, attacks: ['lunge', 'burst', 'marks', 'fan', 'shockwave'] },
+  { speed: 325, windup: .75, recovery: 1.15, approach: .65, combo: 2, attacks: ['lunge', 'marks', 'lunge', 'burst', 'cross', 'fan', 'shockwave'] },
+  { speed: 360, windup: .65, recovery: .9, approach: .4, combo: 3, attacks: ['lunge', 'burst', 'marks', 'cross', 'fan', 'shockwave', 'lunge', 'cross'] }
+];
 const dungeonRooms = {
   entry: { name: 'Pressure Lock', w: 780, h: 480, doors: [['exit', -340, 0, 'Return to the Void'], ['works', 340, 0, 'Enter the Foundry']] },
   works: { name: 'Foundry Floor', w: 980, h: 660, enemies: [0, 0, 1, 1, 2], doors: [['entry', -440, 0, 'Pressure Lock'], ['stores', 0, -280, 'Spare Parts Vault'], ['relay', 440, 0, 'Relay Gallery']] },
@@ -209,12 +235,96 @@ const dungeonWorldFields = [
 const biomeBoundaries = [3000, 6000, 9500, 13000, 16000];
 const tacticalMapZoomLevels = [.4, .6, .8, 1, 1.25, 1.5, 2];
 let tacticalMapZoomIndex = 3;
+function updateDeepVoid(dt) {
+  if (game.epilogue.dungeon) return;
+  const state = game.voidDangers;
+  const player = game.player;
+  for (const strike of state.strikes) {
+    const warning = strike.timer > 0;
+    strike.timer -= dt;
+    if (warning && strike.timer <= 0 && Math.hypot(player.x - strike.x, player.y - strike.y) <= 135) {
+      game.health -= 28 * (1 - (getArmorEffects().voidDamageReduction || 0));
+    }
+  }
+  state.strikes = state.strikes.filter(strike => strike.timer > -.3);
+  for (const rift of state.rifts) {
+    rift.timer -= dt;
+    if (!rift.triggered && Math.hypot(player.x - rift.x, player.y - rift.y) < 260) {
+      rift.triggered = true;
+      rift.timer = 1.5;
+      epilogueWarning(180);
+    } else if (rift.triggered && rift.timer <= 0) {
+      for (let i = 0; i < 3 && game.enemies.filter(enemy => !enemy.defeated && enemy.hp > 0).length < 24; i++) {
+        const angle = Math.PI * 2 * i / 3;
+        const x = rift.x + Math.cos(angle) * 55;
+        const y = rift.y + Math.sin(angle) * 55;
+        const enemy = Math.random() < .25 ? createVoidWalker(x, y) : createVoidWorm(x, y);
+        enemy.isAggroed = true;
+        addEnemy(enemy);
+      }
+    }
+  }
+  state.rifts = state.rifts.filter(rift => rift.timer > 0 && Math.hypot(player.x - rift.x, player.y - rift.y) < 2200);
+  const depth = Math.hypot(player.x, player.y) - mapRadius;
+  if (depth < 3000) return;
+  const intensity = Math.min(1, depth / 100000);
+  state.stormTimer -= dt;
+  state.riftTimer -= dt;
+  if (state.stormTimer <= 0) {
+    const bearing = Math.atan2((keys.s ? 1 : 0) - (keys.w ? 1 : 0), (keys.d ? 1 : 0) - (keys.a ? 1 : 0));
+    for (let i = 0; i < 2 + Math.round(intensity * 2); i++) {
+      const angle = bearing + (i - 1) * .8;
+      const distance = i === 0 ? 0 : 210 + Math.random() * 200;
+      state.strikes.push({ x: player.x + Math.cos(angle) * distance, y: player.y + Math.sin(angle) * distance, timer: 1.8 });
+    }
+    state.stormTimer = 12 - intensity * 5 + Math.random() * 4;
+    epilogueWarning(390);
+  }
+  if (state.riftTimer <= 0 && state.rifts.length < 3) {
+    const moving = keys.w || keys.s || keys.a || keys.d;
+    const angle = moving
+      ? Math.atan2((keys.s ? 1 : 0) - (keys.w ? 1 : 0), (keys.d ? 1 : 0) - (keys.a ? 1 : 0)) + (Math.random() - .5) * 1.4
+      : Math.random() * Math.PI * 2;
+    state.rifts.push({ x: player.x + Math.cos(angle) * 600, y: player.y + Math.sin(angle) * 600, timer: 45, triggered: false });
+    state.riftTimer = 24 - intensity * 9 + Math.random() * 6;
+  }
+}
+function drawDeepVoid() {
+  ctx.save();
+  ctx.translate(canvas.clientWidth / 2 - game.camera.x, canvas.clientHeight / 2 - game.camera.y);
+  ctx.lineWidth = 3;
+  ctx.font = 'bold 12px Space Mono';
+  ctx.textAlign = 'center';
+  for (const strike of game.voidDangers.strikes) {
+    ctx.strokeStyle = '#d2adff';
+    ctx.fillStyle = strike.timer > 0 ? '#aa72ff33' : settings.reducedEffects ? '#ddbbff44' : '#ddbbff99';
+    ctx.setLineDash(strike.timer > 0 ? [10, 7] : []);
+    ctx.beginPath();
+    ctx.arc(strike.x, strike.y, 135, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    if (strike.timer > 0) ctx.fillText('VOID STRIKE', strike.x, strike.y - 145);
+  }
+  for (const rift of game.voidDangers.rifts) {
+    ctx.strokeStyle = ctx.fillStyle = rift.triggered ? '#ffc486' : '#b794ff';
+    ctx.setLineDash([12, 9]);
+    ctx.beginPath();
+    ctx.arc(rift.x, rift.y, 260, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.ellipse(rift.x, rift.y, 20, 52, .35, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillText(rift.triggered ? 'RIFT OPENING' : 'UNSTABLE RIFT', rift.x, rift.y - 70);
+  }
+  ctx.restore();
+}
 function cycleTacticalMapZoom() {
   tacticalMapZoomIndex = (tacticalMapZoomIndex + 1) % tacticalMapZoomLevels.length;
 }
 function getTacticalMapZoom() {
   if (!mapOpen) return tacticalMapZoomLevels[tacticalMapZoomIndex];
-  const radius = hasContinuityKey() ? mapRadius + 2400 : mapRadius;
+  const radius = hasContinuityKey() ? voidPortalDistance + voidSearch.radius : mapRadius;
   return Math.min(1, mapRadius / (radius + Math.hypot(game.player.x, game.player.y)));
 }
 function getTacticalMapScale() {
@@ -224,7 +334,7 @@ function getTacticalMapScale() {
 function getTacticalMapVisibleRadius() {
   return mapRadius / getTacticalMapZoom();
 }
-function getMapCenter() { return mapOpen ? game.player : { x: 0, y: 0 }; }
+function getMapCenter() { return mapOpen || Math.hypot(game.player.x, game.player.y) > mapRadius ? game.player : { x: 0, y: 0 }; }
 function applyMapTransform(scale) {
   const center = getMapCenter();
   mapCtx.translate(mapCanvas.width / 2 - center.x * scale, mapCanvas.height / 2 - center.y * scale);
@@ -239,6 +349,7 @@ function resizeMapCanvas() {
 function setMapOpen(open) {
   if (mapOpen === open) return;
   mapOpen = open;
+  renderWorldEventHud();
   mapPanel.classList.toggle('expanded', open);
   const canFastTravel = isAtFastTravelHub();
   mapPanel.classList.toggle('fast-travel-enabled', open && canFastTravel);
@@ -307,6 +418,373 @@ const weaponCatalog = {
   radBeam: { name: 'RAD BEAM', ammo: 'radCells', magazine: 8, range: 600, damage: 0.05, radiationDamage: .5, radiationTickInterval: .1, radiationDuration: 3, radiationSlowChance: .05, radiationSlowMultiplier: .85, kind: 'gun', continuousBeam: true },
   cosmosGauntlet: { name: 'COSMOS GAUNTLET', ammo: 'cosmosGauntletAmmo', magazine: 16, cooldown: 100, damage: 1.60, speed: 450, life: 0.8, pellets: 2, spread: .60, kind: 'gun', oscillating: true, coneSize: .25 }
 };
+const sanctuaryProjects = {
+  medical: { name: 'MEDICAL WING', npc: 'medic', x: 370, y: 620,
+    benefits: ['Medkit crafting beside the Medic.', '15% lower medkit material costs, rounded down; minimum one.'] },
+  workshop: { name: 'WORKSHOP', npc: 'mechanic', x: 700, y: 120, industrial: true,
+    benefits: ['Craft and install handling mods.', 'Craft and install specialization mods.'] },
+  scout: { name: 'SCOUT STATION', npc: 'scout', x: 620, y: -470,
+    benefits: ['Approximate event leads in discovered regions.', 'Facility intelligence and expedition leads.'] },
+  archive: { name: 'ARCHIVE', npc: 'archivist', x: -270, y: 650,
+    benefits: ['Research plans and recovered facility records.', 'Trophy gallery; space reserved for future rival dossiers.'] },
+  depot: { name: 'SUPPLY DEPOT', npc: 'quartermaster', x: -680, y: -430, industrial: true,
+    benefits: ['One-click ammo orders for the equipped weapon.', 'Saved multi-weapon resupply list and combined cost preview.'] }
+};
+const weaponModCatalog = {
+  stabilizer: { name: 'STABILIZER', slot: 'handling', description: '25% less spread; 10% slower firing.' },
+  quickLoader: { name: 'QUICK LOADER', slot: 'handling', description: '20% shorter empty-magazine recovery; 15% smaller magazine (rounded down).' },
+  balancedGrip: { name: 'BALANCED GRIP', slot: 'handling', description: '15% shorter attack cooldown; 10% less damage.' },
+  focusAssembly: { name: 'FOCUS ASSEMBLY', slot: 'handling', description: '20% more reach; 10% less direct damage.' },
+  penetrator: { name: 'PENETRATOR', slot: 'specialization', description: 'Hit one additional enemy; 20% less damage.' },
+  scatterChoke: { name: 'SCATTER CHOKE', slot: 'specialization', description: '30% narrower spread; two fewer pellets.' },
+  concussivePayload: { name: 'CONCUSSIVE PAYLOAD', slot: 'specialization', description: '25% larger blast; 20% less damage.' },
+  lingeringFlame: { name: 'LINGERING FLAME', slot: 'specialization', description: '50% longer burn; 20% less burn damage per tick.' },
+  heavyEdge: { name: 'HEAVY EDGE', slot: 'specialization', description: '25% more damage; 20% longer attack cooldown.' },
+  focusedDischarge: { name: 'FOCUSED DISCHARGE', slot: 'specialization', description: '20% more direct damage; 25% longer firing cooldown.' },
+  sustainedExposure: { name: 'SUSTAINED EXPOSURE', slot: 'specialization', description: '25% longer radiation; 20% less direct beam damage.' },
+  focusedOrbit: { name: 'FOCUSED ORBIT', slot: 'specialization', description: '25% tighter projectile cone; 15% shorter reach.' },
+  shortChain: { name: 'SHORT CHAIN', slot: 'specialization', description: '20% faster firing; 30% shorter projectile lifetime.' }
+};
+const modResearch = {
+  focusAssembly: { metric: 'encounters', target: 12, label: 'Encounter 12 enemy variants' },
+  concussivePayload: { metric: 'events', target: 3, label: 'Complete 3 world events' },
+  lingeringFlame: { metric: 'kills', target: 25, label: 'Record 25 player defeats in the journal' },
+  focusedOrbit: { metric: 'encounters', target: 20, label: 'Encounter 20 enemy variants' }
+};
+function freshSanctuaryProgress() {
+  return { version: 1, projects: Object.fromEntries(Object.keys(sanctuaryProjects).map(id => [id, 0])), plans: [], resupply: [] };
+}
+function freshWeaponMods() { return { version: 1, weapons: {}, looseAmmo: {} }; }
+function weaponAcceptsMod(weaponId, modId) {
+  const weapon = weaponCatalog[weaponId];
+  if (!weapon || !Object.hasOwn(weaponModCatalog, modId)) return false;
+  const conventional = ['sidearm', 'duelSidearm', 'smg', 'minigun', 'shotgun', 'burstRifle', 'sniper', 'grenadeLauncher', 'railgun'];
+  switch (modId) {
+    case 'stabilizer': return weapon.spread > 0 && !weapon.beam && !weapon.continuousBeam;
+    case 'quickLoader': return conventional.includes(weaponId) && weapon.magazine > 1;
+    case 'balancedGrip': case 'heavyEdge': return weapon.kind === 'melee';
+    case 'focusAssembly': return ['laser', 'combatPistol', 'pulseCarbine', 'railgun', 'voidBatar', 'radBeam', 'magicGauntlet', 'cosmosGauntlet'].includes(weaponId);
+    case 'penetrator': return conventional.includes(weaponId) && weapon.pellets === 1 && !weapon.beam && !weapon.blast;
+    case 'scatterChoke': return weaponId === 'shotgun';
+    case 'concussivePayload': return ['grenadeLauncher', 'pulseCarbine'].includes(weaponId);
+    case 'lingeringFlame': return weaponId === 'flamethrower';
+    case 'focusedDischarge': return ['laser', 'combatPistol', 'railgun'].includes(weaponId);
+    case 'sustainedExposure': return weaponId === 'radBeam';
+    case 'focusedOrbit': return ['magicGauntlet', 'cosmosGauntlet'].includes(weaponId);
+    case 'shortChain': return weaponId === 'voidBatar';
+    default: return false;
+  }
+}
+function getWeaponStats(weaponId = game.weapon, run = game) {
+  const weapon = { ...weaponCatalog[weaponId] };
+  const mods = run.weaponMods.weapons[weaponId];
+  for (const id of [mods?.handling, mods?.specialization]) {
+    switch (id) {
+      case 'stabilizer': weapon.spread *= .75; weapon.cooldown /= .9; break;
+      case 'quickLoader': weapon.magazine = Math.max(1, Math.floor(weapon.magazine * .85)); weapon.emptyReloadMultiplier = .8; break;
+      case 'balancedGrip': weapon.cooldown *= .85; weapon.damage *= .9; break;
+      case 'focusAssembly':
+        if (weapon.continuousBeam) weapon.range *= 1.2;
+        else weapon.speed *= 1.2;
+        if (weapon.voidBatarMotion) weapon.voidBatarAccelerationMultiplier = 1.2;
+        weapon.damage *= .9;
+        break;
+      case 'penetrator': weapon.pierceHits = 2; weapon.damage *= .8; break;
+      case 'scatterChoke': weapon.spread *= .7; weapon.pellets -= 2; break;
+      case 'concussivePayload':
+        if (weapon.blast) weapon.blast *= 1.25;
+        if (weapon.pulseBlastRadius) weapon.pulseBlastRadius *= 1.25;
+        weapon.damage *= .8;
+        break;
+      case 'lingeringFlame': weapon.burnDuration *= 1.5; weapon.burnDamage *= .8; break;
+      case 'heavyEdge': weapon.damage *= 1.25; weapon.cooldown *= 1.2; break;
+      case 'focusedDischarge': weapon.damage *= 1.2; weapon.cooldown *= 1.25; break;
+      case 'sustainedExposure': weapon.radiationDuration *= 1.25; weapon.damage *= .8; break;
+      case 'focusedOrbit': weapon.spread *= .75; weapon.coneSize *= .75; weapon.life *= .85; break;
+      case 'shortChain': weapon.cooldown /= 1.2; weapon.life *= .7; break;
+    }
+  }
+  return weapon;
+}
+function reachedSanctuarySectorThree(run = game) {
+  return [...run.discovered].some(key => /^sector-[2-5]-[0-3]$/.test(key)) || run.discovered.has('void');
+}
+function sanctuaryProjectCost(id, level = game.sanctuary.projects[id]) {
+  const industrial = sanctuaryProjects[id].industrial;
+  return level === 0
+    ? industrial ? { iron: 12, steel: 6, fuel: 4 } : { wood: 12, iron: 8, fiber: 4 }
+    : industrial ? { steel: 16, crystal: 8, relic: 1 } : { steel: 10, crystal: 6, fuel: 4 };
+}
+function weaponModCost(weaponId, modId) {
+  if (weaponModCatalog[modId].slot === 'handling') return { steel: 4, crystal: 2 };
+  return weaponRecipes[weaponId].cost.relic ? { steel: 12, crystal: 8, relic: 1 } : { steel: 8, crystal: 4 };
+}
+function researchProgress(id, run = game) {
+  const metric = modResearch[id].metric;
+  if (metric === 'events') return Object.values(run.worldEvents.completed).reduce((sum, value) => sum + value, 0);
+  if (metric === 'kills') return Object.values(run.journal.enemies).reduce((sum, entry) => sum + entry.kills, 0);
+  return Object.keys(run.journal.enemies).length;
+}
+function canUseSanctuaryService(npcId) {
+  const index = sanctuaryNpcDefinitions.findIndex(npc => npc.id === npcId);
+  const position = index >= 0 ? getSanctuaryNpcPositions()[index] : null;
+  if (game.active && !game.paused && !mapOpen && !game.managerMode && !game.epilogue.dungeon
+      && !questDialog.hidden && questDialog.dataset.sourceId === npcId
+      && getBiome(game.player.x, game.player.y).key === 'sanctuary' && position
+      && Math.hypot(game.player.x - position.x, game.player.y - position.y) <= stationInteractionRadius) return true;
+  showQuestMessage(`RETURN TO THE ${questNpcById(npcId)?.name || 'SANCTUARY CONTACT'} TO USE THIS SERVICE`);
+  return false;
+}
+function spendSanctuaryMaterials(cost) {
+  if (game.crafting) { showQuestMessage('FINISH THE CURRENT CRAFT FIRST'); return false; }
+  const missing = Object.entries(cost).filter(([id, amount]) => getCraftResourceAmount(id) < amount);
+  if (missing.length) {
+    showQuestMessage(`NEED ${missing.map(([id, amount]) => `${amount - getCraftResourceAmount(id)} ${id.toUpperCase()}`).join(' + ')} // DEPOSIT MATERIALS IN YOUR VAULT`);
+    return false;
+  }
+  Object.entries(cost).forEach(([id, amount]) => spendCraftResource(id, amount));
+  updateInventoryUI();
+  return true;
+}
+function upgradeSanctuaryProject(id) {
+  if (!Object.hasOwn(sanctuaryProjects, id)) { showQuestMessage('UNKNOWN SANCTUARY PROJECT'); return; }
+  const project = sanctuaryProjects[id];
+  if (!canUseSanctuaryService(project.npc)) return;
+  const level = game.sanctuary.projects[id];
+  if (level >= 2) { showQuestMessage('PROJECT ALREADY COMPLETE'); return; }
+  if (level === 1 && !reachedSanctuarySectorThree()) { showQuestMessage('EXPLORE SECTOR 3 BEFORE BUILDING STAGE II'); return; }
+  if (!spendSanctuaryMaterials(sanctuaryProjectCost(id))) return;
+  game.sanctuary.projects[id]++;
+  updateQuestProgress('repair');
+  renderQuestDialog(project.npc);
+  showQuestMessage(`${project.name} // STAGE ${level + 1} COMPLETE`);
+}
+function claimModResearch(id) {
+  if (!canUseSanctuaryService('archivist')) return;
+  if (!Object.hasOwn(modResearch, id) || !game.sanctuary.projects.archive
+      || researchProgress(id) < modResearch[id].target) { showQuestMessage('RESEARCH REQUIREMENTS NOT MET'); return; }
+  if (!game.sanctuary.plans.includes(id)) game.sanctuary.plans.push(id);
+  renderQuestDialog('archivist');
+  showQuestMessage(`PLAN RECOVERED // ${weaponModCatalog[id].name} // WEAPON STILL REQUIRED`);
+}
+function weaponModRequirement(weaponId, modId) {
+  if (!Object.hasOwn(weaponCatalog, weaponId) || !game.unlockedWeapons[weaponId]) return 'CRAFT THIS WEAPON FIRST';
+  if (!weaponAcceptsMod(weaponId, modId)) return 'INCOMPATIBLE MOD';
+  if (game.sanctuary.projects.workshop < (weaponModCatalog[modId].slot === 'handling' ? 1 : 2)) return 'UPGRADE THE WORKSHOP';
+  if (Object.hasOwn(modResearch, modId) && !game.sanctuary.plans.includes(modId)) return `ARCHIVIST RESEARCH: ${modResearch[modId].label.toUpperCase()}`;
+  return '';
+}
+function craftWeaponMod(weaponId, modId) {
+  if (!canUseSanctuaryService('mechanic')) return;
+  const requirement = weaponModRequirement(weaponId, modId);
+  if (requirement) { showQuestMessage(requirement); return; }
+  const owned = game.weaponMods.weapons[weaponId];
+  if (owned?.crafted.includes(modId)) { showQuestMessage('MOD ALREADY CRAFTED FOR THIS WEAPON'); return; }
+  if (!spendSanctuaryMaterials(weaponModCost(weaponId, modId))) return;
+  const entry = owned || (game.weaponMods.weapons[weaponId] = { crafted: [], handling: null, specialization: null });
+  entry.crafted.push(modId);
+  renderQuestDialog('mechanic');
+  showQuestMessage(`CRAFTED // ${weaponModCatalog[modId].name} FOR ${weaponCatalog[weaponId].name} // INSTALL FREE`);
+}
+function equipWeaponMod(weaponId, slot, modId) {
+  if (!canUseSanctuaryService('mechanic')) return;
+  const entry = game.weaponMods.weapons[weaponId];
+  if (!['handling', 'specialization'].includes(slot) || !entry || !game.unlockedWeapons[weaponId]
+      || game.crafting || game.sanctuary.projects.workshop < (slot === 'handling' ? 1 : 2)
+      || (modId !== null && (!entry.crafted.includes(modId) || weaponModCatalog[modId]?.slot !== slot))) {
+    showQuestMessage('CANNOT INSTALL THAT MOD // CHECK WORKSHOP, OWNERSHIP AND CURRENT CRAFT'); return;
+  }
+  entry[slot] = modId;
+  const weapon = getWeaponStats(weaponId);
+  if (weapon.kind !== 'melee') {
+    const loaded = weaponId === game.weapon ? game.ammo : game.weaponAmmo[weaponId] || 0;
+    const excess = Math.max(0, loaded - weapon.magazine);
+    if (excess) game.weaponMods.looseAmmo[weapon.ammo] = (game.weaponMods.looseAmmo[weapon.ammo] || 0) + excess;
+    game.weaponAmmo[weaponId] = Math.min(loaded, weapon.magazine);
+    if (weaponId === game.weapon) game.ammo = game.weaponAmmo[weaponId];
+  }
+  updateAmmoUI();
+  renderQuestDialog('mechanic');
+  showQuestMessage('MOD LOADOUT UPDATED // NO AMMO OR MATERIALS GRANTED');
+}
+function isDepotWeapon(id, run = game) {
+  return Object.hasOwn(weaponCatalog, id) && run.unlockedWeapons[id] === true
+    && weaponCatalog[id].ammo && Object.keys(ammoCatalog[weaponCatalog[id].ammo].cost).length > 0;
+}
+function validResupplyOrders(orders, run = game) {
+  return Array.isArray(orders) && orders.length <= Object.keys(weaponCatalog).length
+    && new Set(orders.map(order => order?.weaponId)).size === orders.length
+    && orders.every(order => order && isDepotWeapon(order.weaponId, run) && Number.isInteger(order.quantity) && order.quantity >= 1 && order.quantity <= 5);
+}
+function depotResupplyRecipe(orders) {
+  const cost = {}, ammoOutput = {};
+  for (const order of orders) {
+    const ammo = weaponCatalog[order.weaponId].ammo;
+    const recipe = ammoCatalog[ammo];
+    for (const [id, amount] of Object.entries(recipe.cost)) cost[id] = (cost[id] || 0) + amount * order.quantity;
+    ammoOutput[ammo] = (ammoOutput[ammo] || 0) + recipe.amount * order.quantity;
+  }
+  return { name: 'SUPPLY DEPOT ORDER', time: orders.reduce((sum, order) => sum + order.quantity * 3, 0), cost, ammoOutput };
+}
+function adjustResupplyOrder(weaponId, delta) {
+  if (!canUseSanctuaryService('quartermaster')) return;
+  if (game.sanctuary.projects.depot < 2 || !isDepotWeapon(weaponId) || ![-1, 1].includes(delta)) {
+    showQuestMessage('RESUPPLY LIST REQUIRES SUPPLY DEPOT II AND A CRAFTED AMMO WEAPON'); return;
+  }
+  const list = game.sanctuary.resupply;
+  const entry = list.find(order => order.weaponId === weaponId);
+  if (entry) {
+    entry.quantity = Math.min(5, entry.quantity + delta);
+    if (entry.quantity <= 0) list.splice(list.indexOf(entry), 1);
+  } else if (delta > 0) list.push({ weaponId, quantity: 1 });
+  renderQuestDialog('quartermaster');
+}
+function placeResupplyOrder(equippedOnly = false) {
+  if (!canUseSanctuaryService('quartermaster')) return;
+  if (game.sanctuary.projects.depot < (equippedOnly ? 1 : 2)) { showQuestMessage('UPGRADE THE SUPPLY DEPOT'); return; }
+  const orders = equippedOnly ? [{ weaponId: game.weapon, quantity: 1 }] : game.sanctuary.resupply.map(order => ({ ...order }));
+  if (!orders.length || !validResupplyOrders(orders)) { showQuestMessage('SELECT A CRAFTED AMMO WEAPON // RECHARGING GAUNTLETS NEED NO ORDER'); return; }
+  const recipe = depotResupplyRecipe(orders);
+  if (!spendSanctuaryMaterials(recipe.cost)) return;
+  game.crafting = { recipeKey: 'depotResupply', orders, quantity: 1, remaining: recipe.time, total: recipe.time };
+  renderQuestDialog('quartermaster');
+  showQuestMessage(`CRAFTING RESUPPLY // ${recipe.time}s // ALL MATERIALS PAID ONCE`);
+}
+function restoreSanctuaryProgress(run, parsed) {
+  const plain = value => value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
+  if (Object.hasOwn(parsed, 'sanctuary')) {
+    const state = parsed.sanctuary;
+    if (!plain(state) || state.version !== 1 || !plain(state.projects)
+        || Object.keys(state.projects).length !== Object.keys(sanctuaryProjects).length
+        || Object.keys(sanctuaryProjects).some(id => !Number.isInteger(state.projects[id]) || state.projects[id] < 0 || state.projects[id] > 2)
+        || (Object.values(state.projects).includes(2) && !reachedSanctuarySectorThree(run))
+        || !Array.isArray(state.plans) || new Set(state.plans).size !== state.plans.length
+        || state.plans.some(id => !Object.hasOwn(modResearch, id))
+        || (state.plans.length > 0 && state.projects.archive < 1)
+        || !validResupplyOrders(state.resupply, run)
+        || (state.resupply.length > 0 && state.projects.depot < 2)) throw new Error('Invalid Sanctuary progression');
+    run.sanctuary = { version: 1, projects: { ...state.projects }, plans: [...state.plans], resupply: state.resupply.map(order => ({ ...order })) };
+  }
+  if (Object.hasOwn(parsed, 'weaponMods')) {
+    const state = parsed.weaponMods;
+    if (!plain(state) || state.version !== 1 || !plain(state.weapons) || !plain(state.looseAmmo)
+        || Object.entries(state.looseAmmo).some(([id, amount]) => !Object.hasOwn(ammoCatalog, id) || !Number.isSafeInteger(amount) || amount < 0)
+        || Object.entries(state.weapons).some(([id, entry]) => !Object.hasOwn(weaponCatalog, id) || run.unlockedWeapons[id] !== true
+          || !plain(entry) || !Array.isArray(entry.crafted) || new Set(entry.crafted).size !== entry.crafted.length
+          || entry.crafted.some(modId => !weaponAcceptsMod(id, modId))
+          || entry.crafted.some(modId => run.sanctuary.projects.workshop < (weaponModCatalog[modId].slot === 'handling' ? 1 : 2)
+            || (Object.hasOwn(modResearch, modId) && !run.sanctuary.plans.includes(modId)))
+          || ['handling', 'specialization'].some(slot => entry[slot] !== null
+            && (!entry.crafted.includes(entry[slot]) || weaponModCatalog[entry[slot]]?.slot !== slot)))) throw new Error('Invalid weapon modifications');
+    run.weaponMods = { version: 1, weapons: Object.fromEntries(Object.entries(state.weapons).map(([id, entry]) =>
+      [id, { crafted: [...entry.crafted], handling: entry.handling, specialization: entry.specialization }])), looseAmmo: { ...state.looseAmmo } };
+  }
+  if (run.crafting?.recipeKey === 'depotResupply'
+      && (!validResupplyOrders(run.crafting.orders, run) || !run.crafting.orders.length
+        || run.sanctuary.projects.depot < 1
+        || (run.sanctuary.projects.depot < 2 && (run.crafting.orders.length !== 1 || run.crafting.orders[0].quantity !== 1))
+        || !Number.isFinite(run.crafting.remaining) || run.crafting.remaining < 0
+        || run.crafting.total !== depotResupplyRecipe(run.crafting.orders).time
+        || run.crafting.remaining > run.crafting.total || run.crafting.quantity !== 1)) throw new Error('Invalid Supply Depot craft');
+}
+function sanctuaryCostLabel(cost) {
+  return Object.entries(cost).map(([id, amount]) => `${amount} ${resourceTypes.find(resource => resource.key === id)?.name || id.toUpperCase()} (${getCraftResourceAmount(id)} OWNED)`).join(' + ');
+}
+function renderWeaponModService() {
+  const owned = Object.keys(weaponCatalog).filter(id => game.unlockedWeapons[id]);
+  const selected = owned.includes(questDialog.dataset.modWeapon) ? questDialog.dataset.modWeapon : game.weapon;
+  questDialog.dataset.modWeapon = selected;
+  const weapon = getWeaponStats(selected);
+  const entry = game.weaponMods.weapons[selected];
+  return `<h4>WEAPON MODIFICATIONS</h4><p>Craft once per weapon in this save. Install or remove free here. Effects are recalculated, never stacked by swapping.</p>
+    <nav class="sanctuary-weapon-picker" aria-label="Weapon to modify">${owned.map(id =>
+      `<button type="button" data-mod-weapon="${id}" aria-pressed="${id === selected}">${weaponCatalog[id].name}</button>`).join('')}</nav>
+    <p>${weaponCatalog[selected].name} // DAMAGE ${weapon.damage.toFixed(3)} // ${weapon.continuousBeam ? `RANGE ${Math.round(weapon.range)}` : `COOLDOWN ${Math.round(weapon.cooldown)}ms`}${weapon.magazine ? ` // MAG ${weapon.magazine}` : ''}</p>
+    ${['handling', 'specialization'].map(slot => `<div class="quest-card"><b>${slot.toUpperCase()} SLOT: ${weaponModCatalog[entry?.[slot]]?.name || 'EMPTY'}</b>
+      ${entry?.[slot] ? `<button type="button" data-mod-remove="${slot}">REMOVE FREE</button>` : ''}
+      ${Object.entries(weaponModCatalog).filter(([id, mod]) => mod.slot === slot && weaponAcceptsMod(selected, id)).map(([id, mod]) => {
+        const crafted = entry?.crafted.includes(id);
+        const requirement = weaponModRequirement(selected, id);
+        return `<div class="sanctuary-mod-option"><strong>${mod.name}</strong><span>${mod.description}</span>
+          <small>${crafted ? 'CRAFTED FOR THIS WEAPON' : sanctuaryCostLabel(weaponModCost(selected, id))}${requirement ? ` // ${requirement}` : ''}</small>
+          ${crafted ? `<button type="button" data-mod-equip="${id}" ${requirement || game.crafting || entry[slot] === id ? 'disabled' : ''}>${entry[slot] === id ? 'INSTALLED' : 'INSTALL FREE'}</button>`
+            : `<button type="button" data-mod-craft="${id}" ${requirement || game.crafting ? 'disabled' : ''}>CRAFT FOR THIS WEAPON</button>`}</div>`;
+      }).join('') || '<span>NO COMPATIBLE MODS.</span>'}</div>`).join('')}`;
+}
+function renderArchiveService() {
+  const research = Object.entries(modResearch).map(([id, definition]) => {
+    const claimed = game.sanctuary.plans.includes(id);
+    const progress = researchProgress(id);
+    return `<div class="quest-card"><b>${weaponModCatalog[id].name}</b><span>${definition.label} // ${Math.min(progress, definition.target)} / ${definition.target}</span>
+      <button type="button" data-research-claim="${id}" ${claimed || progress < definition.target ? 'disabled' : ''}>${claimed ? 'PLAN RECOVERED' : 'RECOVER PLAN'}</button></div>`;
+  }).join('');
+  const records = journalRecordCards().map(card => `<div class="quest-card"><b>${card.title}</b><span>${card.text}</span></div>`).join('');
+  let gallery = '';
+  if (game.sanctuary.projects.archive >= 2) {
+    const trophies = [
+      ...(game.epilogue.guardianCleared ? ['VOID STALKER GUARDIAN'] : []),
+      ...(game.epilogue.firstClear ? ['THE LAST SHIFT'] : []),
+      ...Object.entries(game.worldEvents.completed).filter(([, count]) => count > 0).map(([id, count]) => `${worldEventTypes[id].name} // ${count} CLEARED`)
+    ];
+    gallery = `<h4>TROPHY GALLERY</h4><p>${trophies.join('<br>') || 'No trophies recovered yet.'}</p><p>Rival dossier comparison will appear with the later named-rivals expansion.</p>`;
+  }
+  return `<h4>DETERMINISTIC RESEARCH</h4><p>No random mod drops. Recover each plan once when its journal milestone is met; it never grants a weapon or weapon blueprint.</p>${research}
+    <h4>RECOVERED RECORDS</h4>${records || '<p>No records recovered yet.</p>'}${gallery}`;
+}
+function renderScoutService() {
+  const leads = game.worldEvents.events.filter(event => !event.discovered && game.discovered.has(event.biomeKey));
+  const leadMarkup = leads.map(event => `<div class="quest-card"><b>${worldEventTypes[event.type].name} // SECTOR ${event.sector}</b>
+    <span>SEARCH NEAR ${Math.round(event.x / 500) * 50}m, ${Math.round(event.y / 500) * 50}m // APPROXIMATE, NOT ACTIVATED</span></div>`).join('');
+  let facilities = '';
+  if (game.sanctuary.projects.scout >= 2) {
+    facilities = `<h4>FACILITY INTELLIGENCE</h4><p>${hasContinuityKey() && game.discovered.has('void')
+      ? `${epilogueClue()} // SEARCH AREA: ${Math.round(voidSearch.x / 500) * 50}m, ${Math.round(voidSearch.y / 500) * 50}m`
+      : 'No facility lead available. Explore the frontier and recover campaign records.'}</p>
+      <p>The four optional mini-facilities will add sector-specific leads in the next expansion stage.</p>`;
+  }
+  return `<h4>SCOUT INTELLIGENCE</h4><p>Dashed map circles mark approximate signals only in regions you have explored. They do not discover or activate events.</p>${leadMarkup || '<p>No new signals in explored regions right now.</p>'}${facilities}`;
+}
+function renderDepotService() {
+  const list = game.sanctuary.resupply;
+  const singleCost = isDepotWeapon(game.weapon) ? sanctuaryCostLabel(depotResupplyRecipe([{ weaponId: game.weapon, quantity: 1 }]).cost) : 'RECHARGING OR MELEE WEAPON: NO AMMO ORDER';
+  let shopping = '';
+  if (game.sanctuary.projects.depot >= 2) {
+    const preview = depotResupplyRecipe(list);
+    shopping = `<h4>SAVED RESUPPLY LIST</h4><p>Quantities are crafting batches, not individual rounds. Shared ammo costs and outputs are combined. Editing the list never changes a paid order in progress.</p>
+      ${Object.keys(weaponCatalog).filter(id => isDepotWeapon(id)).map(id => {
+        const quantity = list.find(order => order.weaponId === id)?.quantity || 0;
+        return `<div class="sanctuary-resupply-row"><span>${weaponCatalog[id].name} // ${quantity} BATCHES</span>
+          <button type="button" data-depot-adjust="${id}:-1" aria-label="Remove one ${weaponCatalog[id].name} batch" ${quantity ? '' : 'disabled'}>-</button>
+          <button type="button" data-depot-adjust="${id}:1" aria-label="Add one ${weaponCatalog[id].name} batch" ${quantity >= 5 ? 'disabled' : ''}>+</button></div>`;
+      }).join('')}
+      <p>FULL ORDER: ${list.length ? sanctuaryCostLabel(preview.cost) : 'EMPTY'} // ${preview.time}s</p>
+      <p>${Object.entries(preview.ammoOutput).map(([id, amount]) => `${ammoCatalog[id].name}: ${amount} RELOADS`).join(' // ')}</p>
+      <button type="button" data-depot-order="list" ${!list.length || game.crafting ? 'disabled' : ''}>CRAFT FULL ORDER</button>`;
+  }
+  return `<h4>AMMUNITION RESUPPLY</h4><p>Equipped: ${weaponCatalog[game.weapon].name} // ONE CRAFTING BATCH${isDepotWeapon(game.weapon) ? ` (${ammoCatalog[weaponCatalog[game.weapon].ammo].amount} RELOADS)` : ''} // ${singleCost}</p>
+    <button type="button" data-depot-order="equipped" ${!isDepotWeapon(game.weapon) || game.crafting ? 'disabled' : ''}>CRAFT EQUIPPED AMMO // 3s</button>
+    ${game.crafting ? '<p>CRAFT IN PROGRESS // MATERIALS ALREADY PAID</p>' : ''}${shopping}`;
+}
+function renderSanctuaryServices(npcId) {
+  const found = Object.entries(sanctuaryProjects).find(([, project]) => project.npc === npcId);
+  if (!found) return '';
+  const [id, project] = found;
+  const level = game.sanctuary.projects[id];
+  const next = level < 2;
+  const blocked = level === 1 && !reachedSanctuarySectorThree();
+  let services = '';
+  if (level && id === 'workshop') services = renderWeaponModService();
+  if (level && id === 'archive') services = renderArchiveService();
+  if (level && id === 'scout') services = renderScoutService();
+  if (level && id === 'depot') services = renderDepotService();
+  if (level && id === 'medical') services = `<h4>MEDICAL BENCH</h4><p>${sanctuaryCostLabel(getStationRecipe('medkit').cost)} // 4s // MAX 5 MEDKITS</p>
+    <button type="button" data-medic-craft ${game.crafting || game.stationItems.medkit >= 5 ? 'disabled' : ''}>CRAFT MEDKIT</button>`;
+  return `<section class="sanctuary-service" aria-label="${project.name}"><h4>${project.name} // ${level} / 2 STAGES</h4>
+    ${project.benefits.map((benefit, index) => `<p>STAGE ${index + 1}${level > index ? ' COMPLETE' : ''}: ${benefit}</p>`).join('')}
+    ${next ? `<p>${sanctuaryCostLabel(sanctuaryProjectCost(id))}${blocked ? ' // EXPLORE SECTOR 3 FIRST' : ''}</p>
+      <button type="button" data-sanctuary-upgrade="${id}" ${blocked || game.crafting ? 'disabled' : ''}>BUILD STAGE ${level + 1}</button>` : ''}
+    ${services}</section>`;
+}
 
 // ==================== AMMO CRAFTING BATCHES ====================
 const ammoCatalog = {
@@ -501,6 +979,67 @@ const sectorSixMiniBossAbilities = [
 const deadStarBossAuraRadius = 250;
 const darkBossDashCircleRadius = 38;
 
+const journalBossAbilities = [
+  ...sectorOneMiniBossAbilities, ...sectorTwoMiniBossAbilities, ...sectorThreeMiniBossAbilities,
+  ...sectorFourMiniBossAbilities, ...sectorFiveMiniBossAbilities, ...sectorSixMiniBossAbilities
+];
+const journalFamilyAdvice = [
+  'Keep moving and avoid being surrounded.', 'Leave space to retreat between attacks.',
+  'Keep a clear escape route through the pack.', 'Thin the pack before it can surround you.',
+  'Sidestep its straight dash.', 'Its damage negation can interrupt an otherwise clean hit.',
+  'Move away from the burning burst when it dies.', 'Fight beyond its freezing aura when possible.',
+  'Leave room to dodge its bone shards.', 'Watch for fireballs even after it dies.',
+  'Avoid the brambles; snares make follow-up attacks harder to escape.', 'Move away from gravity wells before they pull you into danger.',
+  'Keep clear of its lightning sword.', 'Do not follow directly through its damaging trail.',
+  'Move away before its death explosion.', 'Deal with its pests while keeping the owner in sight.',
+  'Sidestep the dash and watch for decay.', 'Avoid lingering fire after an explosion.',
+  'Watch for missiles approaching separately from the swarm.', 'Leave space to dodge arcing projectiles.',
+  'A kill can open a portal that brings more enemies.', 'Keep outside the radiation aura; Hazmat blocks radiation damage.',
+  'Move away from its death explosion.', 'Back away when its spin attack begins.'
+];
+const journalEnemyCatalog = Object.fromEntries([
+  ...enemyFamilies.flatMap(([name, ability], familyIndex) => enemyVariants.map((variant, variantIndex) => ({
+    id: `family-${familyIndex}-${variantIndex}`, name, variant: variant.name, boss: Boolean(variant.boss),
+    habitat: sectorRegions[Math.floor(familyIndex / 4)][familyIndex % 4].name,
+    color: sectorRegions[Math.floor(familyIndex / 4)][familyIndex % 4].color,
+    abilities: [...new Set([variant.boss ? journalBossAbilities[familyIndex].ability : ability,
+      variant.boss && familyIndex >= 4 ? ability : null].filter(Boolean))],
+    advice: journalFamilyAdvice[familyIndex],
+    notes: variant.boss
+      ? 'This mini-boss has a dedicated ability in addition to its biome hazards. Watch its attack cues.'
+      : `${variant.name} variant. ${variant.contactDamage >= 25 ? 'Heavy contact damage makes close combat especially dangerous.' : 'Control spacing rather than trading contact hits.'}`
+  }))),
+  ...enemyVariants.filter(variant => !variant.boss).map((variant, index) => ({
+    id: `sentinel-${index}`, name: 'CONTINUITY SENTINEL', variant: variant.name, boss: false,
+    habitat: 'CONTINUITY FACILITY', color: '#0a4f44', abilities: [],
+    advice: 'Clear the room while keeping the route back to its entrance open.',
+    notes: 'Facility doors can remain sealed until all room defenders are defeated.'
+  })),
+  { id: 'void-worm', name: 'VOID WORM', variant: 'COLOSSAL', habitat: 'THE VOID', color: '#8f7cff', boss: false,
+    abilities: ['VOID BURROW'], advice: 'Keep moving and leave room around its body.',
+    notes: 'Some worms can split into smaller threats when defeated.' },
+  { id: 'void-walker', name: 'VOID WALKER', variant: 'HEAVY', habitat: 'THE VOID', color: '#8f7cff', boss: false,
+    abilities: ['PROJECTILE VOLLEYS'], advice: 'Strafe its volleys rather than retreating along their path.',
+    notes: 'Walkers wander until provoked. Leave space before starting a fight.' },
+  { id: 'void-stalker', name: 'VOID STALKER', variant: 'PORTAL GUARDIAN', habitat: 'THE VOID', color: '#b34dff', boss: true,
+    abilities: ['LUNGES', 'RIFT MARKS', 'RADIAL VOLLEYS', 'SPREAD SHOTS', 'CROSSING RIFTS', 'SHOCKWAVE'],
+    advice: 'Sidestep lunges and spreads, dodge crossing lanes diagonally, and leave the shockwave circle.',
+    notes: 'Three health phases. Phase two chains two attacks; phase three chains three. Counter after the chain ends.' },
+  { id: 'foreman', name: 'THE FOREMAN', variant: 'CONTINUITY OVERSEER', habitat: 'CONTINUITY CRUCIBLE', color: '#ff925e', boss: true,
+    abilities: ['SLAMS', 'CHARGES', 'PROJECTILE VOLLEYS', 'FLOOR LANES', 'RELAY GRID', 'HORDE REINFORCEMENTS'],
+    advice: 'Watch floor warnings and purple gates. Manage reinforcements without losing sight of the boss.',
+    notes: 'Three health phases escalate both attacks and reinforcement waves. Victory shuts down the remaining horde.' },
+  { id: 'wraith-pest', name: 'WRAITH PEST', variant: 'PEST', habitat: 'WRAITH MOOR', color: '#a88fd0', boss: false,
+    abilities: ['PURSUIT'], advice: 'Watch for pests approaching while you attack their owner.',
+    notes: 'Pests can be replaced while their owner remains alive.' },
+  { id: 'wraith-guard', name: 'WRAITH GUARD', variant: 'GUARD', habitat: 'WRAITH MOOR', color: '#a88fd0', boss: false,
+    abilities: ['ORBITING GUARD'], advice: 'Clear the orbiting guards to expose their owner.',
+    notes: 'The exposed window is temporary; the owner can replace its guards.' },
+  { id: 'nebula-missile', name: 'NEBULA MISSILE', variant: 'MISSILE', habitat: 'DYING NEBULA', color: '#d58ee0', boss: false,
+    abilities: ['HOMING'], advice: 'Keep distance from approaching missiles.',
+    notes: 'Missiles lose health over time, but can still detonate when destroyed.' }
+].map(entry => [entry.id, entry]));
+
 sectorRegions.flat().forEach((biome, index) => { biome.effects = { moveMultiplier: 1, damageMultiplier: 1, enemySpeedMultiplier: 1, fireCooldownMultiplier: 1, pulseCooldownMultiplier: 1, healthRegen: 0, salvageMultiplier: 1, hazard: { ...biomeHazards[index], visual: hazardVisuals[index], zoneDamagePerSecond: biomeHazards[index].damagePerSecond }, ...biomeEffectProfiles[index] }; });
 sectorRegions.flat().forEach((biome, index) => { const family = enemyFamilies[index]; biome.enemyFamily = { name: family[0], ability: family[1], effect: family[2] }; });
 function hasEnemyEffect(enemy, effect) {
@@ -606,7 +1145,12 @@ function freshGame() {
     placedStations: [],
     questState: { active: [], completed: [], available: [], bounties: [], armorerContractsCompleted: 0, tickTimer: 0, counters: { kills: 0, collected: 0, sectors: 0, relics: 0, travel: 0, survived: 0, heals: 0, repairs: 0, beaconRepairs: 0 } },
     campaign: { completed: [], active: null, beaconId: null },
-    epilogue: { guardianCleared: false, portalFound: false, firstClear: false, loot: [], dungeon: null },
+    journal: { version: 1, enemies: {}, discoveries: [] },
+    worldEvents: freshWorldEvents(),
+    sanctuary: freshSanctuaryProgress(),
+    weaponMods: freshWeaponMods(),
+    epilogue: { guardianCleared: false, portalFound: false, firstClear: false, loot: [], dungeon: null, portalRevision: 2 },
+    voidDangers: { stormTimer: 7, riftTimer: 12, strikes: [], rifts: [] },
     managerMode: false,
     enemies: [], 
     bullets: [],
@@ -674,6 +1218,449 @@ function createArmorerContract(level) {
     armorerRepReward: template.armorerRepReward + level * 5,
     reward: { ...template.reward, salvage: template.reward.salvage + level * 10 }
   };
+}
+function freshWorldEvents() {
+  return { version: 1, timer: 300, nextId: 1, events: [], seen: [], completed: {} };
+}
+function activeWorldEvent(run = game) { return run.worldEvents.events.find(event => event.active); }
+function overworldEnemyLimit() {
+  const distance = Math.hypot(game.player.x, game.player.y);
+  return distance < beaconRegionRadius ? 0 : Math.min(100, 5 + (getBiomeSector(distance) + 1) * 3 + Math.floor(distance / 260));
+}
+function worldEventSiteAllowed(x, y) {
+  const distance = Math.hypot(x, y);
+  if (distance < beaconRegionRadius + 850 || distance > mapRadius - 850) return false;
+  if (game.beaconStations.some(station => Math.hypot(x - station.x, y - station.y) < station.radius + 850)) return false;
+  if (campaignMissions.some(mission => mission.sites?.some(site => Math.hypot(x - site.x, y - site.y) < 1100))) return false;
+  if (game.worldEvents.events.some(event => Math.hypot(x - event.x, y - event.y) < 1500)) return false;
+  return !game.hazardZones?.some(zone => Math.hypot(x - zone.x, y - zone.y) < zone.radius + 100);
+}
+function generateWorldEvent() {
+  for (let attempt = 0; attempt < 36; attempt++) {
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 1200 + Math.random() * 1600;
+    const x = game.player.x + Math.cos(angle) * distance;
+    const y = game.player.y + Math.sin(angle) * distance;
+    if (!worldEventSiteAllowed(x, y)) continue;
+    const biome = getBiome(x, y);
+    const types = Object.keys(worldEventTypes).filter(type => worldEventTypes[type].minSector <= biome.sector);
+    const type = types[Math.floor(Math.random() * types.length)];
+    game.worldEvents.events.push({
+      id: game.worldEvents.nextId++, type, sector: biome.sector, biomeKey: biome.key,
+      x, y, originX: x, originY: y, roamTime: 0, remaining: 480,
+      discovered: false, active: false, step: 0, wave: 0, waveStarted: false,
+      queue: [], delay: 0, defenseLeft: worldEventTypes[type].defense, spawnSerial: 0, ammoType: 'pistolAmmo'
+    });
+    return true;
+  }
+  return false;
+}
+function validateWorldEvents(run) {
+  const state = run.worldEvents;
+  const validType = type => Object.hasOwn(worldEventTypes, type);
+  if (!state || state.version !== 1 || !Number.isSafeInteger(state.nextId) || state.nextId < 1
+      || !Number.isFinite(state.timer) || state.timer < 0 || state.timer > 540
+      || !Array.isArray(state.events) || state.events.length > 2
+      || !Array.isArray(state.seen) || state.seen.some(type => !validType(type))
+      || !state.completed || Object.getPrototypeOf(state.completed) !== Object.prototype
+      || Object.entries(state.completed).some(([type, count]) => !validType(type) || !Number.isSafeInteger(count) || count < 0)) {
+    throw new Error('Invalid world event state');
+  }
+  const ids = new Set();
+  for (const event of state.events) {
+    if (!event || !validType(event.type) || !Number.isSafeInteger(event.id) || event.id < 1 || event.id >= state.nextId || ids.has(event.id)
+        || ![event.x, event.y, event.originX, event.originY, event.roamTime].every(Number.isFinite) || event.roamTime < 0
+        || Math.hypot(event.originX, event.originY) < beaconRegionRadius + 850 || Math.hypot(event.originX, event.originY) > mapRadius - 850
+        || Math.hypot(event.x - event.originX, event.y - event.originY) > 140
+        || !Number.isInteger(event.sector) || event.sector < worldEventTypes[event.type].minSector || event.sector > 6
+        || event.sector !== getBiomeSector(Math.hypot(event.originX, event.originY)) + 1
+        || !new RegExp(`^sector-${event.sector - 1}-[0-3]$`).test(event.biomeKey)
+        || !Number.isFinite(event.remaining) || event.remaining < 0 || event.remaining > 480
+        || typeof event.discovered !== 'boolean' || typeof event.active !== 'boolean'
+        || (event.active && !event.discovered)
+        || !Number.isInteger(event.step) || event.step < 0 || event.step > (event.type === 'wreck' ? 3 : event.type === 'convoy' ? 2 : 0)
+        || !Number.isInteger(event.wave) || event.wave < 0 || event.wave > 3
+        || typeof event.waveStarted !== 'boolean' || !Array.isArray(event.queue) || event.queue.length > 16
+        || (event.queue.length > 0 && !event.waveStarted)
+        || event.queue.some(variant => !Number.isInteger(variant) || variant < (event.type === 'breach' ? -2 : 0) || variant > 3)
+        || !Number.isFinite(event.delay) || event.delay < 0 || event.delay > 3
+        || !Number.isFinite(event.defenseLeft) || event.defenseLeft < 0 || event.defenseLeft > worldEventTypes[event.type].defense
+        || !Number.isSafeInteger(event.spawnSerial) || event.spawnSerial < 0
+        || !Object.hasOwn(ammoCatalog, event.ammoType)
+        || (!event.active && (event.step || event.wave || event.waveStarted || event.queue.length))) {
+      throw new Error('Invalid world event encounter');
+    }
+    ids.add(event.id);
+  }
+  if (state.events.filter(event => event.active).length > 1) throw new Error('Multiple active world events');
+  const active = activeWorldEvent(run);
+  const world = run.epilogue.dungeon?.world ?? run;
+  for (const entity of [...world.enemies, ...world.portals]) {
+    if (entity?.worldEventId !== undefined && entity.worldEventId !== active?.id) throw new Error('Orphaned world event entity');
+  }
+}
+function worldEventEnemies(event) {
+  return game.enemies.filter(enemy => enemy.worldEventId === event.id && enemy.hp > 0 && !enemy.defeated);
+}
+function removeWorldEvent(event) {
+  game.worldEvents.events = game.worldEvents.events.filter(candidate => candidate !== event);
+  game.enemies = game.enemies.filter(enemy => enemy.worldEventId !== event.id);
+  game.portals = game.portals.filter(portal => portal.worldEventId !== event.id);
+  game.projectiles = game.projectiles.filter(projectile => projectile.followTarget?.worldEventId !== event.id);
+}
+function abandonWorldEvent() {
+  const event = activeWorldEvent();
+  if (!event || game.epilogue.dungeon) return;
+  removeWorldEvent(event);
+  epilogueNotice('WORLD EVENT ABANDONED // NO COMPLETION REWARD');
+  renderWorldEventHud();
+}
+function worldEventReward(event) {
+  const tier = Math.floor((event.sector - 1) / 2);
+  const half = [3, 5, 7][tier];
+  const resources = event.type === 'breach' ? { crystal: half, steel: half }
+    : event.type === 'distress' ? { fiber: half, iron: half }
+    : event.type === 'wreck' ? { steel: half, fuel: half }
+    : event.type === 'horde' ? { iron: half, fuel: half } : { fuel: half };
+  return { salvage: [35, 65, 100][tier], resources,
+    ...(event.type === 'convoy' ? { ammo: { [event.ammoType]: tier + 2 } } : {}) };
+}
+function completeWorldEvent(event) {
+  if (!game.worldEvents.events.includes(event) || !event.active || game.health <= 0) return;
+  removeWorldEvent(event);
+  game.worldEvents.completed[event.type] = (game.worldEvents.completed[event.type] || 0) + 1;
+  const reward = worldEventReward(event);
+  rewardQuest({ reward });
+  updateInventoryUI();
+  updateAmmoUI();
+  epilogueNotice(`${worldEventTypes[event.type].name} COMPLETE // +${reward.salvage} SALVAGE`);
+  gameLog('INFO', `World event completed: ${worldEventTypes[event.type].name}`);
+}
+function queueWorldEventWave(event) {
+  const tier = Math.floor((event.sector - 1) / 2);
+  if (event.type === 'breach') event.queue = event.wave === 0 ? [-1, -1, -1, 0, 1, 0] : [-2, 1, 1];
+  else {
+    const count = event.type === 'horde' ? 6 + tier * 2 : 3 + event.wave + tier;
+    event.queue = Array.from({ length: count }, (_, index) =>
+      event.type === 'horde' && index === 0 ? 3 : event.wave === 2 && index === 0 ? 2 : index % 2);
+  }
+  event.waveStarted = true;
+  event.delay = 1.5;
+  epilogueWarning(180);
+}
+function spawnWorldEventEnemy(event, variant) {
+  if (game.enemies.filter(enemy => enemy.hp > 0 && !enemy.defeated).length >= overworldEnemyLimit()) return false;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const angle = (event.spawnSerial + attempt) * 2.4;
+    const radius = variant === -1 ? 190 : 400;
+    const x = event.x + Math.cos(angle) * radius;
+    const y = event.y + Math.sin(angle) * radius;
+    if (Math.hypot(x - game.player.x, y - game.player.y) < 160 || isInsideBeaconStation(x, y)) continue;
+    let enemy;
+    if (variant === -1) {
+      const maxHp = 4 + event.sector;
+      enemy = { x, y, r: 24, speed: 0, hp: maxHp, maxHp, familyIndex: 24, family: 'BREACH ANCHOR', variant: 'ANCHOR',
+        worldEventId: event.id, worldEventAnchor: true, color: '#b794ff', boss: false, effect: null,
+        contactDamage: 0, damage: 0, abilityTimer: 0, shieldTimer: 0, hitTimer: 0 };
+      attachEnemyHealth(enemy);
+      if (!addEnemy(enemy)) return false;
+    } else {
+      const [sector, index] = event.biomeKey.slice(7).split('-').map(Number);
+      enemy = createBiomeEnemy(x, y, {
+        ...sectorRegions[sector][index], sector: event.sector, key: event.biomeKey, worldEventId: event.id
+      }, enemyVariants[variant === -2 ? 3 : variant]);
+      if (!enemy) return false;
+      if (variant === -2) {
+        enemy.maxHp *= 1.5;
+        attachEnemyHealth(enemy, enemy.maxHp);
+      }
+      if (variant === -2 || (event.type === 'horde' && event.spawnSerial === 0)) {
+        enemy.worldEventRole = variant === -2 ? 'BREACH GUARDIAN' : 'HORDE LEADER';
+      }
+    }
+    event.spawnSerial += attempt + 1;
+    return true;
+  }
+  return false;
+}
+function worldEventControl(event) {
+  if (!event.active) return { x: event.x, y: event.y, label: event.type === 'horde' ? 'INTERCEPT HORDE' : 'START EVENT' };
+  if (event.waveStarted) return null;
+  if (event.type === 'wreck' && event.step < 3) {
+    return { x: event.x + (event.step - 1) * 110, y: event.y, label: `OPEN CARGO LOCK ${event.step + 1} / 3` };
+  }
+  if (event.type === 'convoy' && event.step < 2) {
+    return { x: event.x + (event.step ? 100 : -100), y: event.y, label: `REPAIR COMPONENT ${event.step + 1} / 2 // PARTS ON SITE` };
+  }
+  return null;
+}
+function interactWorldEvent() {
+  if (game.epilogue.dungeon) return false;
+  const event = game.worldEvents.events.find(candidate => {
+    const control = worldEventControl(candidate);
+    return candidate.discovered && control && Math.hypot(game.player.x - control.x, game.player.y - control.y) <= stationInteractionRadius;
+  });
+  if (!event) return false;
+  if (!event.active) {
+    if (activeWorldEvent() || game.campaign.active?.defending || game.campaign.active?.scan > 0) {
+      epilogueNotice('FINISH OR ABANDON THE CURRENT ENCOUNTER FIRST');
+      return true;
+    }
+    event.active = true;
+    const ammo = weaponCatalog[game.weapon].ammo;
+    event.ammoType = ammo && ammoCatalog[ammo] ? ammo : 'pistolAmmo';
+    if (!['wreck', 'convoy'].includes(event.type)) queueWorldEventWave(event);
+    epilogueNotice(`${worldEventTypes[event.type].name} STARTED // LEAVE THE AREA TO ABANDON`);
+  } else {
+    event.step++;
+    if (event.type === 'wreck' || event.step === 2) queueWorldEventWave(event);
+  }
+  renderWorldEventHud();
+  return true;
+}
+function updateWorldEvents(dt) {
+  if (!game.active || game.paused || mapOpen || game.managerMode || game.epilogue.dungeon) return;
+  if (game.campaign.active?.defending || game.campaign.active?.scan > 0) {
+    if (activeWorldEvent()) abandonWorldEvent();
+    return;
+  }
+  const state = game.worldEvents;
+  state.timer = Math.max(0, state.timer - dt);
+  for (const event of [...state.events]) {
+    if (event.active && Math.hypot(game.player.x - event.x, game.player.y - event.y) > worldEventRadius) {
+      abandonWorldEvent();
+      continue;
+    }
+    if (!event.active) {
+      event.remaining = Math.max(0, event.remaining - dt);
+      if (!event.remaining) {
+        removeWorldEvent(event);
+        if (event.discovered) gameLog('INFO', `World event expired: ${worldEventTypes[event.type].name}`);
+        continue;
+      }
+      if (event.type === 'horde') {
+        event.roamTime += dt;
+        event.x = event.originX + Math.sin(event.roamTime * .15) * 120;
+        event.y = event.originY + (Math.cos(event.roamTime * .15) - 1) * 60;
+      }
+    }
+    if (!event.discovered && Math.hypot(game.player.x - event.x, game.player.y - event.y) <= 650) {
+      event.discovered = true;
+      if (!state.seen.includes(event.type)) state.seen.push(event.type);
+      gameLog('INFO', `World event discovered: ${worldEventTypes[event.type].name}`);
+    }
+    if (!event.active) continue;
+    if (worldEventTypes[event.type].defense && (event.type !== 'convoy' || event.step === 2)) {
+      event.defenseLeft = Math.max(0, event.defenseLeft - dt);
+    }
+    if (event.waveStarted) {
+      event.delay = Math.max(0, event.delay - dt);
+      if (event.delay > 0) continue;
+      while (event.queue.length && spawnWorldEventEnemy(event, event.queue[0])) event.queue.shift();
+      if (event.queue.length || worldEventEnemies(event).length) continue;
+      event.waveStarted = false;
+      event.wave++;
+    }
+    if (['distress', 'convoy'].includes(event.type)) {
+      if (event.type === 'convoy' && event.step < 2) continue;
+      const duration = worldEventTypes[event.type].defense;
+      if (event.wave < 3 && event.defenseLeft <= duration * (1 - event.wave / 3)) queueWorldEventWave(event);
+      else if (event.wave === 3 && !event.defenseLeft) completeWorldEvent(event);
+    } else if (event.type === 'breach') {
+      if (event.wave === 1) queueWorldEventWave(event);
+      else if (event.wave === 2) completeWorldEvent(event);
+    } else if ((event.type === 'wreck' && event.wave === 3) || (event.type === 'horde' && event.wave === 1)) completeWorldEvent(event);
+  }
+  if (state.timer <= 0 && state.events.length < 2) {
+    if (generateWorldEvent()) state.timer = 360 + Math.random() * 180;
+    else state.timer = 30;
+  }
+  renderWorldEventHud();
+}
+function renderWorldEventHud() {
+  const state = game.worldEvents;
+  const event = activeWorldEvent() || state.events.filter(candidate => candidate.discovered)
+    .sort((a, b) => Math.hypot(game.player.x - a.x, game.player.y - a.y) - Math.hypot(game.player.x - b.x, game.player.y - b.y))[0];
+  worldEventHud.hidden = !game.active || !event || Boolean(game.epilogue.dungeon) || game.paused || mapOpen || game.managerMode;
+  abandonEventButton.hidden = !event?.active;
+  if (!event) return;
+  const control = worldEventControl(event);
+  const remaining = worldEventEnemies(event).length;
+  const objective = !event.active ? `${Math.ceil(Math.hypot(game.player.x - event.x, game.player.y - event.y) / 10)}m // ${Math.ceil(event.remaining)}s LEFT`
+    : event.delay > 0 ? `REINFORCEMENTS IN ${Math.ceil(event.delay)}s`
+    : event.queue.length ? 'REINFORCEMENTS WAITING FOR SPACE'
+    : control ? control.label
+    : `${event.defenseLeft > 0 ? `DEFEND ${Math.ceil(event.defenseLeft)}s // ` : ''}${remaining} HOSTILES // WAVE ${Math.min(3, event.wave + 1)}`;
+  worldEventStatus.textContent = `${worldEventTypes[event.type].name} // SECTOR ${event.sector} // ${objective}`;
+}
+function journalEnemyId(enemy) {
+  if (enemy.voidStalker) return 'void-stalker';
+  if (enemy.foreman) return 'foreman';
+  if (enemy.voidWorm) return 'void-worm';
+  if (enemy.voidWalker) return 'void-walker';
+  if (enemy.wraithGuard) return 'wraith-guard';
+  if (enemy.wraithPest) return 'wraith-pest';
+  if (enemy.nebulaMissile) return 'nebula-missile';
+  const variant = enemyVariants.findIndex(entry => entry.name === enemy.variant);
+  if (enemy.family === 'CONTINUITY SENTINEL' && variant >= 0 && variant < 4) return `sentinel-${variant}`;
+  if (Number.isInteger(enemy.familyIndex) && enemy.familyIndex >= 0 && enemy.familyIndex < 24 && variant >= 0) {
+    return `family-${enemy.familyIndex}-${variant}`;
+  }
+  return null;
+}
+function recordJournalEnemy(enemy, run = game) {
+  const id = journalEnemyId(enemy);
+  if (!id) return null;
+  return run.journal.enemies[id] ??= { kills: 0 };
+}
+function recordJournalDiscovery(id, run = game) {
+  if (!run.journal.discoveries.includes(id)) run.journal.discoveries.push(id);
+}
+function syncJournalDiscoveries(run = game) {
+  const state = run.epilogue;
+  if (state.portalFound) recordJournalDiscovery('portal', run);
+  if (state.dungeon) {
+    recordJournalDiscovery('facility', run);
+    for (const id of [state.dungeon.room, state.dungeon.checkpoint, ...state.dungeon.cleared]) {
+      recordJournalDiscovery(`room-${id}`, run);
+    }
+  }
+  if (state.firstClear || state.loot.length) recordJournalDiscovery('facility', run);
+}
+function restoreJournal(run, parsed) {
+  if (Object.hasOwn(parsed, 'journal')) {
+    const journal = parsed.journal;
+    if (!journal || journal.version !== 1 || !journal.enemies || typeof journal.enemies !== 'object'
+        || Object.getPrototypeOf(journal.enemies) !== Object.prototype
+        || Array.isArray(journal.enemies) || !Array.isArray(journal.discoveries)
+        || journal.discoveries.some(id => !['storm', 'rift', 'portal', 'facility'].includes(id)
+          && !(typeof id === 'string' && id.startsWith('room-') && Object.hasOwn(dungeonRooms, id.slice(5))))
+        || Object.entries(journal.enemies).some(([id, entry]) => !Object.hasOwn(journalEnemyCatalog, id)
+          || !entry || !Number.isSafeInteger(entry.kills) || entry.kills < 0
+          || (entry.legacyVictory !== undefined && typeof entry.legacyVictory !== 'boolean'))) {
+      throw new Error('Invalid discovery journal data');
+    }
+    run.journal = {
+      version: 1,
+      enemies: Object.fromEntries(Object.entries(journal.enemies).map(([id, entry]) => [id, {
+        kills: entry.kills, ...(entry.legacyVictory ? { legacyVictory: true } : {})
+      }])),
+      discoveries: [...new Set(journal.discoveries)]
+    };
+  } else {
+    run.journal = { version: 1, enemies: {}, discoveries: [] };
+    if (run.epilogue.guardianCleared) run.journal.enemies['void-stalker'] = { kills: 0, legacyVictory: true };
+    if (run.epilogue.firstClear) run.journal.enemies.foreman = { kills: 0, legacyVictory: true };
+  }
+  syncJournalDiscoveries(run);
+}
+function isJournalVisible(entity) {
+  const radius = entity.r ?? entity.radius ?? 0;
+  return Math.abs(entity.x - game.camera.x) <= canvas.clientWidth / 2 + radius
+    && Math.abs(entity.y - game.camera.y) <= canvas.clientHeight / 2 + radius;
+}
+function updateJournalEncounters() {
+  for (const enemy of game.enemies) {
+    if (!enemy.defeated && enemy.hp > 0 && isJournalVisible(enemy)) recordJournalEnemy(enemy);
+  }
+  if (!game.epilogue.dungeon) {
+    if (game.voidDangers.strikes.some(isJournalVisible)) recordJournalDiscovery('storm');
+    if (game.voidDangers.rifts.some(isJournalVisible)) recordJournalDiscovery('rift');
+  }
+}
+function journalDiscoveryCards() {
+  const cards = [];
+  if (game.discovered.has('sanctuary')) cards.push({ title: 'BEACON SANCTUARY', text: 'Your protected home and expedition staging area.' });
+  for (const [id, project] of Object.entries(sanctuaryProjects)) {
+    const level = game.sanctuary.projects[id];
+    if (level) cards.push({ title: project.name, text: `Sanctuary reconstruction // stage ${level} / 2. ${project.benefits[level - 1]}` });
+  }
+  sectorRegions.forEach((regions, sector) => regions.forEach((region, index) => {
+    if (game.discovered.has(`sector-${sector}-${index}`)) {
+      cards.push({ title: region.name, text: `Sector ${sector + 1} // ${biomeHazards[sector * 4 + index].name}` });
+    }
+  }));
+  if (game.discovered.has('void')) cards.push({ title: 'THE VOID', text: 'Beyond the mapped frontier. Prepare supplies before travelling deeper.' });
+  const descriptions = {
+    storm: ['VOID STRIKES', 'Environmental hazards, not Stalker attacks. Leave the marked circle before the warning ends.'],
+    rift: ['UNSTABLE RIFTS', 'Approaching a rift arms an enemy ambush. Its marked radius warns you before activation.'],
+    portal: ['INDIGO ARCH', 'The Continuity Key answers here. The portal remains sealed until its guardian is defeated.'],
+    facility: ['CONTINUITY FACILITY', 'An underground complex with sealed rooms, relays, caches, and safe checkpoints.']
+  };
+  for (const id of game.journal.discoveries) {
+    if (id.startsWith('room-')) cards.push({ title: dungeonRooms[id.slice(5)].name.toUpperCase(), text: 'Visited facility room.' });
+    else cards.push({ title: descriptions[id][0], text: descriptions[id][1] });
+  }
+  for (const type of game.worldEvents.seen) {
+    cards.push({ title: worldEventTypes[type].name, text: `${worldEventTypes[type].record} // COMPLETED: ${game.worldEvents.completed[type] || 0}` });
+  }
+  if (game.epilogue.firstClear) cards.push({ title: 'CONTINUITY WEAVE', text: 'First-clear trophy record. The armour blueprint is available at the Arsenal.' });
+  return cards;
+}
+function journalRecordCards() {
+  const cards = campaignMissions.filter(mission => game.campaign.completed.includes(mission.id))
+    .map(mission => ({ title: mission.title, text: mission.debrief }));
+  for (const id of game.sanctuary.plans) cards.push({
+    title: `${weaponModCatalog[id].name} RESEARCH`, text: `Plan recovered from the Archivist. ${weaponModCatalog[id].description} Craft separately for each compatible weapon at the Mechanic.`
+  });
+  if (hasContinuityKey()) cards.push({ title: 'CONTINUITY KEY', text: epilogueClue() });
+  if (game.epilogue.loot.includes('records')) cards.push({
+    title: 'RECORDS ANNEX CACHE', text: 'Recovered archive cargo: two Atlas Crystals and a relic. The cache has been claimed.'
+  });
+  if (game.epilogue.firstClear) cards.push({
+    title: 'THE LAST SHIFT', text: 'The Foreman is silent. The facility has shut down its remaining reinforcements.'
+  });
+  return cards;
+}
+function renderJournal() {
+  syncJournalDiscoveries();
+  for (const tab of journalPanel.querySelectorAll('[data-journal-view]')) {
+    tab.setAttribute('aria-pressed', String(tab.dataset.journalView === journalView));
+  }
+  if (journalView === 'enemies') {
+    const entries = Object.entries(game.journal.enemies);
+    journalContent.innerHTML = `<p>ENCOUNTERED: ${entries.length} // Only discovered enemies are shown. Defeat standard variants five times to complete their entry; bosses need one victory.</p>`
+      + entries.map(([id, entry]) => {
+        const definition = journalEnemyCatalog[id];
+        const defeated = entry.kills > 0 || entry.legacyVictory;
+        const complete = definition.boss ? defeated : entry.kills >= 5;
+        return `<article class="quest-row journal-entry"><h3><span class="journal-marker" style="--entry-color:${definition.color}" aria-hidden="true"></span>${definition.name} // ${definition.variant}</h3>
+          <span>HABITAT: ${definition.habitat}</span><small>PLAYER DEFEATS: ${entry.kills} // ${complete ? 'RESEARCH COMPLETE' : defeated ? 'COMBAT NOTES UNLOCKED' : 'ENCOUNTERED'}</small>
+          ${entry.legacyVictory ? '<small>Earlier victory confirmed; historical defeat count unavailable.</small>' : ''}
+          <span>ABILITIES: ${definition.abilities.join(' / ') || 'CONTACT ATTACKS'}</span>
+          <p>${defeated ? definition.advice : 'Defeat this enemy to unlock combat advice.'}</p>
+          <p>${complete ? definition.notes : 'Further field notes remain locked.'}</p></article>`;
+      }).join('') + (!entries.length ? '<p>No enemies encountered yet. Explore to begin your field research.</p>' : '');
+  } else {
+    const cards = journalView === 'discoveries' ? journalDiscoveryCards() : journalRecordCards();
+    journalContent.innerHTML = cards.map(card => `<article class="quest-row"><h3>${card.title}</h3><p>${card.text}</p></article>`).join('')
+      || '<p>No records recovered yet. Explore and complete story missions to learn more.</p>';
+  }
+  journalContent.scrollTop = 0;
+}
+function openJournal(opener = journalButton) {
+  if (!game.active || journalOpener || settingsOpener || adminPanelOpen || game.managerMode || mapOpen) return;
+  journalWasPaused = game.paused;
+  journalOpener = opener;
+  game.paused = true;
+  renderWorldEventHud();
+  clearControlInput();
+  ui.pause.inert = true;
+  questPanel.hidden = questDialog.hidden = true;
+  journalPanel.hidden = false;
+  renderJournal();
+  document.querySelector('#journal-close').focus();
+}
+function closeJournal() {
+  if (!journalOpener) return;
+  const opener = journalOpener;
+  journalPanel.hidden = true;
+  journalOpener = null;
+  ui.pause.inert = false;
+  game.paused = journalWasPaused;
+  renderWorldEventHud();
+  clearControlInput();
+  opener.focus();
 }
 function ensureQuestState() {
   if (!game.questState) game.questState = freshGame().questState;
@@ -1043,6 +2030,7 @@ function renderQuestDialog(sourceId) {
   questDialog.hidden = false;
   questDialog.dataset.sourceId = sourceId;
   questDialog.innerHTML = `<div class="quest-dialog-inner"><button type="button" class="quest-close" data-quest-close>×</button><strong>${sourceName}</strong><p>${isBoard ? 'Three contracts are pinned. Return here when the work is done.' : npc.lines[Math.floor(Math.random() * npc.lines.length)]}</p>${campaignDialogMarkup(sourceId)}${active.map(quest => `<div class="quest-card"><b>${quest.title}</b><span>${quest.description}</span><small>${getQuestProgressLabel(quest)}${quest.npcId === 'armorer' ? ` // +${quest.armorerRepReward} REP` : ''}${quest.progress >= quest.amount ? ' // READY TO TURN IN' : ''}</small>${quest.progress >= quest.amount ? `<button type="button" data-quest-complete="${quest.id}">TURN IN</button>` : ''}</div>`).join('')}${available.map(quest => `<div class="quest-card"><b>${quest.title}</b><span>${quest.description}</span><small>REWARD: ${quest.reward.salvage || 0} SALVAGE${quest.npcId === 'armorer' ? ` // +${quest.armorerRepReward} REP` : ''}</small><button type="button" data-quest-accept="${quest.id}">ACCEPT</button></div>`).join('') || '<p>NO OTHER QUESTS AVAILABLE.</p>'}</div>${sourceId === 'armorer' ? renderBlueprintShop() : ''}`;
+  questDialog.insertAdjacentHTML('beforeend', renderSanctuaryServices(sourceId));
 }
 function getNearbyQuestSource() {
   const positions = getSanctuaryNpcPositions();
@@ -1073,6 +2061,10 @@ function loadSettings() {
     if (raw === null) return defaults;
     const data = JSON.parse(raw);
     const entries = Object.keys(defaults.bindings).map(action => [action, data?.bindings?.[action] ?? defaults.bindings[action]]);
+    if (data?.bindings?.journal === undefined && entries.some(([action, key]) => action !== 'journal' && key === defaults.bindings.journal)) {
+      entries.find(([action]) => action === 'journal')[1] = [...'babcdefghijklmnopqrstuvwxyz']
+        .find(key => !entries.some(([action, bound]) => action !== 'journal' && bound === key));
+    }
     if (!entries.every(([, key]) => validBinding(key)) || new Set(entries.map(([, key]) => key)).size !== entries.length) {
       throw new Error('Invalid or duplicate control bindings');
     }
@@ -1189,6 +2181,7 @@ function handleControlPress(action) {
   else if (action === 'zoom') cycleTacticalMapZoom();
   else if (action === 'interact') toggleStation();
   else if (action === 'quests') showQuestPanel();
+  else if (action === 'journal') openJournal();
   else if (action === 'fire' || action === 'fireAlt') shoot();
   else if (action === 'medkit') useMedkit();
   else if (action === 'pulse') pulse();
@@ -1224,6 +2217,20 @@ window.addEventListener('keydown', event => {
         else captureBinding(key);
       }
     }
+    return;
+  }
+  if (journalOpener) {
+    if (event.key === 'Escape' || action === 'journal') {
+      event.preventDefault();
+      if (!event.repeat) closeJournal();
+    } else if (event.key === 'Tab') {
+      const controls = [...journalPanel.querySelectorAll('button, [tabindex="0"]')];
+      const index = controls.indexOf(document.activeElement);
+      if (controls.length) {
+        event.preventDefault();
+        controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length].focus();
+      }
+    } else if (action && !['Enter', ' '].includes(event.key)) event.preventDefault();
     return;
   }
   if (game.managerMode) {
@@ -1274,7 +2281,7 @@ questDialog?.addEventListener('click', event => {
   event.preventDefault();
   event.stopPropagation();
   const target = event.target instanceof Element
-    ? event.target.closest('[data-campaign-accept], [data-campaign-complete], [data-quest-accept], [data-quest-complete], [data-buy-blueprint], [data-quest-close]')
+    ? event.target.closest('[data-campaign-accept], [data-campaign-complete], [data-quest-accept], [data-quest-complete], [data-buy-blueprint], [data-quest-close], [data-sanctuary-upgrade], [data-mod-weapon], [data-mod-craft], [data-mod-equip], [data-mod-remove], [data-research-claim], [data-medic-craft], [data-depot-adjust], [data-depot-order]')
     : null;
   if (!target) return;
   if (target.dataset.campaignAccept) acceptCampaign(target.dataset.campaignAccept);
@@ -1282,6 +2289,25 @@ questDialog?.addEventListener('click', event => {
   if (target.dataset.questAccept) acceptQuest(target.dataset.questAccept);
   if (target.dataset.questComplete) completeQuest(target.dataset.questComplete);
   if (target.dataset.buyBlueprint) buyBlueprint(target.dataset.buyBlueprint);
+  if (target.dataset.sanctuaryUpgrade) upgradeSanctuaryProject(target.dataset.sanctuaryUpgrade);
+  if (target.dataset.modWeapon && canUseSanctuaryService('mechanic')) {
+    questDialog.dataset.modWeapon = target.dataset.modWeapon;
+    renderQuestDialog('mechanic');
+  }
+  if (target.dataset.modCraft) craftWeaponMod(questDialog.dataset.modWeapon, target.dataset.modCraft);
+  if (target.dataset.modEquip) equipWeaponMod(questDialog.dataset.modWeapon, weaponModCatalog[target.dataset.modEquip]?.slot, target.dataset.modEquip);
+  if (target.dataset.modRemove) equipWeaponMod(questDialog.dataset.modWeapon, target.dataset.modRemove, null);
+  if (target.dataset.researchClaim) claimModResearch(target.dataset.researchClaim);
+  if (target.hasAttribute('data-medic-craft') && canUseSanctuaryService('medic') && game.sanctuary.projects.medical) {
+    craftItem('medkit', 1);
+    renderQuestDialog('medic');
+    showQuestMessage(ui.stationOutput.textContent);
+  }
+  if (target.dataset.depotAdjust) {
+    const [weaponId, delta] = target.dataset.depotAdjust.split(':');
+    adjustResupplyOrder(weaponId, Number(delta));
+  }
+  if (target.dataset.depotOrder) placeResupplyOrder(target.dataset.depotOrder === 'equipped');
   if (target.hasAttribute('data-quest-close')) questDialog.hidden = true;
 });
 questPanel?.addEventListener('click', event => {
@@ -1292,6 +2318,21 @@ questPanel?.addEventListener('click', event => {
     renderQuestHud();
     showQuestPanel();
   } else if (target.hasAttribute('data-quest-close')) questPanel.hidden = true;
+});
+journalButton.addEventListener('click', () => openJournal(journalButton));
+pauseJournalButton.addEventListener('click', () => openJournal(pauseJournalButton));
+document.querySelector('#quest-log-button').addEventListener('click', () => {
+  if (game.active && !game.paused) showQuestPanel();
+});
+document.querySelector('#journal-close').addEventListener('click', closeJournal);
+abandonEventButton.addEventListener('click', () => {
+  if (game.active && !game.paused && !mapOpen && !game.managerMode) abandonWorldEvent();
+});
+journalPanel.addEventListener('click', event => {
+  const view = event.target.closest('[data-journal-view]')?.dataset.journalView;
+  if (!['enemies', 'discoveries', 'records'].includes(view)) return;
+  journalView = view;
+  renderJournal();
 });
 window.addEventListener('keyup', event => {
   const code = event.code || event.key.toLowerCase();
@@ -1599,7 +2640,7 @@ function showHowToPlay() {
   document.querySelector('#controls-help').textContent =
     `${['w', 'a', 's', 'd'].map(label).join(' / ')} move. Mouse aims. ${label('fire')} or ${label('fireAlt')} fires. `
     + `${label('pulse')} uses pulse, ${label('medkit')} uses a medkit, and ${label('interact')} interacts. `
-    + `${label('map')} opens the tactical map, ${label('zoom')} changes mini-map zoom, and ${label('quests')} opens the quest log. `
+    + `${label('map')} opens the tactical map, ${label('zoom')} changes mini-map zoom, and ${label('quests')} opens the quest log. ${label('journal')} opens the discovery journal. `
     + `${['slot1', 'slot2', 'slot3', 'slot4'].map(label).join(' / ')} select weapons. ${label('shift')} sprints. Esc pauses.`;
   showMenuInfo(howToPlay);
 }
@@ -1619,6 +2660,7 @@ async function returnToMainMenu() {
     return;
   }
   if (game !== run) return;
+  closeJournal();
   game.active = false;
   game.paused = false;
   game.managerMode = false;
@@ -1715,6 +2757,11 @@ function restoreGame(savedState) {
   }
   const defaults = freshGame();
   const restored = { ...defaults, ...parsed, hazardZones: parsed.hazardZones ?? null };
+  if (!restored.voidDangers || !Number.isFinite(restored.voidDangers.stormTimer) || !Number.isFinite(restored.voidDangers.riftTimer)
+      || !Array.isArray(restored.voidDangers.strikes) || !Array.isArray(restored.voidDangers.rifts)
+      || [...restored.voidDangers.strikes, ...restored.voidDangers.rifts].some(zone =>
+        !zone || ![zone.x, zone.y, zone.timer].every(Number.isFinite))
+      || restored.voidDangers.rifts.some(rift => typeof rift.triggered !== 'boolean')) throw new Error('Invalid deep Void hazard state');
   restored.active = true;
   restored.paused = false;
   restored.managerMode = false;
@@ -1761,6 +2808,7 @@ function restoreGame(savedState) {
   else validateCampaign(restored);
   restored.blueprints = { ...(parsed.blueprints || {}) };
   restoreEpilogue(restored, defaults);
+  restoreJournal(restored, parsed);
   restored.armorerRep = Math.max(0, Number(parsed.armorerRep) || 0);
   restored.enemies = restored.enemies.filter(Boolean);
   const savedEnemies = [...restored.enemies, ...(restored.epilogue.dungeon?.world.enemies || [])];
@@ -1787,6 +2835,8 @@ function restoreGame(savedState) {
   [...restored.projectiles, ...(restored.epilogue.dungeon?.world.projectiles || [])].forEach(projectile => {
     if (projectile?.followTarget && projectile.life === null) projectile.life = Infinity;
   });
+  validateWorldEvents(restored);
+  restoreSanctuaryProgress(restored, parsed);
   return protectGameHealth(restored);
 }
 async function saveGame(slot = currentSaveSlot) {
@@ -2199,6 +3249,7 @@ function getBiomeSector(distance) { return biomeBoundaries.findIndex(boundary =>
 function teleportPlayer(x, y) { game.player.x = x; game.player.y = y; game.camera.x = x; game.camera.y = y; game.biomeKey = null; game.biomeName = null; }
 function start(savedState = null, slot = currentSaveSlot, testRun = false) {
   const loadedRun = savedState ? restoreGame(savedState) : freshGame();
+  closeJournal();
   if (testRun) adminTestRuns.add(loadedRun);
   adminInvincible = false;
   setMapOpen(false);
@@ -2229,6 +3280,7 @@ function start(savedState = null, slot = currentSaveSlot, testRun = false) {
   }
   updateInventoryUI();
   renderQuestHud();
+  renderWorldEventHud();
   updateStationButtons();
   gameShell.classList.remove('menu-state');
   resize();
@@ -2242,7 +3294,9 @@ function start(savedState = null, slot = currentSaveSlot, testRun = false) {
 }
 function togglePause() {
   if (!game.active) return;
+  if (journalOpener) { closeJournal(); return; }
   game.paused = !game.paused;
+  renderWorldEventHud();
   clearControlInput();
   ui.pause.classList.toggle('hidden', !game.paused);
   refreshAdminRunUI();
@@ -2327,7 +3381,9 @@ function discardAdminTest() {
   animation = requestAnimationFrame(loop);
 }
 function resetAdminCombat(keepEncounter = false) {
+  game.worldEvents = freshWorldEvents();
   game.enemies = keepEncounter ? game.enemies.filter(enemy => !enemy.defeated && (enemy.foreman || enemy.voidStalker)) : [];
+  game.voidDangers = { stormTimer: 7, riftTimer: 12, strikes: [], rifts: [] };
   for (const key of dungeonWorldFields) {
     if (!['enemies', 'hazardZones', 'nodes'].includes(key)) game[key] = [];
   }
@@ -2485,7 +3541,7 @@ function adminAction(action, value, amount) {
   } else if (action === 'weapon') {
     if (!Object.hasOwn(weaponCatalog, value)) message = 'Select a valid weapon.';
     else {
-      const weapon = weaponCatalog[value];
+      const weapon = getWeaponStats(value);
       let slot = game.weaponSlots.indexOf(value);
       if (slot < 0) slot = game.weaponSlots.indexOf(null);
       if (slot < 0) slot = game.weaponSlots.indexOf(game.weapon);
@@ -2497,7 +3553,7 @@ function adminAction(action, value, amount) {
       message = `${weapon.name} equipped in slot ${slot + 1}.`;
     }
   } else if (action === 'ammo') {
-    const weapon = weaponCatalog[game.weapon];
+    const weapon = getWeaponStats();
     for (const [key, recipe] of Object.entries(ammoCatalog)) game.ammoReserve[key] = Math.max(game.ammoReserve[key] || 0, recipe.amount);
     if (weapon.kind !== 'melee') game.ammo = weapon.magazine;
     game.weaponAmmo[game.weapon] = game.ammo;
@@ -2589,6 +3645,7 @@ function addExplosion(x, y, radius, color = '#ff725e') {
 function meleeAttack(weapon) {
   game.meleeAttack = {
     weaponId: game.weapon,
+    weaponStats: weapon,
     angle: game.player.angle,
     elapsed: 0,
     duration: weapon.meleeDuration,
@@ -2597,7 +3654,7 @@ function meleeAttack(weapon) {
   };
 }
 function getMeleeAttackPose(attack) {
-  const weapon = weaponCatalog[attack.weaponId];
+  const weapon = attack.weaponStats || getWeaponStats(attack.weaponId);
   const progress = Math.min(1, attack.elapsed / attack.duration);
   if (weapon.meleeStyle === 'spear') {
     return { style: 'spear', progress, angle: attack.angle, length: 32 + (weapon.range - 32) * Math.sin(progress * Math.PI) };
@@ -2645,7 +3702,7 @@ function updateMeleeAttack(dt) {
   const attack = game.meleeAttack;
   if (!attack) return;
 
-  const weapon = weaponCatalog[attack.weaponId];
+  const weapon = attack.weaponStats || getWeaponStats(attack.weaponId);
   attack.elapsed = Math.min(attack.duration, attack.elapsed + dt);
   const pose = getMeleeAttackPose(attack);
   game.enemies.forEach(enemy => {
@@ -2765,7 +3822,7 @@ function fireBeam(weapon) {
   });
 }
 function updateRadBeam(dt) {
-  const weapon = weaponCatalog.radBeam;
+  const weapon = getWeaponStats('radBeam');
   const unlimited = hasInfiniteAmmo();
   if (game.attackDisabledTimer > 0 || game.weapon !== 'radBeam' || (!unlimited && game.ammo <= 0)) {
     game.radBeamActive = false;
@@ -2886,6 +3943,7 @@ function updateVoidBatarBullet(bullet, dt) {
   const startTime = bullet.voidBatarElapsed;
   const endTime = startTime + dt;
   const initialSpeed = bullet.voidBatarInitialSpeed;
+  const accelerationMultiplier = bullet.voidBatarAccelerationMultiplier || 1;
   let distance = 0;
 
   if (endTime > 2) {
@@ -2915,7 +3973,7 @@ function updateVoidBatarBullet(bullet, dt) {
     const speedStep = Math.floor((time - 2) / .25);
     const nextStep = 2 + (speedStep + 1) * .25;
     const segmentEnd = Math.min(endTime, nextStep);
-    distance += (speedStep + 1) * 200 * (segmentEnd - time);
+    distance += (speedStep + 1) * 200 * accelerationMultiplier * (segmentEnd - time);
     time = segmentEnd;
   }
 
@@ -2926,13 +3984,13 @@ function updateVoidBatarBullet(bullet, dt) {
     ? initialSpeed * (1 - endTime)
     : endTime < 2
       ? 0
-      : (Math.floor((endTime - 2) / .25) + 1) * 200/*<<change void batar accelation*/;
+      : (Math.floor((endTime - 2) / .25) + 1) * 200 * accelerationMultiplier;
   bullet.vx = bullet.directionX * speed;
   bullet.vy = bullet.directionY * speed;
 }
 function shoot() { 
   if (!game.active || game.attackDisabledTimer > 0) return;
-  const weapon = weaponCatalog[game.weapon]; 
+  const weapon = getWeaponStats();
   const unlimited = hasInfiniteAmmo();
   if (weapon.continuousBeam) {
     game.radBeamActive = unlimited || game.ammo > 0;
@@ -2943,7 +4001,7 @@ function shoot() {
   const effects = getBiome(p.x, p.y).effects; 
 
   if (weapon.kind === 'melee') { 
-    game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier; 
+    game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier;
     meleeAttack(weapon); 
     return; 
   } 
@@ -2956,7 +4014,7 @@ function shoot() {
     game.ammo--;
     if (game.ammo === 0) game.reloadPending = true;
   }
-  game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier; 
+  game.fireTimer = weapon.cooldown * effects.fireCooldownMultiplier * (!unlimited && game.ammo === 0 ? weapon.emptyReloadMultiplier || 1 : 1);
 
   if (weapon.beam) {
     fireBeam(weapon);
@@ -2976,7 +4034,8 @@ function shoot() {
         oscillating: Boolean(weapon.oscillating),
         swayAmplitude: weapon.coneSize || 0,
         swayPhase: Math.random() * Math.PI * 2,
-        pierce: Boolean(weapon.pierce),
+        pierce: Boolean(weapon.pierce || weapon.pierceHits),
+        pierceHits: weapon.pierceHits,
         hitEnemies: new Set(),
         radius: weapon.bulletRadius || 3,
         deceleration: Array.isArray(weapon.deceleration)
@@ -2996,6 +4055,7 @@ function shoot() {
         voidBatarMotion: Boolean(weapon.voidBatarMotion),
         voidBatarElapsed: 0,
         voidBatarInitialSpeed: weapon.speed,
+        voidBatarAccelerationMultiplier: weapon.voidBatarAccelerationMultiplier || 1,
         directionX: Math.cos(angle),
         directionY: Math.sin(angle)
       };
@@ -3056,24 +4116,29 @@ function createVoidWalker(x, y) {
   return enemy;
 }
 function createVoidStalker() {
-  const maxHp = 220;
+  const maxHp = stalkerMaxHealth;
   const enemy = {
     x: voidPortal.x + 450,
     y: voidPortal.y - 180,
     r: 58,
-    speed: 205,
+    speed: stalkerPhases[0].speed,
     voidStalker: true,
     isAggroed: false,
     huntState: 'patrol',
     huntTimer: 0,
     huntAngle: 0,
+    phase: 1,
+    pattern: 0,
+    comboRemaining: 0,
+    attack: 'lunge',
+    zones: [],
     maxHp,
     color: '#b34dff',
     family: 'VOID STALKER',
     familyIndex: 24,
     variant: 'PORTAL GUARDIAN',
     boss: true,
-    contactDamage: 10,
+    contactDamage: 20,
     score: 2500,
     drops: 25,
     abilityTimer: 0,
@@ -3087,7 +4152,7 @@ function createVoidStalker() {
 
 function hasContinuityKey(run = game) { return run.campaign.completed.includes('record'); }
 function epilogueClue() {
-  return 'The key answers northeast of Sanctuary, just past the map edge. Look for an indigo arch. The Stalker is its guard.';
+  return 'The key answers northeast of Sanctuary, roughly 10,000 meters beyond the map edge (11,800 meters from Sanctuary). Cross the deep Void and look for an indigo arch. Avoid storm marks and unstable rifts. The Stalker is its guard.';
 }
 function epilogueNotice(text) {
   ui.announcement.textContent = text;
@@ -3136,12 +4201,16 @@ function restoreEpilogue(run, defaults) {
   overworld.enemies = overworld.enemies.filter(Boolean);
   const previous = overworld.enemies.find(enemy => enemy.voidStalker && !enemy.defeated);
   if (state.guardianCleared) overworld.enemies = overworld.enemies.filter(enemy => !enemy.voidStalker);
-  else if (previous && !previous.huntState) {
+  else if (previous && (state.portalRevision !== 2 || !previous.phase)) {
     const updated = createVoidStalker();
-    if (Number.isFinite(previous.hp) && previous.maxHp > 0) updated.hp *= Math.max(.01, Math.min(1, previous.hp / previous.maxHp));
+    if (Number.isFinite(previous.hp) && previous.maxHp > 0) attachEnemyHealth(updated, updated.maxHp * Math.max(.01, Math.min(1, previous.hp / previous.maxHp)));
     overworld.enemies[overworld.enemies.indexOf(previous)] = updated;
   } else if (!previous && hasContinuityKey(run) && !dungeon) {
     overworld.enemies.push(createVoidStalker());
+  }
+  if (state.portalRevision !== 2) {
+    state.portalFound = false;
+    state.portalRevision = 2;
   }
   if (state.firstClear) run.blueprints.continuityWeave = true;
 }
@@ -3173,6 +4242,7 @@ function switchDungeonRoom(id, from) {
   const dungeon = game.epilogue.dungeon;
   const room = dungeonRooms[id];
   dungeon.room = id;
+  syncJournalDiscoveries();
   dungeon.victory = false;
   if (id === 'entry' || id === 'staging') dungeon.checkpoint = id;
   const arrival = room.doors.find(([target]) => target === from);
@@ -3297,6 +4367,8 @@ function updateVoidStalker(enemy, dt) {
   if (!inTerritory || (!enemy.foremanReinforcement && Math.hypot(enemy.x - voidPortal.x, enemy.y - voidPortal.y) > stalkerTerritory + 200)) {
     enemy.isAggroed = false;
     enemy.huntState = 'patrol';
+    enemy.comboRemaining = 0;
+    enemy.zones = [];
   }
   if (enemy.huntState === 'patrol') {
     if (inTerritory && (enemy.isAggroed || distance < 650)) {
@@ -3314,29 +4386,79 @@ function updateVoidStalker(enemy, dt) {
     enemy.y += Math.sin(angle) * step;
     return;
   }
+  const nextPhase = enemy.hp <= enemy.maxHp / 3 ? 3 : enemy.hp <= enemy.maxHp * 2 / 3 ? 2 : 1;
+  if (nextPhase > enemy.phase) {
+    enemy.phase = nextPhase;
+    enemy.pattern = 0;
+    enemy.comboRemaining = 0;
+    enemy.zones = [];
+    enemy.huntState = 'recover';
+    enemy.huntTimer = 1.2;
+    epilogueNotice(`VOID STALKER // PHASE ${enemy.phase} // ${enemy.phase === 2 ? 'RIFT AWAKENING' : 'VOID FRENZY'}`);
+    epilogueWarning(110);
+    return;
+  }
+  const phase = stalkerPhases[enemy.phase - 1];
   if (enemy.huntState === 'circle') {
     const direction = facing + (distance > 400 ? .38 : distance < 190 ? 1.8 : 1.16);
-    enemy.x += Math.cos(direction) * enemy.speed * dt;
-    enemy.y += Math.sin(direction) * enemy.speed * dt;
+    const speed = enemy.speed * phase.speed / stalkerPhases[0].speed;
+    enemy.x += Math.cos(direction) * speed * dt;
+    enemy.y += Math.sin(direction) * speed * dt;
     if (enemy.huntTimer <= 0 && distance < 540) {
       enemy.huntState = 'windup';
-      enemy.huntTimer = .85;
+      if (!(enemy.comboRemaining > 0)) enemy.comboRemaining = phase.combo;
+      enemy.attack = phase.attacks[enemy.pattern++ % phase.attacks.length];
+      enemy.huntTimer = phase.windup + (['marks', 'cross', 'shockwave'].includes(enemy.attack) ? .4 : 0);
       enemy.chargeAngle = facing;
+      enemy.zones = enemy.attack === 'marks' ? [-1, 0, 1].map(offset => ({
+        x: p.x + Math.cos(facing + Math.PI / 2) * offset * 200,
+        y: p.y + Math.sin(facing + Math.PI / 2) * offset * 200,
+        radius: 120
+      })) : [];
+      if (enemy.attack === 'cross') {
+        enemy.zones = [
+          { x: p.x, y: p.y, w: 140, h: 1250 },
+          { x: p.x, y: p.y, w: 1250, h: 140 }
+        ];
+      } else if (enemy.attack === 'shockwave') {
+        enemy.zones = [{ x: enemy.x, y: enemy.y, radius: 300 }];
+      }
       epilogueWarning(150);
     }
   } else if (enemy.huntState === 'windup' && enemy.huntTimer <= 0) {
-    enemy.huntState = 'lunge';
-    enemy.huntTimer = .67;
-    enemy.chargeHit = false;
-  } else if (enemy.huntState === 'lunge') {
-    bossCharge(enemy, Math.min(dt, remaining), 960, 24);
-    if (enemy.huntTimer <= 0) {
-      enemy.huntState = 'recover';
-      enemy.huntTimer = 2.4;
+    if (enemy.attack === 'lunge') {
+      enemy.huntState = 'lunge';
+      enemy.huntTimer = .67;
+      enemy.chargeHit = false;
+    } else {
+      if (enemy.attack === 'burst' || enemy.attack === 'fan') {
+        const fan = enemy.attack === 'fan';
+        const count = fan ? 5 + enemy.phase * 2 : 12 + enemy.phase * 4;
+        for (let i = 0; i < count; i++) {
+          const angle = enemy.chargeAngle + (fan ? (i - (count - 1) / 2) * .14 : i * Math.PI * 2 / count);
+          const speed = fan ? 720 : 520;
+          game.projectiles.push({ x: enemy.x, y: enemy.y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+            life: 2.2, radius: 9, damage: 19 + enemy.phase * 3, color: '#b794ff' });
+        }
+      } else if (enemy.zones.some(zone => zone.radius
+        ? Math.hypot(p.x - zone.x, p.y - zone.y) <= zone.radius
+        : Math.abs(p.x - zone.x) <= zone.w / 2 && Math.abs(p.y - zone.y) <= zone.h / 2)) {
+        game.health -= 34 * (1 - (getArmorEffects().voidDamageReduction || 0));
+      }
+      enemy.huntState = 'impact';
+      enemy.huntTimer = .22;
     }
+  } else if (enemy.huntState === 'lunge') {
+    bossCharge(enemy, Math.min(dt, remaining), 1050 + enemy.phase * 75, 42);
   } else if (enemy.huntState === 'recover' && enemy.huntTimer <= 0) {
     enemy.huntState = 'circle';
-    enemy.huntTimer = 2.3;
+    enemy.huntTimer = phase.approach;
+  }
+  if ((enemy.huntState === 'lunge' || enemy.huntState === 'impact') && enemy.huntTimer <= 0) {
+    enemy.zones = [];
+    enemy.comboRemaining = Math.max(0, (enemy.comboRemaining ?? 1) - 1);
+    enemy.huntState = enemy.comboRemaining > 0 ? 'circle' : 'recover';
+    enemy.huntTimer = enemy.comboRemaining > 0 ? .18 : phase.recovery;
   }
 }
 const foremanPhases = [
@@ -3381,7 +4503,6 @@ function updateForemanHorde(enemy, dt, phase) {
     if (type === 'stalker') {
       const stalker = createVoidStalker();
       Object.assign(stalker, { x, y, foremanReinforcement: true, isAggroed: true, huntState: 'circle', huntTimer: 2 });
-      stalker.hp = stalker.maxHp = 125;
       if (addEnemy(stalker)) enemy.summonedStalker = true;
     } else if (type === 'worm' || type === 'walker') {
       addEnemy(type === 'worm' ? createVoidWorm(x, y) : createVoidWalker(x, y));
@@ -3555,9 +4676,10 @@ function createBiomeEnemy(x, y, biome, variant = null) {
   const family = biome.enemyFamily;
   const distance = Math.hypot(x, y);
   const enemyVariant = variant || enemyVariants[Math.random() < Math.min(.22, distance / 30000 * .22) ? 4 : Math.floor(Math.random() * 4)];
-  const baseSpeed = 38 + game.currentSector * 10 + Math.random() * 22;
+  const scalingSector = biome.worldEventId ? activeWorldEvent().sector : game.currentSector;
+  const baseSpeed = 38 + scalingSector * 10 + Math.random() * 22;
   const familyIndex = (biome.sector - 1) * 4 + Number(biome.key.split('-')[2]);
-  const scaledHp = Math.ceil(enemyVariant.hp * (1 + game.currentSector * 0.2));
+  const scaledHp = Math.ceil(enemyVariant.hp * (1 + scalingSector * 0.2));
   const sectorOneMiniBossAbility = familyIndex < sectorOneMiniBossAbilities.length && enemyVariant.boss
     ? sectorOneMiniBossAbilities[familyIndex]
     : null;
@@ -3583,6 +4705,7 @@ function createBiomeEnemy(x, y, biome, variant = null) {
 
   const enemy = { 
     x, y, family: family.name, familyIndex, ability, effect, familyEffect,
+    ...(biome.worldEventId ? { worldEventId: biome.worldEventId } : {}),
     variant: enemyVariant.name, boss: Boolean(enemyVariant.boss), color: biome.color,
     r: (10 + Math.random() * 6) * enemyVariant.radius, speed: baseSpeed * enemyVariant.speed * (family.effect === 'nebula-missiles' ? .65 : family.effect === 'spin-attack' ? 1.5 : 1),
     hp: scaledHp, maxHp: scaledHp, damage: enemyVariant.damage, contactDamage: enemyVariant.contactDamage,
@@ -4191,6 +5314,7 @@ function updateLightningStrikes(dt) {
 
 function spawnNebulaMissile(owner) {
   const missile = {
+    worldEventId: owner.worldEventId,
     x: owner.x,
     y: owner.y,
     family: 'NEBULA MISSILE',
@@ -4255,7 +5379,7 @@ function triggerStarfireExplosion(enemy) {
 }
 
 function createRiftPortal(enemy) {
-  game.portals.push({ x: enemy.x, y: enemy.y, timer: 2 });
+  game.portals.push({ x: enemy.x, y: enemy.y, timer: 2, worldEventId: enemy.worldEventId });
 }
 
 function updateRiftPortals(dt) {
@@ -4273,7 +5397,8 @@ function updateRiftPortals(dt) {
       const biome = {
         ...sectorRegions[sectorIndex][biomeIndex],
         key: `sector-${sectorIndex}-${biomeIndex}`,
-        sector: sectorIndex + 1
+        sector: sectorIndex + 1,
+        worldEventId: portal.worldEventId
       };
       const angle = Math.random() * Math.PI * 2;
       const variant = enemyVariants[3];
@@ -4284,7 +5409,7 @@ function updateRiftPortals(dt) {
   game.portals = game.portals.filter(portal => portal.timer > 0);
 }
 
-function triggerDeadStarExplosion(enemy) {
+function triggerDeadStarExplosion(enemy, source = 'player') {
   const health = enemy.maxHp;
   const damage = health;
   const radius = 80;
@@ -4296,7 +5421,7 @@ function triggerDeadStarExplosion(enemy) {
     if (target === enemy || target.defeated || !hasEnemyEffect(target, 'dead-star-explosion')) return;
     if (Math.hypot(target.x - enemy.x, target.y - enemy.y) > radius) return;
     target.hp = Math.max(0, target.hp - damage);
-    if (target.hp <= 0) defeatEnemy(target);
+    if (target.hp <= 0) defeatEnemy(target, 0, source);
   });
 }
 
@@ -4323,6 +5448,9 @@ function triggerGlassDesertDeath(enemy) {
 
 function defeatEnemy(enemy, bonus = 0, source = 'player') {
   if (!enemy || enemy.defeated || enemy.hp > 0) return;
+  if (enemy.worldEventAnchor) { enemy.defeated = true; return; }
+  const journalEntry = recordJournalEnemy(enemy);
+  if (journalEntry && source === 'player') journalEntry.kills++;
   enemy.defeated = true;
   if (enemy.voidStalker && !enemy.foremanReinforcement) {
     game.epilogue.guardianCleared = true;
@@ -4350,7 +5478,7 @@ function defeatEnemy(enemy, bonus = 0, source = 'player') {
   if (hasEnemyEffect(enemy, 'death-fireballs')) launchEmberFireballs(enemy);
   if (hasEnemyEffect(enemy, 'death-explosion')) triggerNullIceExplosion(enemy);
   if (hasEnemyEffect(enemy, 'rift-portal') && Math.random() < .05) createRiftPortal(enemy);
-  if (hasEnemyEffect(enemy, 'dead-star-explosion')) triggerDeadStarExplosion(enemy);
+  if (hasEnemyEffect(enemy, 'dead-star-explosion')) triggerDeadStarExplosion(enemy, source);
   if (enemy.nebulaMissile) triggerNebulaMissileDeath(enemy);
   if (enemy.wraithPest && enemy.pestOwner && !enemy.pestOwner.defeated) {
     if (enemy.wraithBossPest) {
@@ -4410,19 +5538,25 @@ function openChest(node) { node.taken = true; for (let i = 0; i < 3; i++) dropRe
 function collectDrop(drop) { game.inventory[drop.type] += drop.amount; updateQuestProgress('collect', drop.amount); drop.life = 0; }
 function reloadAmmo() {
   if (hasInfiniteAmmo() || !game.reloadPending || game.fireTimer > 0) return;
-  const weapon = weaponCatalog[game.weapon];
+  const weapon = getWeaponStats();
   if (weapon.kind === 'melee') {
     game.reloadPending = false;
     return;
   }
   const reserve = game.ammoReserve[weapon.ammo] || 0;
+  const loose = game.weaponMods.looseAmmo[weapon.ammo] || 0;
   const needed = weapon.magazine - game.ammo;
-  if (!reserve || needed <= 0) {
+  if ((!reserve && !loose) || needed <= 0) {
     if (needed <= 0) game.reloadPending = false;
     return;
   }
-  game.ammo += Math.min(needed, weapon.magazine);
-  game.ammoReserve[weapon.ammo] = Math.max(0, reserve - 1);
+  const returnedRounds = Math.min(needed, loose);
+  game.ammo += returnedRounds;
+  if (returnedRounds) game.weaponMods.looseAmmo[weapon.ammo] -= returnedRounds;
+  if (game.ammo < weapon.magazine && reserve) {
+    game.ammo = weapon.magazine;
+    game.ammoReserve[weapon.ammo] = reserve - 1;
+  }
   if (game.weapon === 'cosmosGauntlet') releaseCosmosExplosion();
   game.reloadPending = false;
 }
@@ -4430,7 +5564,14 @@ function getAmmoLabel() { return weaponCatalog[game.weapon].kind === 'melee' ? '
 function updateAmmoUI() { const weapon = weaponCatalog[game.weapon]; ui.ammo.textContent = getAmmoLabel(); ui.ammoStorage.textContent = weapon.kind === 'melee' ? '-' : game.ammoReserve[weapon.ammo] || 0; ui.medkits.textContent = game.stationItems.medkit || 0; ui.weaponName.textContent = weapon.name; ui.ammoType.textContent = weapon.kind === 'melee' ? 'CLOSE RANGE' : ammoCatalog[weapon.ammo].name; }
 function updateAtlasCrystalUI() { if (atlasCrystalCounter) atlasCrystalCounter.textContent = String(game.atlasCrystals || 0).padStart(2, '0'); }
 const baseUpdateAmmoUI = updateAmmoUI;
-updateAmmoUI = function() { baseUpdateAmmoUI(); updateAtlasCrystalUI(); };
+updateAmmoUI = function() {
+  baseUpdateAmmoUI();
+  const ammo = weaponCatalog[game.weapon].ammo;
+  const loose = game.weaponMods.looseAmmo[ammo] || 0;
+  if (loose) ui.ammoStorage.textContent = `${game.ammoReserve[ammo] || 0} + ${loose}R`;
+  ui.ammoStorage.title = 'Full reloads + returned loose rounds (R)';
+  updateAtlasCrystalUI();
+};
 function getNearbyStation() {
   const candidates = [
     ...Object.entries(sanctuaryBuildStations).map(([type, position]) => ({ type, ...position })),
@@ -4478,6 +5619,7 @@ function enterManagersTable() {
   if (game.managerMode || !game.active || game.paused) return;
   game.managerMode = true;
   game.paused = true;
+  renderWorldEventHud();
   game.stationOpen = null;
   game.activeBeaconStationId = null;
   gameShell.classList.add('manager-view');
@@ -4490,6 +5632,7 @@ function exitManagersTable() {
   if (!game.managerMode) return;
   game.managerMode = false;
   game.paused = false;
+  renderWorldEventHud();
   gameShell.classList.remove('manager-view');
   managerDrag = null;
   ui.manager.hidden = true;
@@ -4567,6 +5710,7 @@ function getNearbyBeaconBench() {
 function toggleStation() {
   if (interactEpilogue()) return;
   if (interactCampaignSite()) return;
+  if (interactWorldEvent()) return;
   const questSource = getNearbyQuestSource();
   if (questSource) {
     updateStationUI();
@@ -4724,6 +5868,12 @@ function openCraftDetails(recipeKey, requestedQuantity = 1) { const recipe = sta
   `; ui.craftDetails.hidden = false; }
 function craftItem(recipeKey, requestedQuantity = 1) { if (getBiome(game.player.x, game.player.y).key !== 'sanctuary' || game.crafting) return; const recipe = stationRecipes[recipeKey]; const repeatable = !recipe.weapon && !recipe.armor; const quantity = repeatable ? Math.max(1, Math.min(5, requestedQuantity)) : 1; if (recipe.output?.medkit && (game.stationItems.medkit || 0) + quantity > 5) { ui.stationOutput.textContent = 'MEDKIT STORAGE FULL'; return; } const missing = Object.entries(recipe.cost).find(([key, amount]) => getCraftResourceAmount(key) < amount * quantity); if (missing) { const shortage = missing[1] * quantity - getCraftResourceAmount(missing[0]); ui.stationOutput.textContent = `NEED ${shortage} MORE ${missing[0].toUpperCase()}`; return; } Object.entries(recipe.cost).forEach(([key, amount]) => { spendCraftResource(key, amount * quantity); }); game.crafting = { recipeKey, quantity, remaining: recipe.time * quantity, total: recipe.time * quantity }; writeLegacyValue('horde-vault', JSON.stringify(game.vault)); updateInventoryUI(); updateStationButtons(); ui.stationOutput.textContent = `CRAFTING ${recipe.name} x${quantity} // ${recipe.time * quantity}s`; openCraftDetails(recipeKey, quantity); }
 function getStationRecipe(recipeKey) {
+  if (recipeKey === 'depotResupply') return game.crafting?.orders ? depotResupplyRecipe(game.crafting.orders) : null;
+  if (recipeKey === 'medkit' && game.sanctuary.projects.medical >= 2) {
+    const recipe = stationRecipes.medkit;
+    return { ...recipe, cost: Object.fromEntries(Object.entries(recipe.cost).map(([id, amount]) =>
+      [id, Math.max(1, Math.floor(amount * .85))])) };
+  }
   const buildRecipes = {
     buildWorkbench: {
       name: 'WORKBENCH',
@@ -4977,6 +6127,8 @@ function updateCrafting(dt) {
     game.weaponReloadPending[recipe.weapon] = game.reloadPending;
   } else if (recipe.armor) {
     game.armor = recipe.armor;
+  } else if (recipe.ammoOutput) {
+    Object.entries(recipe.ammoOutput).forEach(([id, amount]) => { game.ammoReserve[id] = (game.ammoReserve[id] || 0) + amount; });
   } else if (recipe.ammo) {
     game.ammoReserve[recipe.ammo] = (game.ammoReserve[recipe.ammo] || 0) + recipe.amount * quantity;
   } else {
@@ -4996,9 +6148,10 @@ function updateCrafting(dt) {
   updateAmmoUI();
   renderWeaponBar();
   ui.stationOutput.textContent = `COMPLETE // ${recipe.name} x${quantity}`;
-  if (recipe.beaconRepairId) {
+  if (recipe.beaconRepairId || recipe.ammoOutput) {
     ui.craftDetails.hidden = true;
     ui.craftDetails.innerHTML = '';
+    if (recipe.ammoOutput && !questDialog.hidden && questDialog.dataset.sourceId === 'quartermaster') renderQuestDialog('quartermaster');
   } else {
     openCraftDetails(completedRecipeKey, 1);
   }
@@ -5393,6 +6546,30 @@ function drawSanctuaryBuildStations() {
   const camY = game.camera.y - canvas.clientHeight / 2;
   ctx.save();
   ctx.translate(-camX, -camY);
+  for (const [id, project] of Object.entries(sanctuaryProjects)) {
+    const level = game.sanctuary.projects[id];
+    ctx.strokeStyle = level ? '#8fe0ad' : '#74695c';
+    ctx.fillStyle = level === 2 ? '#29493d' : '#302a2c';
+    ctx.lineWidth = level ? 3 : 1;
+    ctx.fillRect(project.x - 55, project.y - 35, 110, 70);
+    ctx.strokeRect(project.x - 55, project.y - 35, 110, 70);
+    if (level) {
+      ctx.fillStyle = '#8fe0ad';
+      for (let window = 0; window < level + 1; window++) ctx.fillRect(project.x - 36 + window * 28, project.y - 18, 14, 14);
+    }
+    if (level === 2) {
+      ctx.beginPath();
+      ctx.moveTo(project.x - 64, project.y - 35);
+      ctx.lineTo(project.x, project.y - 62);
+      ctx.lineTo(project.x + 64, project.y - 35);
+      ctx.stroke();
+    }
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 9px Space Mono';
+    ctx.fillStyle = level ? '#8fe0ad' : '#b5a896';
+    ctx.fillText(`${project.name} // ${level ? `STAGE ${level}` : 'UNBUILT'}`, project.x, project.y + 51);
+    ctx.fillText(`SPEAK TO ${questNpcById(project.npc).name}`, project.x, project.y + 65);
+  }
   Object.entries(sanctuaryBuildStations).forEach(([type, position]) => {
     const designer = type === 'designer';
     const color = designer ? '#8f7cff' : '#8fe0ad';
@@ -5799,6 +6976,7 @@ function drawBeaconStationMapMarkers() {
 function drawGameWorld() {
   draw();
   if (game.epilogue.dungeon) return;
+  drawDeepVoid();
   drawBrambleZones();
   drawSectorFourEffects();
   drawHazardZones();
@@ -5807,8 +6985,98 @@ function drawGameWorld() {
   drawSanctuaryNpcs();
   drawBeaconStations();
   drawCampaignSite();
+  drawWorldEvents();
   drawVoidPortal();
   drawRadioactiveBlindOverlay();
+}
+function drawWorldEvents() {
+  if (game.epilogue.dungeon) return;
+  ctx.save();
+  ctx.translate(canvas.clientWidth / 2 - game.camera.x, canvas.clientHeight / 2 - game.camera.y);
+  ctx.font = 'bold 12px Space Mono';
+  ctx.textAlign = 'center';
+  for (const event of game.worldEvents.events) {
+    if (!event.discovered) continue;
+    ctx.strokeStyle = ctx.fillStyle = event.type === 'breach' ? '#b794ff' : '#ffc575';
+    ctx.lineWidth = 2;
+    if (event.active) {
+      ctx.setLineDash([12, 12]);
+      ctx.beginPath();
+      ctx.arc(event.x, event.y, worldEventRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      if (event.delay > 0) {
+        ctx.beginPath();
+        ctx.arc(event.x, event.y, 400, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillText('INCOMING // KEEP CLEAR OF THE OUTER RING', event.x, event.y - 60);
+      }
+      ctx.setLineDash([]);
+    }
+    if (event.type === 'horde') {
+      for (let index = -1; index <= 1; index++) {
+        ctx.beginPath();
+        ctx.moveTo(event.x + index * 24 - 8, event.y - 12);
+        ctx.lineTo(event.x + index * 24 + 8, event.y);
+        ctx.lineTo(event.x + index * 24 - 8, event.y + 12);
+        ctx.stroke();
+      }
+    } else if (['wreck', 'convoy'].includes(event.type)) {
+      ctx.strokeRect(event.x - 34, event.y - 18, 68, 36);
+      ctx.strokeRect(event.x - 20, event.y - 24, 40, 48);
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(event.x, event.y, event.type === 'breach' ? 22 : 14, 32, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(event.x, event.y, 45, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillText(`${worldEventTypes[event.type].name} // SECTOR ${event.sector}`, event.x, event.y - 42);
+    const control = worldEventControl(event);
+    if (control) {
+      ctx.strokeRect(control.x - 12, control.y - 12, 24, 24);
+      ctx.fillText(control.label, control.x, control.y + 54);
+      if (Math.hypot(game.player.x - control.x, game.player.y - control.y) <= stationInteractionRadius) {
+        ctx.fillText(`${interactBindingLabel()} // INTERACT`, control.x, control.y + 72);
+      }
+    }
+  }
+  for (const enemy of game.enemies) {
+    if (enemy.worldEventRole && !enemy.defeated) ctx.fillText(enemy.worldEventRole, enemy.x, enemy.y - enemy.r - 16);
+  }
+  ctx.restore();
+}
+function drawWorldEventMapMarkers() {
+  if (game.epilogue.dungeon) return;
+  const scale = getTacticalMapScale();
+  mapCtx.save();
+  applyMapTransform(scale);
+  mapCtx.lineWidth = 2 / scale;
+  for (const event of game.worldEvents.events) {
+    if (!event.discovered) {
+      if (!game.sanctuary.projects.scout || !game.discovered.has(event.biomeKey)) continue;
+      const x = Math.round(event.x / 500) * 500, y = Math.round(event.y / 500) * 500;
+      mapCtx.strokeStyle = '#b7c58e';
+      mapCtx.setLineDash([6 / scale, 4 / scale]);
+      mapCtx.beginPath();
+      mapCtx.arc(x, y, 500, 0, Math.PI * 2);
+      mapCtx.stroke();
+      mapCtx.setLineDash([]);
+      if (mapOpen) {
+        mapCtx.font = `${11 / scale}px Space Mono`;
+        mapCtx.fillStyle = '#b7c58e';
+        mapCtx.fillText('SCOUT SIGNAL // APPROXIMATE', x, y);
+      }
+      continue;
+    }
+    mapCtx.strokeStyle = mapCtx.fillStyle = event.active ? '#8fe0ad' : '#ffc575';
+    mapCtx.strokeRect(event.x - 6 / scale, event.y - 6 / scale, 12 / scale, 12 / scale);
+    if (mapOpen) {
+      mapCtx.font = `${11 / scale}px Space Mono`;
+      mapCtx.fillText(`${worldEventTypes[event.type].name} // SECTOR ${event.sector}`, event.x + 10 / scale, event.y);
+    }
+  }
+  mapCtx.restore();
 }
 function drawVoidPortal() {
   if (!hasContinuityKey() || Math.hypot(game.player.x - voidPortal.x, game.player.y - voidPortal.y) > 1600) return;
@@ -5918,6 +7186,7 @@ function loop(now) {
     drawHazardMap();
     drawBeaconStationMapMarkers();
     drawStalkerMapMarker();
+    drawWorldEventMapMarkers();
     animation = requestAnimationFrame(loop);
     return;
   }
@@ -5929,7 +7198,7 @@ function loop(now) {
   if (game.paused) { animation = requestAnimationFrame(loop); return; }
   updateCrafting(dt); update(dt); reloadAmmo(); updateAmmoUI(); updateBiomeAnnouncement(dt);
   drawGameWorld();
-  drawMap(); drawHazardMap(); drawBeaconStationMapMarkers(); drawStalkerMapMarker();
+  drawMap(); drawHazardMap(); drawBeaconStationMapMarkers(); drawStalkerMapMarker(); drawWorldEventMapMarkers();
   if (game.active) animation = requestAnimationFrame(loop);
 }
 function updateBiomeAnnouncement(dt) {
@@ -6031,6 +7300,7 @@ function update(dt) {
   p.x += dx / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * enemySlowMultiplier * dt;
   p.y += dy / length * (keys.shift ? 390 : 220) * movementEffects.moveMultiplier * (armor.moveMultiplier || 1) * enemySlowMultiplier * dt;
   if (game.epilogue.dungeon) constrainDungeonPosition(p);
+  updateDeepVoid(dt);
   p.angle = Math.atan2(pointer.y - canvas.clientHeight / 2, pointer.x - canvas.clientWidth / 2);
 
   game.camera.x += (p.x - game.camera.x) * Math.min(1, dt * 7);
@@ -6103,6 +7373,7 @@ function update(dt) {
     }
   });
 
+  updateWorldEvents(dt);
   const inVoid = biome.key === 'void';
   if (game.epilogue.dungeon) {
     // Dungeon encounters are authored per room.
@@ -6119,8 +7390,7 @@ function update(dt) {
   } else {
     game.voidSpawnTimer = 0;
     game.spawnTimer -= dt * (insideGlassDesertHazard ? 2 : 1);
-    const target = safe ? 0 : 5 + game.currentSector * 3 + Math.floor(distance / 260);
-    if (game.spawnTimer <= 0 && game.enemies.length < Math.min(100, target)) {
+    if (game.spawnTimer <= 0 && game.enemies.length < overworldEnemyLimit()) {
       spawn();
       game.spawnTimer = Math.max(.12, .8 - game.currentSector * .025 - distance / 4000);
     }
@@ -6154,6 +7424,7 @@ function update(dt) {
   const ashenAuras = game.enemies
     .filter(enemy => !enemy.defeated && enemy.effect === 'ashen-boss-aura')
     .map(enemy => ({ x: enemy.x, y: enemy.y }));
+  updateJournalEncounters();
   game.enemies.forEach(e => {
     e.deadStarSpeedBuffTimer = Math.max(0, (e.deadStarSpeedBuffTimer || 0) - dt);
     const localEnemySpeedMultiplier = effects.enemySpeedMultiplier
@@ -6202,7 +7473,7 @@ function update(dt) {
     e.previousY = e.y;
 
     // Movement calculation
-    if (wraithShieldDown) {
+    if (e.worldEventAnchor || wraithShieldDown) {
       e.x = e.previousX;
       e.y = e.previousY;
     } else if (e.effect === 'null-boss-lane' && (e.nullLaneTimer > 0 || e.nullSpikesTimer > 0)) {
@@ -6234,14 +7505,14 @@ function update(dt) {
         e.damageOverTimeTimer -= .5;
       }
       if (e.hp <= 0) {
-        defeatEnemy(e);
+        defeatEnemy(e, 0, 'self-destruct');
       } else {
         const angle = Math.atan2(p.y - e.y, p.x - e.x);
         e.x += Math.cos(angle) * e.speed * dt;
         e.y += Math.sin(angle) * e.speed * dt;
         if (Math.hypot(p.x - e.x, p.y - e.y) < e.r + 12) {
           e.hp = 0;
-          defeatEnemy(e);
+          defeatEnemy(e, 0, 'self-destruct');
         }
       }
     } else if (hasEnemyEffect(e, 'projectile-teleport')) {
@@ -6466,7 +7737,8 @@ function update(dt) {
           triggerPulseBlast({ ...b, x, y });
         }
       }
-      if (!b.pierce || stopped) {
+      if (b.pierceHits !== undefined) b.pierceHits--;
+      if (!b.pierce || b.pierceHits === 0 || stopped) {
         b.life = 0;
         stopped = true;
         break;
@@ -7244,7 +8516,7 @@ function renderEnemySystem() {
       for (const gate of enemy.waveGates) ctx.strokeRect(gate.x - 42, gate.y - 42, 84, 84);
       ctx.restore();
     }
-    if (windup || enemy.moveState === 'impact') {
+    if (windup || enemy.moveState === 'impact' || (stalker && enemy.huntState === 'impact')) {
       ctx.save();
       ctx.strokeStyle = '#ffcb81';
       ctx.fillStyle = '#ff8b6140';
@@ -7268,7 +8540,8 @@ function renderEnemySystem() {
         if (enemy.attack === 'burst') ctx.arc(0, 0, enemy.r + 54, 0, 2 * Math.PI);
         else {
           ctx.moveTo(0, 0);
-          ctx.arc(0, 0, 510, enemy.chargeAngle - .55, enemy.chargeAngle + .55);
+          const spread = stalker ? (2 + enemy.phase) * .14 : .55;
+          ctx.arc(0, 0, 510, enemy.chargeAngle - spread, enemy.chargeAngle + spread);
           ctx.closePath();
         }
         ctx.fill();
@@ -7276,7 +8549,7 @@ function renderEnemySystem() {
       } else if (windup) {
         ctx.translate(enemy.x, enemy.y);
         ctx.rotate(enemy.chargeAngle);
-        const range = stalker ? 644 : enemy.phase === 2 ? 702 : 754;
+        const range = stalker ? (1050 + enemy.phase * 75) * .67 : enemy.phase === 2 ? 702 : 754;
         const halfWidth = enemy.r + 10;
         ctx.fillRect(0, -halfWidth, range, halfWidth * 2);
         ctx.strokeRect(0, -halfWidth, range, halfWidth * 2);
@@ -7327,7 +8600,7 @@ function renderEnemySystem() {
     ctx.strokeRect(enemy.x - barWidth / 2 - .5, barY - .5, barWidth + 1, 8);
     ctx.fillStyle = '#f7e5c5';
     ctx.font = 'bold 12px Space Mono';
-    ctx.fillText(stalker ? `${enemy.family} // ${enemy.huntState.toUpperCase()}` : `${enemy.family} // PHASE ${enemy.phase}`, enemy.x, barY - 8);
+    ctx.fillText(stalker ? `${enemy.family} // PHASE ${enemy.phase} // ${enemy.huntState.toUpperCase()}` : `${enemy.family} // PHASE ${enemy.phase}`, enemy.x, barY - 8);
     ctx.restore();
   });
 
@@ -7433,6 +8706,10 @@ function getPlayerDamageMultiplier() {
 }
 function addEnemy(enemy) {
   if (!enemy || isInsideBeaconStation(enemy.x, enemy.y)) return null;
+  const owner = enemy.pestOwner || enemy.guardOwner;
+  if (owner?.worldEventId) enemy.worldEventId = owner.worldEventId;
+  if (!game.epilogue.dungeon && activeWorldEvent()
+      && game.enemies.filter(entry => entry.hp > 0 && !entry.defeated).length >= overworldEnemyLimit()) return null;
   if (game.epilogue.dungeon?.room === 'arena') {
     if (game.epilogue.dungeon.victory || game.enemies.filter(entry => entry.hp > 0 && !entry.defeated).length >= foremanArenaLimit) return null;
     constrainDungeonPosition(enemy);
@@ -7512,6 +8789,7 @@ function announceBiome(biome) {
 }
 function burst(x, y, amount, force) { for (let i = 0; i < amount; i++) game.sparks.push({ x, y, life: .45, vx: (Math.random() - .5) * force, vy: (Math.random() - .5) * force }); }
 function updateUI(distance, safe, biome) {
+  renderWorldEventHud();
   const sector = safe ? 0 : getBiomeSector(distance) + 1;
   const health = Math.max(0, Math.round(game.health));
   if (safe && bankInventory()) updateInventoryUI();
@@ -7527,13 +8805,18 @@ function updateUI(distance, safe, biome) {
   ui.salvage.textContent = String(game.salvage).padStart(2, '0');
   ui.relics.textContent = String(game.relics).padStart(2, '0');
   if (game.epilogue.dungeon) ui.objective.textContent = epilogueObjective();
-  else if (hasContinuityKey() && Math.hypot(game.player.x - voidSearch.x, game.player.y - voidSearch.y) < stalkerTerritory + 500) ui.objective.textContent = epilogueObjective();
+  else if (hasContinuityKey() && Math.hypot(game.player.x, game.player.y) > mapRadius) {
+    const distance = Math.ceil(Math.hypot(game.player.x - voidSearch.x, game.player.y - voidSearch.y) / 10);
+    const bearing = Math.atan2(voidSearch.y - game.player.y, voidSearch.x - game.player.x);
+    const direction = ['E', 'SE', 'S', 'SW', 'W', 'NW', 'N', 'NE'][(Math.round(bearing / (Math.PI / 4)) + 8) % 8];
+    ui.objective.textContent = distance < 450 ? epilogueObjective() : `CONTINUITY SIGNAL // ${direction} // ${distance}m TO SEARCH AREA`;
+  }
   else if (salvageDeposit) ui.objective.textContent = 'BANKING SALVAGE...';
   else if (salvageSaveFailed && game.salvage) ui.objective.textContent = 'SALVAGE NOT BANKED // SAVE FAILED';
   else ui.objective.textContent = safe ? 'SANCTUARY // SALVAGE BANKED' : 'RETURN TO BEACON // SALVAGE';
 }
 function updateInventoryUI() { const armor = getArmorEffects(); ui.inventory.innerHTML = `<span class="inventory-title">ARMOR // ${armor.name || 'NONE'}</span><span class="inventory-title">CARRIED // VAULT</span>${resourceTypes.map(resource => `<span class="inventory-item" title="${resource.name}: carried / stored in sanctuary vault"><span>${resource.name}</span><strong>${game.inventory[resource.key]} / ${game.vault[resource.key] || 0}</strong></span>`).join('')}`; }
-function end() { game.active = false; game.high = Math.max(game.high, game.score); writeLegacyValue('horde-high', game.high); writeLegacyValue('horde-salvage', game.banked + game.salvage); writeLegacyValue('horde-relics', game.relics); writeLegacyValue('horde-atlas-crystals', game.atlasCrystals); ui.final.textContent = String(game.score).padStart(6, '0'); ui.high.textContent = String(game.high).padStart(6, '0'); ui.over.classList.remove('hidden'); }
+function end() { game.active = false; renderWorldEventHud(); game.high = Math.max(game.high, game.score); writeLegacyValue('horde-high', game.high); writeLegacyValue('horde-salvage', game.banked + game.salvage); writeLegacyValue('horde-relics', game.relics); writeLegacyValue('horde-atlas-crystals', game.atlasCrystals); ui.final.textContent = String(game.score).padStart(6, '0'); ui.high.textContent = String(game.high).padStart(6, '0'); ui.over.classList.remove('hidden'); }
 function drawVoidBatarProjectile(bullet) {
   ctx.save();
   ctx.translate(bullet.x, bullet.y);
@@ -7858,7 +9141,7 @@ function draw() {
     const directionY = Math.sin(game.player.angle);
     const startX = game.player.x + directionX * 20;
     const startY = game.player.y + directionY * 20;
-    const length = weaponCatalog.radBeam.range;
+    const length = getWeaponStats('radBeam').range;
     ctx.save();
     ctx.strokeStyle = '#ff263f';
     ctx.lineWidth = 6;
@@ -7941,7 +9224,7 @@ function draw() {
   ctx.arc(0, 0, 13, 0, Math.PI * 2);
   ctx.fill();
   
-  const heldWeapon = weaponCatalog[game.weapon];
+  const heldWeapon = getWeaponStats();
   if (heldWeapon.kind === 'melee') {
     drawMeleeWeapon(game.meleeAttack, heldWeapon);
   } else {

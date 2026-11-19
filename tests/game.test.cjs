@@ -167,6 +167,411 @@ function createSaveDatabase() {
   };
 }
 
+function loadSanctuaryGame() {
+  const harness = loadGame();
+  harness.run(`
+    game.vault = Object.fromEntries(resourceTypes.map(resource => [resource.key, 1000]));
+    game.relics = 20;
+    game.sanctuaryTurrets = []; game.nodes = []; game.hazardZones = []; game.enemies = [];
+    game.spawnTimer = 999;
+    function visitContact(id) {
+      const position = getSanctuaryNpcPositions()[sanctuaryNpcDefinitions.findIndex(npc => npc.id === id)];
+      teleportPlayer(position.x, position.y);
+      renderQuestDialog(id);
+    }
+    function setTestMods(weaponId, handling, specialization) {
+      game.unlockedWeapons[weaponId] = true;
+      game.sanctuary.projects.workshop = 2;
+      game.discovered.add('sector-2-0');
+      if (handling && Object.hasOwn(modResearch,handling) && !game.sanctuary.plans.includes(handling)) game.sanctuary.plans.push(handling);
+      if (specialization && Object.hasOwn(modResearch,specialization) && !game.sanctuary.plans.includes(specialization)) game.sanctuary.plans.push(specialization);
+      if (game.sanctuary.plans.length) game.sanctuary.projects.archive = 1;
+      game.weaponMods.weapons[weaponId] = { crafted: [handling,specialization].filter(Boolean), handling, specialization };
+      game.weapon = weaponId; game.ammo = getWeaponStats().magazine || 0;
+      game.fireTimer = 0; game.reloadPending = false;
+      game.bullets = []; game.beams = []; game.meleeAttack = null;
+      game.player.x = 0; game.player.y = 0; game.player.angle = 0;
+    }
+    function combatTarget(x, y = 0) {
+      return { x,y,r:8,hp:100,maxHp:100,speed:0,shieldTimer:0,abilityTimer:3,contactDamage:0,effect:null,
+        familyIndex:0,family:'MIRE CRAWLER',variant:'SKIRMISHER',color:'#ffffff' };
+    }
+  `);
+  return harness;
+}
+
+test('Sanctuary projects charge both stages once, gate sector three and preserve per-save progress', () => {
+  const { run, drawingCalls } = loadSanctuaryGame();
+  for (const [id, npc] of [['medical','medic'],['workshop','mechanic'],['scout','scout'],['archive','archivist'],['depot','quartermaster']]) {
+    run(`visitContact(${JSON.stringify(npc)}); upgradeSanctuaryProject(${JSON.stringify(id)});`);
+    assert.equal(run(`game.sanctuary.projects[${JSON.stringify(id)}]`), 1);
+    const paid = run('JSON.stringify([game.vault,game.relics])');
+    run(`upgradeSanctuaryProject(${JSON.stringify(id)});`);
+    assert.equal(run(`game.sanctuary.projects[${JSON.stringify(id)}]`), 1);
+    assert.equal(run('JSON.stringify([game.vault,game.relics])'), paid);
+  }
+  assert.equal(run('game.vault.wood'), 964);
+  assert.equal(run('game.vault.iron'), 952);
+  assert.equal(run('game.vault.steel'), 988);
+  assert.equal(run('game.vault.fuel'), 992);
+  run("game.discovered.add('sector-2-0');");
+  for (const [id, npc] of [['medical','medic'],['workshop','mechanic'],['scout','scout'],['archive','archivist'],['depot','quartermaster']]) {
+    run(`visitContact(${JSON.stringify(npc)}); upgradeSanctuaryProject(${JSON.stringify(id)});`);
+    assert.equal(run(`game.sanctuary.projects[${JSON.stringify(id)}]`), 2);
+    const paid = run('JSON.stringify([game.vault,game.relics])');
+    run(`upgradeSanctuaryProject(${JSON.stringify(id)});`);
+    assert.equal(run('JSON.stringify([game.vault,game.relics])'), paid);
+  }
+  assert.equal(run('game.vault.steel'), 926);
+  assert.equal(run('game.vault.crystal'), 966);
+  assert.equal(run('game.relics'), 18);
+  assert.equal(run('game.questState.counters.repairs'), 10);
+  assert.equal(run('activeQuestCount()'), 0);
+  run('game = restoreGame(serializeGame()); drawSanctuaryBuildStations();');
+  assert.equal(run('Object.values(game.sanctuary.projects).every(level => level === 2)'), true);
+  assert.ok(drawingCalls.some(call => call[0] === 'fillText' && /WORKSHOP.*STAGE 2/.test(call[1])));
+  run('start();');
+  assert.equal(run('Object.values(game.sanctuary.projects).every(level => level === 0)'), true);
+});
+
+test('Sanctuary services reject remote, paused, wrong-contact and unpaid actions without partial charges', () => {
+  const { run } = loadSanctuaryGame();
+  run("visitContact('medic'); upgradeSanctuaryProject('workshop');");
+  assert.equal(run('game.sanctuary.projects.workshop'), 0);
+  run("visitContact('mechanic'); game.paused = true; upgradeSanctuaryProject('workshop');");
+  assert.equal(run('game.sanctuary.projects.workshop'), 0);
+  run("game.paused = false; teleportPlayer(4000,4000); upgradeSanctuaryProject('workshop');");
+  assert.equal(run('game.vault.iron'), 1000);
+  run("visitContact('mechanic'); game.vault.fuel = 0; upgradeSanctuaryProject('workshop');");
+  assert.equal(run('game.sanctuary.projects.workshop'), 0);
+  assert.equal(run('game.vault.iron'), 1000);
+  assert.match(run("questDialog.querySelector('.quest-feedback').textContent"), /NEED.*FUEL/);
+  run("game.vault.fuel = 1000; upgradeSanctuaryProject('workshop'); craftWeaponMod('sidearm','scatterChoke');");
+  assert.equal(run('Object.keys(game.weaponMods.weapons).length'), 0);
+  run("game.unlockedWeapons.shotgun = true; craftWeaponMod('shotgun','scatterChoke');");
+  assert.equal(run('Object.keys(game.weaponMods.weapons).length'), 0);
+  assert.equal(run('game.vault.steel'), 994);
+});
+
+test('NPC service buttons build projects, switch weapon previews, install mods and craft at the Medic', () => {
+  const { run } = loadSanctuaryGame();
+  run(`
+    function clickService(dataset, attribute = '') {
+      const target = document.createElement('button');
+      target.dataset = dataset;
+      target.closest = () => target;
+      target.hasAttribute = name => name === attribute;
+      questDialog.listeners.get('click')[0]({target,preventDefault(){},stopPropagation(){}});
+    }
+    visitContact('mechanic');
+    clickService({sanctuaryUpgrade:'workshop'});
+    clickService({modCraft:'quickLoader'});
+    clickService({modEquip:'quickLoader'});
+  `);
+  assert.equal(run('game.sanctuary.projects.workshop'), 1);
+  assert.equal(run('game.ammo'), 10);
+  assert.match(run('questDialog.innerHTML'), /HANDLING SLOT: QUICK LOADER/);
+  run(`
+    clickService({modRemove:'handling'});
+    game.unlockedWeapons.smg = true;
+    clickService({modWeapon:'smg'});
+    clickService({modCraft:'quickLoader'});
+    clickService({modEquip:'quickLoader'});
+  `);
+  assert.equal(run('game.weaponMods.weapons.smg.handling'), 'quickLoader');
+  assert.equal(run('getWeaponStats("smg").magazine'), 27);
+  assert.equal(run('game.weapon'), 'sidearm');
+  assert.equal(run('game.ammo'), 10);
+  run(`
+    visitContact('medic');
+    clickService({sanctuaryUpgrade:'medical'});
+    clickService({},'data-medic-craft');
+  `);
+  assert.equal(run('game.crafting.recipeKey'), 'medkit');
+  run('updateCrafting(4);');
+  assert.equal(run('game.stationItems.medkit'), 2);
+});
+
+test('Archivist milestones recover permanent plans without random rolls, weapons or invented legacy kills', () => {
+  const { run } = loadSanctuaryGame();
+  run(`
+    game.sanctuary.projects.archive = 1;
+    visitContact('archivist');
+    for (const id of Object.keys(journalEnemyCatalog).slice(0,11)) game.journal.enemies[id] = {kills:0};
+    claimModResearch('focusAssembly');
+  `);
+  assert.equal(run("game.sanctuary.plans.includes('focusAssembly')"), false);
+  run(`
+    game.journal.enemies['void-stalker'] = {kills:0,legacyVictory:true};
+    claimModResearch('focusAssembly');
+    claimModResearch('lingeringFlame');
+  `);
+  assert.equal(run("game.sanctuary.plans.includes('focusAssembly')"), true);
+  assert.equal(run("game.sanctuary.plans.includes('lingeringFlame')"), false);
+  assert.equal(run('researchProgress("lingeringFlame")'), 0);
+  run("game.journal.enemies['family-0-0'].kills = 24; claimModResearch('lingeringFlame');");
+  assert.equal(run("game.sanctuary.plans.includes('lingeringFlame')"), false);
+  run(`
+    game.journal.enemies['family-0-0'].kills = 25; claimModResearch('lingeringFlame');
+    game.worldEvents.seen = ['wreck']; game.worldEvents.completed.wreck = 3; claimModResearch('concussivePayload');
+    for (const id of Object.keys(journalEnemyCatalog).slice(0,20)) game.journal.enemies[id] ??= {kills:0};
+    claimModResearch('focusedOrbit');
+    claimModResearch('focusedOrbit');
+  `);
+  assert.equal(run('game.sanctuary.plans.length'), 4);
+  assert.equal(run('Object.keys(game.unlockedWeapons).length'), 1);
+  assert.equal(run('Object.keys(game.blueprints).length'), 0);
+  assert.equal(run('game.vault.steel'), 1000);
+  run(`
+    game.sanctuary.projects.workshop = 2;
+    game.discovered.add('sector-2-0');
+    visitContact('mechanic'); craftWeaponMod('laser','focusAssembly');
+  `);
+  assert.equal(run('Boolean(game.weaponMods.weapons.laser)'), false);
+  run("game.unlockedWeapons.laser = true; craftWeaponMod('laser','focusAssembly'); equipWeaponMod('laser','handling','focusAssembly');");
+  assert.equal(run('game.vault.steel'), 996);
+  assert.equal(run('game.vault.crystal'), 998);
+  run('game = restoreGame(serializeGame());');
+  assert.equal(run('game.sanctuary.plans.length'), 4);
+  assert.equal(run('game.weaponMods.weapons.laser.handling'), 'focusAssembly');
+});
+
+test('weapon mods are crafted per weapon and swapping recalculates rather than stacking effects', () => {
+  const { run } = loadSanctuaryGame();
+  run(`
+    game.sanctuary.projects.workshop = 2;
+    game.unlockedWeapons.duelSidearm = true;
+    visitContact('mechanic');
+    craftWeaponMod('sidearm','stabilizer');
+    craftWeaponMod('sidearm','penetrator');
+    equipWeaponMod('sidearm','handling','stabilizer');
+    equipWeaponMod('sidearm','specialization','penetrator');
+    const modMaterials = JSON.stringify(game.vault);
+    const modStats = JSON.stringify(getWeaponStats('sidearm'));
+    for (let swap=0; swap<20; swap++) {
+      equipWeaponMod('sidearm','handling',null);
+      equipWeaponMod('sidearm','handling','stabilizer');
+    }
+    craftWeaponMod('sidearm','stabilizer');
+  `);
+  assert.equal(run('JSON.stringify(game.vault)'), run('modMaterials'));
+  assert.equal(run('JSON.stringify(getWeaponStats("sidearm"))'), run('modStats'));
+  assert.equal(run('game.vault.steel'), 988);
+  assert.equal(run('game.vault.crystal'), 994);
+  assert.equal(run('game.weaponMods.weapons.sidearm.crafted.length'), 2);
+  assert.equal(run('Boolean(game.blueprints.duelSidearm)'), false);
+  run("equipWeaponMod('duelSidearm','handling','stabilizer');");
+  assert.equal(run('Boolean(game.weaponMods.weapons.duelSidearm)'), false);
+  run("craftWeaponMod('duelSidearm','stabilizer'); equipWeaponMod('duelSidearm','handling','stabilizer');");
+  assert.equal(run('game.vault.steel'), 984);
+  assert.equal(run('getWeaponStats("duelSidearm").damage'), .22);
+});
+
+test('Quick Loader conserves loose rounds through repeated swaps, saves and reloads and only speeds empty recovery', () => {
+  const { run } = loadSanctuaryGame();
+  run(`
+    game.sanctuary.projects.workshop = 1;
+    visitContact('mechanic');
+    craftWeaponMod('sidearm','quickLoader');
+    equipWeaponMod('sidearm','handling','quickLoader');
+    const originalReserves = game.ammoReserve.pistolAmmo;
+    for (let swap=0; swap<20; swap++) {
+      equipWeaponMod('sidearm','handling',null);
+      equipWeaponMod('sidearm','handling','quickLoader');
+    }
+  `);
+  assert.equal(run('game.ammo'), 10);
+  assert.equal(run('game.weaponMods.looseAmmo.pistolAmmo'), 2);
+  assert.equal(run('game.ammoReserve.pistolAmmo'), run('originalReserves'));
+  assert.match(run('ui.ammoStorage.textContent'), /\+ 2R/);
+  run('game = restoreGame(serializeGame()); game.ammoReserve.pistolAmmo = 0; game.ammo = 2; shoot();');
+  assert.equal(run('game.fireTimer'), 200);
+  run('game.fireTimer = 0; shoot(); reloadAmmo();');
+  assert.equal(run('game.fireTimer'), 160);
+  assert.equal(run('game.ammo'), 0);
+  run('game.fireTimer = 0; reloadAmmo();');
+  assert.equal(run('game.ammo'), 2);
+  assert.equal(run('game.weaponMods.looseAmmo.pistolAmmo'), 0);
+  run("visitContact('mechanic'); equipWeaponMod('sidearm','handling',null);");
+  assert.equal(run('game.ammo'), 2);
+  run("game.unlockedWeapons.shotgun = true; game.weaponAmmo.shotgun = 6; craftWeaponMod('shotgun','quickLoader'); equipWeaponMod('shotgun','handling','quickLoader');");
+  assert.equal(run('game.weaponAmmo.shotgun'), 5);
+  assert.equal(run('game.weaponMods.looseAmmo.shells'), 1);
+  run("game.unlockedWeapons.railgun = true; craftWeaponMod('railgun','quickLoader');");
+  assert.equal(run('Boolean(game.weaponMods.weapons.railgun)'), false);
+  run(`
+    equipWeaponMod('sidearm','handling','quickLoader');
+    adminTestRuns.add(game); adminInfiniteAmmoRuns.add(game);
+    game.ammo = 0; game.reloadPending = true; game.fireTimer = 0; shoot();
+  `);
+  assert.equal(run('game.ammo'), 0);
+  assert.equal(run('game.fireTimer'), 200);
+});
+
+test('Penetrator hits exactly two enemies and retains its hit budget and damage across a live save', () => {
+  const { run } = loadSanctuaryGame();
+  run(`
+    setTestMods('sidearm',null,'penetrator');
+    const nearModTarget = combatTarget(40), midModTarget = combatTarget(75), farModTarget = combatTarget(105);
+    game.enemies = [farModTarget,nearModTarget,midModTarget];
+    shoot(); update(.04);
+  `);
+  assert.ok(Math.abs(run('game.enemies[1].hp') - 99.76) < 1e-8);
+  assert.equal(run('game.enemies[2].hp'), 100);
+  assert.equal(run('game.bullets[0].pierceHits'), 1);
+  run('game = restoreGame(serializeGame()); game.weaponMods.weapons.sidearm.specialization = null; update(.12);');
+  assert.ok(Math.abs(run('game.enemies[1].hp') - 99.76) < 1e-8);
+  assert.ok(Math.abs(run('game.enemies[2].hp') - 99.76) < 1e-8);
+  assert.equal(run('game.enemies[0].hp'), 100);
+  assert.equal(run('game.bullets.length'), 0);
+});
+
+test('projectile modifications apply their tradeoffs to real shots without mutating base weapon definitions', () => {
+  const { run } = loadSanctuaryGame();
+  run(`
+    const originalWeaponCatalog = JSON.stringify(weaponCatalog);
+    Math.random = () => 1;
+    setTestMods('shotgun','stabilizer','scatterChoke'); shoot();
+  `);
+  assert.equal(run('game.bullets.length'), 6);
+  assert.ok(Math.abs(run('1000 / game.fireTimer') - 1000 / 480 * .9) < 1e-8);
+  assert.ok(Math.abs(run('Math.atan2(game.bullets[0].vy,game.bullets[0].vx)') - .34 * .75 * .7 / 2) < 1e-8);
+  run("setTestMods('grenadeLauncher',null,'concussivePayload'); shoot();");
+  assert.equal(run('game.bullets[0].blast'), 100);
+  assert.ok(Math.abs(run('game.bullets[0].damage') - 2.8) < 1e-8);
+  run("setTestMods('pulseCarbine',null,'concussivePayload'); shoot();");
+  assert.equal(run('game.bullets[0].pulseBlastRadius'), 62.5);
+  assert.equal(run('game.bullets[0].damage'), .96);
+  run("setTestMods('flamethrower',null,'lingeringFlame'); shoot();");
+  assert.equal(run('game.bullets[0].burnDuration'), 3);
+  assert.ok(Math.abs(run('game.bullets[0].burnDamage') - .32) < 1e-8);
+  run("setTestMods('magicGauntlet','focusAssembly','focusedOrbit'); shoot();");
+  assert.ok(Math.abs(run('Math.hypot(game.bullets[0].vx,game.bullets[0].vy) * game.bullets[0].life') - 440 * .5 * 1.2 * .85) < 1e-8);
+  assert.ok(Math.abs(run('game.bullets[0].swayAmplitude') - .15) < 1e-8);
+  assert.ok(Math.abs(run('game.bullets[0].damage') - 1.17) < 1e-8);
+  run("setTestMods('voidBatar',null,'shortChain'); shoot();");
+  assert.equal(run('game.fireTimer'), 25);
+  assert.ok(Math.abs(run('game.bullets[0].life') - 4.2) < 1e-8);
+  run(`
+    setTestMods('voidBatar',null,null); game.enemies = []; shoot();
+    const baseChainX = game.bullets[0].x;
+    updateVoidBatarBullet(game.bullets[0],6);
+    const baseChainReach = game.bullets[0].x - baseChainX;
+    setTestMods('voidBatar','focusAssembly',null); shoot();
+    const focusedChainX = game.bullets[0].x;
+    updateVoidBatarBullet(game.bullets[0],6);
+  `);
+  assert.ok(Math.abs(run('(game.bullets[0].x - focusedChainX) / baseChainReach') - 1.2) < 1e-8);
+  assert.equal(run('JSON.stringify(weaponCatalog)'), run('originalWeaponCatalog'));
+});
+
+test('melee and beam mods affect real reach and damage and preserve an in-flight melee snapshot', () => {
+  const { run, drawingCalls } = loadSanctuaryGame();
+  run(`
+    setTestMods('machete','balancedGrip','heavyEdge');
+    game.enemies = [combatTarget(60)];
+    shoot();
+    game.weaponMods.weapons.machete.handling = null; game.weaponMods.weapons.machete.specialization = null;
+    updateMeleeAttack(.14);
+  `);
+  assert.ok(Math.abs(run('game.enemies[0].hp') - 98.65) < 1e-8);
+  assert.ok(Math.abs(run('game.fireTimer') - 459) < 1e-8);
+  run("setTestMods('laser','focusAssembly','focusedDischarge'); game.enemies = [combatTarget(700)]; shoot();");
+  assert.ok(Math.abs(run('game.enemies[0].hp') - 99.298) < 1e-8);
+  assert.ok(Math.abs(run('game.beams[0].length') - 726) < 1e-8);
+  assert.equal(run('game.fireTimer'), 125);
+  run("setTestMods('radBeam','focusAssembly','sustainedExposure'); game.enemies = [combatTarget(650)]; updateRadBeam(.5); drawGameWorld();");
+  assert.ok(Math.abs(run('game.enemies[0].hp') - 99.982) < 1e-8);
+  assert.equal(run('game.enemies[0].radiationTimer'), 3.75);
+  assert.ok(drawingCalls.some(call => call[0] === 'lineTo' && call[1] === 740 && call[2] === 0));
+});
+
+test('Supply Depot orders charge atomically, snapshot shared-ammo batches and finish only once after reload', () => {
+  const { run } = loadSanctuaryGame();
+  run(`
+    game.sanctuary.projects.depot = 2; game.unlockedWeapons.duelSidearm = true; game.discovered.add('sector-2-0');
+    visitContact('quartermaster');
+    adjustResupplyOrder('sidearm',1); adjustResupplyOrder('duelSidearm',1); adjustResupplyOrder('duelSidearm',1);
+    const beforeDepotAmmo = game.ammoReserve.pistolAmmo;
+    game.vault.fuel = 0;
+    placeResupplyOrder();
+  `);
+  assert.equal(run('game.crafting'), null);
+  assert.equal(run('game.vault.rawIron'), 1000);
+  run('game.vault.fuel = 1000; placeResupplyOrder();');
+  assert.equal(run('game.vault.rawIron'), 994);
+  assert.equal(run('game.vault.fuel'), 997);
+  assert.equal(run('game.crafting.total'), 9);
+  assert.equal(run('game.ammoReserve.pistolAmmo'), run('beforeDepotAmmo'));
+  run(`
+    adjustResupplyOrder('duelSidearm',-1);
+    updateCrafting(3);
+    game.paused = true; loop(performance.now()+1000);
+  `);
+  assert.equal(run('game.crafting.remaining'), 6);
+  run('start(serializeGame()); updateCrafting(6);');
+  assert.equal(run('game.ammoReserve.pistolAmmo'), run('beforeDepotAmmo + 36'));
+  assert.equal(run('game.vault.rawIron'), 994);
+  assert.equal(run('game.crafting'), null);
+  assert.equal(run("game.sanctuary.resupply.find(order=>order.weaponId==='duelSidearm').quantity"), 1);
+  run('start(serializeGame()); updateCrafting(100);');
+  assert.equal(run('game.ammoReserve.pistolAmmo'), run('beforeDepotAmmo + 36'));
+  run("game.weapon = 'magicGauntlet'; placeResupplyOrder(true);");
+  assert.equal(run('game.crafting'), null);
+});
+
+test('Medical Wing recipes really discount costs and Scout leads reveal no exact sites or activation', () => {
+  const { run, drawingCalls } = loadWorldEvent('wreck', 3);
+  run(`
+    game.sanctuary.projects.medical = 2;
+    game.vault = {fiber:10,crystal:10};
+    teleportPlayer(0,0);
+    craftItem('medkit'); updateCrafting(4);
+    game.sanctuary.projects.scout = 1;
+    game.discovered.add(event.biomeKey);
+    mapOpen = true;
+    drawWorldEventMapMarkers(); drawWorldEvents();
+  `);
+  assert.equal(run('game.vault.fiber'), 7);
+  assert.equal(run('game.vault.crystal'), 9);
+  assert.equal(run('game.stationItems.medkit'), 2);
+  assert.ok(drawingCalls.some(call => call[0] === 'fillText' && call[1] === 'SCOUT SIGNAL // APPROXIMATE'));
+  assert.equal(drawingCalls.some(call => call[0] === 'strokeRect'), false);
+  assert.equal(run('event.discovered'), false);
+  assert.equal(run('event.active'), false);
+  assert.equal(run('worldEventHud.hidden'), true);
+  run("game.sanctuary.projects.scout = 2; game.sanctuary.projects.archive = 2; renderQuestDialog('scout');");
+  assert.doesNotMatch(run('questDialog.innerHTML'), /CONTINUITY KEY|Foreman|Last Shift/);
+  run("renderQuestDialog('archivist');");
+  assert.doesNotMatch(run('questDialog.innerHTML'), /VOID STALKER GUARDIAN|THE LAST SHIFT/);
+});
+
+test('Sanctuary and mod saves migrate old runs and reject malformed progression instead of silently resetting it', () => {
+  const { run } = loadSanctuaryGame();
+  run(`const sanctuaryLegacy = deserializeGame(serializeGame()); delete sanctuaryLegacy.sanctuary; delete sanctuaryLegacy.weaponMods;
+    start(JSON.stringify(sanctuaryLegacy, (_key,value) => value instanceof Set ? [...value] : value));`);
+  assert.equal(run('game.sanctuary.projects.workshop'), 0);
+  assert.equal(run('Object.keys(game.weaponMods.weapons).length'), 0);
+  const invalid = [
+    'candidate.sanctuary.projects.workshop = 3',
+    'candidate.sanctuary.projects.medical = NaN',
+    'candidate.sanctuary.plans = ["not-a-plan"]',
+    'candidate.sanctuary.resupply = [{weaponId:"sidearm",quantity:0}]',
+    'candidate.weaponMods.looseAmmo = {pistolAmmo:-1}',
+    'candidate.weaponMods.weapons.sidearm = {crafted:["penetrator"],handling:"penetrator",specialization:null}',
+    'candidate.weaponMods.weapons.sidearm = {crafted:["heavyEdge"],handling:null,specialization:"heavyEdge"}',
+    'candidate.weaponMods.weapons.railgun = {crafted:["focusedDischarge"],handling:null,specialization:"focusedDischarge"}',
+    'candidate.crafting = {recipeKey:"depotResupply",orders:[],quantity:1,remaining:3,total:3}'
+  ];
+  for (const mutation of invalid) {
+    assert.throws(() => run(`{
+      const candidate = deserializeGame(serializeGame());
+      ${mutation};
+      restoreGame(JSON.stringify(candidate, (_key,value) => value instanceof Set ? [...value] : value));
+    }`), /Invalid (Sanctuary|weapon modifications|Supply Depot)/);
+  }
+});
+
 test('only equipment needs blueprints and locked equipment cannot be crafted', () => {
   const { run } = loadGame();
   assert.equal(run(`['medkit', 'ammo_pistolAmmo', 'buildWorkbench', 'buildBountyBoard',
@@ -452,6 +857,355 @@ test('completed legacy campaigns receive the Continuity Key, but the Void Stalke
   assert.equal(run('game.epilogue.dungeon.world.enemies.some(enemy => enemy.voidStalker)'), false);
 });
 
+test('the relocated portal is 10,000 displayed meters beyond the edge and remains visible on the full map', () => {
+  const { run } = loadGame();
+  assert.ok(Math.abs(run('(Math.hypot(voidPortal.x, voidPortal.y) - mapRadius) / 10') - 10000) < 1e-8);
+  run('game.campaign.completed = campaignMissions.map(mission => mission.id); setMapOpen(true);');
+  for (const point of ['{x:0,y:0}', 'voidPortal', '{x:-120000,y:0}']) {
+    run(`teleportPlayer((${point}).x, (${point}).y);`);
+    assert.equal(run(`
+      Math.abs(voidSearch.x - getMapCenter().x) * getTacticalMapScale() < mapCanvas.width / 2
+        && Math.abs(voidSearch.y - getMapCenter().y) * getTacticalMapScale() < mapCanvas.height / 2
+    `), true);
+  }
+  run('setMapOpen(false); teleportPlayer(60000, 0);');
+  assert.equal(run('getBiome(game.player.x, game.player.y).name'), 'THE VOID');
+  assert.equal(run('getMapCenter() === game.player'), true);
+  run('update(.04);');
+  assert.match(run('ui.objective.textContent'), /CONTINUITY SIGNAL.*m TO SEARCH AREA/);
+});
+
+test('deep Void storms telegraph, hit once, and allow players to dodge the locked strike zones', () => {
+  const { run, drawingCalls } = loadGame();
+  run(`
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    game.enemies = [];
+    game.voidDangers.stormTimer = 0;
+    update(.04);
+    settings.reducedEffects = true;
+    drawDeepVoid();
+  `);
+  assert.equal(run('game.health'), 100);
+  assert.equal(run('game.voidDangers.strikes.length'), 4);
+  assert.ok(drawingCalls.some(([method, text]) => method === 'fillText' && text === 'VOID STRIKE'));
+  run(`
+    game.voidDangers.strikes = [{x:game.player.x,y:game.player.y,timer:.5}];
+    updateDeepVoid(.49);
+  `);
+  assert.equal(run('game.health'), 100);
+  run('updateDeepVoid(.02); updateDeepVoid(.04);');
+  assert.equal(run('game.health'), 72);
+  run(`
+    game.voidDangers.strikes = [{x:game.player.x,y:game.player.y,timer:.5}];
+    teleportPlayer(game.player.x + 200, game.player.y);
+    updateDeepVoid(.6);
+  `);
+  assert.equal(run('game.health'), 72);
+  run('teleportPlayer(0,0); game.voidDangers.strikes = []; game.voidDangers.stormTimer = 0; updateDeepVoid(100);');
+  assert.equal(run('game.voidDangers.strikes.length'), 0);
+});
+
+test('deep Void rifts arm on approach, warn before a single bounded ambush, and expire', () => {
+  const { run, drawingCalls } = loadGame();
+  run(`
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    game.enemies = [];
+    game.voidDangers.riftTimer = 0;
+    updateDeepVoid(0);
+    drawDeepVoid();
+    const rift = game.voidDangers.rifts[0];
+    updateDeepVoid(.1);
+  `);
+  assert.equal(run('rift.triggered'), false);
+  assert.equal(run('game.enemies.length'), 0);
+  assert.ok(drawingCalls.some(([method, text]) => method === 'fillText' && text === 'UNSTABLE RIFT'));
+  run('teleportPlayer(rift.x, rift.y); updateDeepVoid(.1); drawDeepVoid();');
+  assert.equal(run('rift.triggered'), true);
+  assert.ok(drawingCalls.some(([method, text]) => method === 'fillText' && text === 'RIFT OPENING'));
+  run('updateDeepVoid(1.49);');
+  assert.equal(run('game.enemies.length'), 0);
+  run('updateDeepVoid(.02); updateDeepVoid(.02);');
+  assert.equal(run('game.enemies.length'), 3);
+  assert.equal(run('game.enemies.every(enemy => (enemy.voidWalker || enemy.voidWorm) && enemy.isAggroed)'), true);
+  assert.equal(run('game.voidDangers.rifts.length'), 0);
+  run(`
+    while (game.enemies.length < 24) addEnemy(createVoidWorm(game.player.x + 100, game.player.y));
+    game.voidDangers.rifts.push({x:game.player.x,y:game.player.y,timer:.1,triggered:true});
+    updateDeepVoid(.2);
+  `);
+  assert.equal(run('game.enemies.length'), 24);
+  run('game.voidDangers.rifts.push({x:game.player.x+600,y:game.player.y,timer:.1,triggered:false}); updateDeepVoid(.2);');
+  assert.equal(run('game.voidDangers.rifts.length'), 0);
+});
+
+test('pending Void hazards round-trip through saves and freeze throughout dungeon checkpoints', () => {
+  const { run } = loadGame();
+  run(`
+    game.campaign.completed = campaignMissions.map(mission => mission.id);
+    game.epilogue.guardianCleared = true;
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    game.voidDangers.strikes = [{x:voidPortal.x,y:voidPortal.y,timer:1}];
+    game.voidDangers.rifts = [{x:voidPortal.x,y:voidPortal.y,timer:1,triggered:true}];
+    enterDungeon();
+    updateDeepVoid(100);
+    start(serializeGame());
+    updateDeepVoid(100);
+  `);
+  assert.equal(run('game.voidDangers.strikes[0].timer'), 1);
+  assert.equal(run('game.voidDangers.rifts[0].timer'), 1);
+  assert.equal(run('game.health'), 100);
+  run('leaveDungeon(); updateDeepVoid(.9);');
+  assert.equal(run('game.enemies.length'), 0);
+  assert.equal(run('game.health'), 100);
+  run('updateDeepVoid(.2);');
+  assert.equal(run('game.enemies.length'), 3);
+  assert.equal(run('game.health'), 72);
+  run('game.voidDangers.strikes = [{x:0,y:0,timer:NaN}];');
+  assert.throws(() => run('restoreGame(serializeGame());'), /Invalid deep Void hazard state/);
+});
+
+test('legacy guardians relocate and preserve their health fraction without losing epilogue progress', () => {
+  const { run } = loadGame();
+  run(`
+    game.campaign.completed = campaignMissions.map(mission => mission.id);
+    teleportPlayer(17920,-5660);
+    const legacy = createVoidStalker();
+    Object.assign(legacy, {x:17920,y:-5660,maxHp:220});
+    delete legacy.phase;
+    attachEnemyHealth(legacy,55);
+    game.enemies = [legacy];
+    game.epilogue.portalFound = true;
+    delete game.epilogue.portalRevision;
+    delete game.voidDangers;
+    start(serializeGame());
+    const migrated = game.enemies.find(enemy => enemy.voidStalker);
+  `);
+  assert.equal(run('migrated.hp / migrated.maxHp'), .25);
+  assert.equal(run('migrated.maxHp'), 1400);
+  assert.equal(run('migrated.x'), run('voidPortal.x + 450'));
+  assert.equal(run('game.epilogue.portalFound'), false);
+  assert.equal(run('game.voidDangers.strikes.length'), 0);
+  run(`
+    game.epilogue.guardianCleared = true;
+    game.epilogue.firstClear = true;
+    delete game.epilogue.portalRevision;
+    start(serializeGame());
+  `);
+  assert.equal(run('game.epilogue.firstClear && game.epilogue.guardianCleared && game.blueprints.continuityWeave'), true);
+  assert.equal(run('game.enemies.some(enemy => enemy.voidStalker)'), false);
+});
+
+test('Stalker spread shots lock their aim and crossing rifts allow a diagonal dodge', () => {
+  const { run, drawingCalls } = loadGame();
+  run(`
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    const boss = createVoidStalker();
+    game.enemies = [boss];
+    function prepareAttack(attack) {
+      boss.phase = 2; boss.hp = 900;
+      boss.x = voidPortal.x + 250; boss.y = voidPortal.y;
+      teleportPlayer(voidPortal.x, voidPortal.y);
+      boss.huntState = 'circle'; boss.huntTimer = 0;
+      boss.comboRemaining = 0;
+      boss.pattern = stalkerPhases[1].attacks.indexOf(attack);
+      updateVoidStalker(boss, .01);
+    }
+    prepareAttack('fan');
+    const lockedAngle = boss.chargeAngle;
+    teleportPlayer(game.player.x, game.player.y + 250);
+    updateVoidStalker(boss, .8);
+  `);
+  assert.equal(run('game.projectiles.length'), 9);
+  assert.ok(run('Math.abs(Math.atan2(game.projectiles[4].vy, game.projectiles[4].vx) - lockedAngle) < 1e-8'));
+  run(`
+    prepareAttack('cross');
+    const lockedZones = JSON.stringify(boss.zones);
+    teleportPlayer(game.player.x + 100, game.player.y + 100);
+    renderEnemySystem();
+    updateVoidStalker(boss, 1.2);
+  `);
+  assert.equal(run('JSON.stringify(boss.zones)'), run('lockedZones'));
+  assert.equal(run('game.health'), 100);
+  assert.ok(drawingCalls.some(([method, , , w, h]) => method === 'strokeRect' && w === 140 && h === 1250));
+  run("prepareAttack('cross'); updateVoidStalker(boss, 1.2);");
+  assert.equal(run('game.health'), 66);
+});
+
+test('Stalker shockwaves warn before hitting and are safe beyond the marked radius', () => {
+  const { run, drawingCalls } = loadGame();
+  run(`
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    const boss = createVoidStalker();
+    game.enemies = [boss];
+    function prepareShockwave() {
+      boss.x = voidPortal.x + 250; boss.y = voidPortal.y;
+      boss.huntState = 'circle'; boss.huntTimer = 0;
+      boss.pattern = stalkerPhases[0].attacks.indexOf('shockwave');
+      updateVoidStalker(boss, .01);
+    }
+    prepareShockwave();
+    renderEnemySystem();
+    updateVoidStalker(boss, .5);
+  `);
+  assert.equal(run('game.health'), 100);
+  assert.ok(drawingCalls.some(([method, , , radius]) => method === 'arc' && radius === 300));
+  run('updateVoidStalker(boss, .8);');
+  assert.equal(run('game.health'), 66);
+  run(`
+    updateVoidStalker(boss, .3);
+    prepareShockwave();
+    teleportPlayer(boss.zones[0].x - 301, boss.zones[0].y);
+    updateVoidStalker(boss, 1.3);
+  `);
+  assert.equal(run('game.health'), 66);
+  assert.equal(run('boss.huntState'), 'impact');
+});
+
+test('the Stalker escalates through three phases, locks rift marks, and gives recovery windows', () => {
+  const { run, drawingCalls } = loadGame();
+  run(`
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    const boss = createVoidStalker();
+    game.enemies = [boss];
+    updateVoidStalker(boss,.04);
+    boss.hp = 900;
+    updateVoidStalker(boss,.04);
+  `);
+  assert.equal(run('boss.phase'), 2);
+  assert.equal(run('boss.huntState'), 'recover');
+  run(`
+    updateVoidStalker(boss,1.3);
+    boss.pattern = 1;
+    boss.huntTimer = 0;
+    updateVoidStalker(boss,.04);
+    const locked = JSON.stringify(boss.zones);
+    teleportPlayer(game.player.x+500, game.player.y+500);
+    renderEnemySystem();
+    updateVoidStalker(boss,.5);
+  `);
+  assert.equal(run('boss.attack'), 'marks');
+  assert.equal(run('boss.huntState'), 'windup');
+  assert.equal(run('JSON.stringify(boss.zones)'), run('locked'));
+  assert.ok(drawingCalls.some(([method, _x, _y, radius]) => method === 'arc' && radius === 120));
+  run('updateVoidStalker(boss,.7);');
+  assert.equal(run('game.health'), 100);
+  run('updateVoidStalker(boss,.3);');
+  assert.equal(run('boss.huntState'), 'circle');
+  assert.equal(run('boss.comboRemaining'), 1);
+  run(`
+    boss.hp = 400;
+    updateVoidStalker(boss,.04);
+    updateVoidStalker(boss,1.3);
+    boss.pattern = 1;
+    boss.huntTimer = 0;
+    teleportPlayer(boss.x-250,boss.y);
+    updateVoidStalker(boss,.04);
+  `);
+  assert.equal(run('boss.phase'), 3);
+  assert.equal(run('boss.attack'), 'burst');
+  assert.equal(run('game.projectiles.length'), 0);
+  run('updateVoidStalker(boss,.7);');
+  assert.equal(run('game.projectiles.length'), 24);
+  assert.equal(run('game.projectiles.every(projectile => projectile.damage === 28 && Number.isFinite(projectile.vx))'), true);
+  run(`
+    boss.huntState = 'circle'; boss.huntTimer = 0; boss.pattern = 2;
+    teleportPlayer(boss.x-250,boss.y);
+    updateVoidStalker(boss,.04);
+    updateVoidStalker(boss,1.1);
+    updateVoidStalker(boss,.1);
+  `);
+  assert.equal(run('game.health'), 66);
+  run(`
+    boss.x = game.player.x - 200; boss.y = game.player.y;
+    boss.chargeAngle = 0; boss.chargeHit = false;
+    boss.huntState = 'lunge'; boss.huntTimer = .67;
+    updateVoidStalker(boss,.2);
+    updateVoidStalker(boss,.1);
+    start(serializeGame());
+  `);
+  assert.equal(run('game.health'), 24);
+  assert.equal(run('game.enemies.find(enemy => enemy.voidStalker).phase'), 3);
+  assert.equal(run('game.enemies.find(enemy => enemy.voidStalker).hp'), 400);
+});
+
+test('Stalker phases chain one, two, then three fully warned attacks before recovery', () => {
+  for (const phase of [1, 2, 3]) {
+    const { run } = loadGame();
+    run(`
+      teleportPlayer(voidPortal.x, voidPortal.y);
+      const boss = createVoidStalker();
+      game.enemies = [boss];
+      boss.phase = ${phase};
+      boss.hp = boss.maxHp * (1 - (${phase} - 1) / 3 - .01);
+      boss.huntState = 'circle'; boss.huntTimer = 0;
+      let lockedAngle, lockedZones;
+    `);
+    for (let attack = 0; attack < phase; attack++) {
+      run(`
+        boss.x = voidPortal.x + 250; boss.y = voidPortal.y;
+        teleportPlayer(voidPortal.x, voidPortal.y);
+        updateVoidStalker(boss, .19);
+      `);
+      assert.equal(run('boss.huntState'), 'windup');
+      assert.equal(run('boss.comboRemaining'), phase - attack);
+      assert.ok(run('boss.huntTimer >= .65'));
+      run(`
+        lockedAngle = boss.chargeAngle;
+        lockedZones = JSON.stringify(boss.zones);
+        teleportPlayer(voidPortal.x - 500, voidPortal.y + 500);
+        updateVoidStalker(boss, boss.huntTimer / 2);
+      `);
+      assert.equal(run('boss.huntState'), 'windup');
+      assert.equal(run('boss.chargeAngle'), run('lockedAngle'));
+      assert.equal(run('JSON.stringify(boss.zones)'), run('lockedZones'));
+      run(`
+        updateVoidStalker(boss, boss.huntTimer + .01);
+        updateVoidStalker(boss, boss.huntTimer + .01);
+      `);
+      assert.equal(run('boss.huntState'), attack === phase - 1 ? 'recover' : 'circle');
+    }
+    assert.equal(run('game.health'), 100);
+    assert.ok(run('boss.huntTimer >= .9'));
+    run('updateVoidStalker(boss, boss.huntTimer / 2);');
+    assert.equal(run('boss.huntState'), 'recover');
+  }
+});
+
+test('Stalker chains survive saves and cancel on territory exit or a phase change', () => {
+  const { run } = loadGame();
+  run(`
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    let boss = createVoidStalker();
+    game.enemies = [boss];
+    boss.phase = 2; boss.hp = 900;
+    boss.huntState = 'circle'; boss.huntTimer = 0;
+    updateVoidStalker(boss, .01);
+    start(serializeGame());
+    boss = game.enemies.find(enemy => enemy.voidStalker);
+  `);
+  assert.equal(run('boss.comboRemaining'), 2);
+  assert.equal(run('boss.huntState'), 'windup');
+  run('boss.hp = 400; updateVoidStalker(boss, .01);');
+  assert.equal(run('boss.comboRemaining'), 0);
+  assert.equal(run('boss.huntState'), 'recover');
+  run(`
+    boss.comboRemaining = 3;
+    teleportPlayer(0, 0);
+    updateVoidStalker(boss, .01);
+  `);
+  assert.equal(run('boss.comboRemaining'), 0);
+  assert.equal(run('boss.huntState'), 'patrol');
+  run(`
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    boss.x = voidPortal.x + 250; boss.y = voidPortal.y;
+    delete boss.comboRemaining;
+    boss.huntState = 'impact'; boss.huntTimer = .1;
+    updateVoidStalker(boss, .2);
+  `);
+  assert.equal(run('boss.huntState'), 'recover');
+  assert.equal(run('boss.comboRemaining'), 0);
+});
+
 test('the Continuity facility gates forward doors, saves safe checkpoints, and keeps first-clear loot unique', async () => {
   const { run, downloads, drawingCalls } = loadGame();
   run(`
@@ -605,9 +1359,16 @@ test('Foreman reinforcements escalate, stay capped, and can summon one rare aren
   `);
   assert.equal(run('game.enemies.length - 1'), 12);
   assert.equal(run('game.enemies.filter(enemy => enemy.voidStalker).length'), 1);
+  assert.equal(run('summon.maxHp'), run('createVoidStalker().maxHp'));
+  assert.equal(run('summon.hp'), 1400);
   assert.equal(run('game.enemies.some(enemy => !enemy.foreman && !enemy.voidStalker && enemy.boss && enemy.familyIndex === 23)'), true);
-  run('updateVoidStalker(summon, .04); summon.hp = 0; defeatEnemy(summon);');
+  run('updateVoidStalker(summon, .04);');
   assert.equal(run('summon.huntState'), 'circle');
+  run('summon.hp = 900; updateVoidStalker(summon,.04);');
+  assert.equal(run('summon.phase'), 2);
+  run('summon.hp = 400; updateVoidStalker(summon,.04);');
+  assert.equal(run('summon.phase'), 3);
+  run('summon.hp = 0; defeatEnemy(summon);');
   assert.equal(run('summon.defeated'), true);
   assert.equal(run('game.epilogue.guardianCleared'), false);
   run('rollWave(.9999); rollWave(.9999);');
@@ -814,6 +1575,12 @@ test('a live .hordesave rescues unsaved progress without writing browser storage
   source.run(`
     game.salvage = 87;
     game.vault.steel = 49;
+    recordJournalEnemy(createVoidWalker(voidPortal.x, voidPortal.y)).kills = 3;
+    recordJournalDiscovery('storm');
+    game.sanctuary.projects.workshop = 1;
+    game.weaponMods.weapons.sidearm = {crafted:['quickLoader'],handling:'quickLoader',specialization:null};
+    game.ammo = game.weaponAmmo.sidearm = 10;
+    game.weaponMods.looseAmmo.pistolAmmo = 2;
     document.querySelector('#export-live-save').click();
   `);
   assert.equal(source.run('readSaveSlots().every(slot => slot === null)'), true);
@@ -836,6 +1603,12 @@ test('a live .hordesave rescues unsaved progress without writing browser storage
   target.run('loadSave(0);');
   assert.equal(target.run('game.salvage'), 87);
   assert.equal(target.run('game.vault.steel'), 49);
+  assert.equal(target.run("game.journal.enemies['void-walker'].kills"), 3);
+  assert.equal(target.run("game.journal.discoveries.includes('storm')"), true);
+  assert.equal(target.run('game.sanctuary.projects.workshop'), 1);
+  assert.equal(target.run('game.weaponMods.weapons.sidearm.handling'), 'quickLoader');
+  assert.equal(target.run('game.ammo'), 10);
+  assert.equal(target.run('game.weaponMods.looseAmmo.pistolAmmo'), 2);
 });
 
 test('bulk .hordesave imports prefer empty slots and preserve unrelated saves', async () => {
@@ -1078,11 +1851,14 @@ test('admin scenarios reset named encounters and progression without resetting t
   await run("adminAction('copy');");
   assert.equal(run('copiedReport'), run('adminReport.value'));
   run(`
+    game.voidDangers.strikes.push({x:game.player.x,y:game.player.y,timer:.1});
+    game.voidDangers.rifts.push({x:game.player.x,y:game.player.y,timer:.1,triggered:true});
     adminAction('clear');
     game.enemies[0].hp -= 10;
     adminAction('reset');
   `);
   assert.equal(run('game.enemies.length'), 1);
+  assert.equal(run('game.voidDangers.strikes.length + game.voidDangers.rifts.length'), 0);
   assert.equal(run('game.enemies[0].hp'), run('game.enemies[0].maxHp / 3'));
   assert.equal(run('game.blueprints.smg'), true);
   assert.equal(run('game.vault.steel'), 12);
@@ -1098,6 +1874,528 @@ test('admin scenarios reset named encounters and progression without resetting t
   assert.equal(run('game.health'), 23);
   run(`adminAction('invincible'); game.health -= 40;`);
   assert.equal(run('game.health'), 100);
+});
+
+function loadWorldEvent(type, sector = type === 'breach' ? 3 : 1) {
+  const harness = loadGame();
+  harness.run(`
+    game.sanctuaryTurrets = [];
+    game.hazardZones = [];
+    game.enemies = [];
+    const radius = [2400, 4500, 7800, 11000, 14500, 17000][${sector} - 1];
+    teleportPlayer(-radius / Math.sqrt(2), -radius / Math.sqrt(2));
+    game.currentSector = ${sector};
+    const event = {
+      id:1, type:${JSON.stringify(type)}, sector:${sector}, biomeKey:'sector-${sector - 1}-2',
+      x:game.player.x, y:game.player.y, originX:game.player.x, originY:game.player.y,
+      roamTime:0, remaining:480, discovered:false, active:false, step:0, wave:0,
+      waveStarted:false, queue:[], delay:0, defenseLeft:worldEventTypes[${JSON.stringify(type)}].defense,
+      spawnSerial:0, ammoType:'pistolAmmo'
+    };
+    game.worldEvents.nextId = 2;
+    game.worldEvents.events = [event];
+  `);
+  return harness;
+}
+
+test('world events wait five active minutes, stay bounded, and avoid protected or story sites', () => {
+  const { run } = loadGame();
+  run(`
+    game.hazardZones = [];
+    Math.random = seededRandom(84);
+    updateWorldEvents(299.9);
+  `);
+  assert.equal(run('game.worldEvents.events.length'), 0);
+  run('updateWorldEvents(.11);');
+  assert.equal(run('game.worldEvents.events.length'), 1);
+  assert.equal(run('game.worldEvents.events[0].active'), false);
+  assert.equal(run('game.worldEvents.events[0].discovered'), false);
+  assert.ok(run('game.worldEvents.timer >= 360 && game.worldEvents.timer <= 540'));
+  run('game.worldEvents.timer = 0; updateWorldEvents(.1);');
+  assert.equal(run('game.worldEvents.events.length'), 2);
+  run('game.worldEvents.timer = 0; updateWorldEvents(.1);');
+  assert.equal(run('game.worldEvents.events.length'), 2);
+  assert.equal(run(`game.worldEvents.events.every(event =>
+    Math.hypot(event.x,event.y) >= beaconRegionRadius + 850 &&
+    Math.hypot(event.x,event.y) <= mapRadius - 850 &&
+    game.beaconStations.every(station => Math.hypot(event.x-station.x,event.y-station.y) >= station.radius + 850) &&
+    campaignMissions.every(mission => !mission.sites || mission.sites.every(site => Math.hypot(event.x-site.x,event.y-site.y) >= 1100)) &&
+    (event.type !== 'breach' || event.sector >= 3)
+  )`), true);
+  run('game.worldEvents = freshWorldEvents(); game.worldEvents.timer = 0; teleportPlayer(200000,0); updateWorldEvents(.1);');
+  assert.equal(run('game.worldEvents.events.length'), 0);
+  assert.equal(run('game.worldEvents.timer'), 30);
+});
+
+test('world events are discovered before map reveal, require interaction, and never consume quest slots', () => {
+  const { run, drawingCalls } = loadWorldEvent('wreck');
+  run('renderWorldEventHud(); drawWorldEventMapMarkers();');
+  assert.equal(run('worldEventHud.hidden'), true);
+  assert.equal(drawingCalls.some(call => call[0] === 'fillText' && String(call[1]).includes('SUPPLY WRECK')), false);
+  run(`
+    updateWorldEvents(.1);
+    setMapOpen(true); drawWorldEventMapMarkers(); setMapOpen(false);
+    game.questState.active = questTemplates.slice(0,3).map((template,index) => createQuestFromTemplate(template,index));
+  `);
+  assert.equal(run('event.discovered'), true);
+  assert.equal(run('event.active'), false);
+  assert.equal(run('game.enemies.length'), 0);
+  assert.ok(drawingCalls.some(call => call[0] === 'fillText' && String(call[1]).includes('SUPPLY WRECK')));
+  run('toggleStation();');
+  assert.equal(run('event.active'), true);
+  assert.equal(run('activeQuestCount()'), 3);
+  assert.equal(run('event.step'), 0);
+  run("journalView = 'discoveries'; renderJournal();");
+  assert.match(run('journalContent.innerHTML'), /SUPPLY WRECK/);
+  run('togglePause();');
+  assert.equal(run('worldEventHud.hidden'), true);
+  run('togglePause();');
+  assert.equal(run('worldEventHud.hidden'), false);
+  run('end();');
+  assert.equal(run('worldEventHud.hidden'), true);
+
+  const ignored = loadWorldEvent('convoy');
+  ignored.run('game.worldEvents.timer = 540; updateWorldEvents(480);');
+  assert.equal(ignored.run('game.worldEvents.events.length'), 0);
+  assert.equal(ignored.run('game.salvage'), 0);
+  assert.equal(ignored.run('game.campaign.completed.length'), 0);
+  assert.equal(ignored.run('game.beaconStations.some(station => station.repaired)'), false);
+});
+
+test('all five world events enforce their objectives and pay their completion reward once', () => {
+  for (const [type, sector] of [['distress',1], ['wreck',2], ['horde',6], ['convoy',4], ['breach',3]]) {
+    const { run } = loadWorldEvent(type, sector);
+    const salvage = sector >= 5 ? 100 : sector >= 3 ? 65 : 35;
+    run(`
+      game.weapon = 'smg'; game.ammoReserve.smgAmmo = 0;
+      updateWorldEvents(.01);
+      interactWorldEvent();
+      game.weapon = 'sidearm';
+      let activeSeconds = 0;
+      for (let frame = 0; frame < 1300 && game.worldEvents.events.includes(event); frame++) {
+        const control = worldEventControl(event);
+        if (control) {
+          teleportPlayer(control.x, control.y);
+          interactWorldEvent();
+        }
+        for (const enemy of [...worldEventEnemies(event)]) {
+          enemy.hp = 0; defeatEnemy(enemy);
+        }
+        updateWorldEvents(.1);
+        activeSeconds += .1;
+      }
+    `);
+    assert.equal(run('game.worldEvents.events.length'), 0, `${type} must complete`);
+    assert.equal(run(`game.worldEvents.completed[${JSON.stringify(type)}]`), 1);
+    assert.equal(run('game.salvage'), salvage);
+    const expected = {
+      distress: {fiber:3, iron:3}, wreck: {steel:3, fuel:3}, horde: {iron:7, fuel:7},
+      convoy: {fuel:5}, breach: {crystal:5, steel:5}
+    };
+    assert.deepEqual(JSON.parse(run('JSON.stringify(game.vault)')), expected[type]);
+    if (type === 'distress') assert.ok(run('activeSeconds >= 90 && activeSeconds < 95'));
+    if (type === 'convoy') {
+      assert.ok(run('activeSeconds >= 60 && activeSeconds < 65'));
+      assert.equal(run('game.ammoReserve.smgAmmo'), 3);
+    }
+    assert.equal(run('Boolean(game.blueprints.radBeam)'), false);
+    run('completeWorldEvent(event); start(serializeGame()); updateWorldEvents(.1);');
+    assert.equal(run('game.salvage'), salvage);
+    assert.equal(run(`game.worldEvents.completed[${JSON.stringify(type)}]`), 1);
+  }
+});
+
+test('roaming horde trails move without starting combat and freeze their position when intercepted', () => {
+  const { run } = loadWorldEvent('horde');
+  run('updateWorldEvents(25);');
+  assert.notEqual(run('event.x'), run('event.originX'));
+  assert.equal(run('event.active'), false);
+  assert.equal(run('game.enemies.length'), 0);
+  run(`
+    start(serializeGame());
+    const resumed = game.worldEvents.events[0];
+    teleportPlayer(resumed.x, resumed.y);
+    toggleStation();
+    const interceptX = resumed.x, interceptY = resumed.y;
+    updateWorldEvents(2);
+  `);
+  assert.equal(run('resumed.active'), true);
+  assert.equal(run('resumed.x'), run('interceptX'));
+  assert.equal(run('resumed.y'), run('interceptY'));
+  assert.equal(run('worldEventEnemies(resumed).length'), 6);
+});
+
+test('live story encounters block event activation, freeze opportunities and withdraw existing event fights', () => {
+  const { run } = loadWorldEvent('distress');
+  run(`
+    updateWorldEvents(.1);
+    game.campaign.active = {id:'triangulation',scan:2,defending:false};
+    const timer = game.worldEvents.timer;
+    interactWorldEvent();
+    updateWorldEvents(100);
+  `);
+  assert.equal(run('event.active'), false);
+  assert.equal(run('game.worldEvents.timer'), run('timer'));
+  run(`
+    game.campaign.active = null;
+    interactWorldEvent(); updateWorldEvents(2);
+    game.campaign.active = {id:'beacon-siege',scan:0,defending:true};
+    updateWorldEvents(.1);
+  `);
+  assert.equal(run('game.worldEvents.events.length'), 0);
+  assert.equal(run('game.enemies.length'), 0);
+  assert.equal(run('game.campaign.active.defending'), true);
+  assert.equal(run('game.salvage'), 0);
+});
+
+test('event reinforcements queue at the shared population cap and scale to the event sector', () => {
+  const { run } = loadWorldEvent('horde', 5);
+  run(`
+    updateWorldEvents(.01); interactWorldEvent();
+    game.currentSector = 0;
+    const limit = overworldEnemyLimit();
+    game.enemies = Array.from({length:limit}, () => ({hp:1, x:0, y:0, defeated:false}));
+    const pending = event.queue.length;
+    updateWorldEvents(2);
+  `);
+  assert.equal(run('event.queue.length'), run('pending'));
+  assert.equal(run('event.wave'), 0);
+  assert.match(run('worldEventStatus.textContent'), /WAITING FOR SPACE/);
+  run('game.enemies.pop(); updateWorldEvents(.1);');
+  assert.equal(run('worldEventEnemies(event).length'), 1);
+  assert.equal(run('event.queue.length'), run('pending - 1'));
+  assert.equal(run('worldEventEnemies(event)[0].hp'), 12);
+  assert.equal(run('worldEventEnemies(event)[0].worldEventRole'), 'HORDE LEADER');
+  assert.equal(run('game.enemies.length'), run('limit'));
+  run('spawnNebulaMissile(worldEventEnemies(event)[0]);');
+  assert.equal(run('game.enemies.length'), run('limit'));
+  run(`
+    game.enemies = worldEventEnemies(event);
+    updateWorldEvents(.1);
+    spawnNebulaMissile(worldEventEnemies(event)[0]);
+  `);
+  assert.equal(run('game.enemies.every(enemy => enemy.worldEventId === event.id)'), true);
+  assert.equal(run('game.enemies.some(enemy => enemy.nebulaMissile)'), true);
+  assert.equal(run('event.queue.length'), 0);
+});
+
+test('breach anchors can be shot, remain stationary, and grant no enemy kill or loot credit', () => {
+  const { run } = loadWorldEvent('breach');
+  run(`
+    updateWorldEvents(.01); interactWorldEvent(); updateWorldEvents(2);
+    const anchor = game.enemies.find(enemy => enemy.worldEventAnchor);
+    const anchorX = anchor.x, anchorY = anchor.y;
+    const killsBefore = game.questState.counters.kills;
+    const scoreBefore = game.score;
+    game.spawnTimer = 100;
+    update(.01);
+  `);
+  assert.equal(run('anchor.x'), run('anchorX'));
+  assert.equal(run('anchor.y'), run('anchorY'));
+  assert.equal(run("Object.values(anchor).every(value => typeof value !== 'number' || Number.isFinite(value))"), true);
+  run(`
+    game.bullets = [{x:anchor.x-70,y:anchor.y,vx:1000,vy:0,damage:100,life:1}];
+    update(.1);
+  `);
+  assert.equal(run('anchor.defeated'), true);
+  assert.equal(run('game.questState.counters.kills'), run('killsBefore'));
+  assert.equal(run('game.score'), run('scoreBefore'));
+  assert.equal(run('event.wave'), 0);
+  assert.equal(run('game.salvage'), 0);
+});
+
+test('abandoning an event removes its family summons and portals but preserves unrelated progress', () => {
+  const { run } = loadWorldEvent('horde', 3);
+  run(`
+    updateWorldEvents(.01); interactWorldEvent(); updateWorldEvents(2);
+    const owner = worldEventEnemies(event)[0];
+    createWraithPest(owner);
+    spawnNebulaMissile(owner);
+    createRiftPortal(owner);
+    game.portals.push({x:0,y:0,timer:1});
+    const unrelated = {hp:1, x:5000, y:5000};
+    game.enemies.push(unrelated);
+    game.ammo = 2;
+    game.paused = true;
+    abandonEventButton.click();
+  `);
+  assert.equal(run('event.active && game.worldEvents.events.includes(event)'), true);
+  run('game.paused = false; teleportPlayer(event.x + 901,event.y); updateWorldEvents(.01);');
+  assert.equal(run('game.worldEvents.events.length'), 0);
+  assert.equal(run('game.enemies.length'), 1);
+  assert.equal(run('game.enemies[0] === unrelated'), true);
+  assert.equal(run('game.portals.length'), 1);
+  assert.equal(run('game.salvage'), 0);
+  assert.equal(run('game.ammo'), 2);
+  assert.equal(run('Object.keys(game.worldEvents.completed).length'), 0);
+  assert.equal(run('worldEventHud.hidden'), true);
+});
+
+test('event clocks freeze in menus, maps, Manager mode and facility saves, and resume exact live waves', async () => {
+  const { run, downloads } = loadWorldEvent('breach');
+  run('updateWorldEvents(.01); interactWorldEvent(); const savedTimer = game.worldEvents.timer;');
+  for (const setup of ['game.paused = true', 'mapOpen = true', 'game.managerMode = true']) {
+    run(`${setup}; updateWorldEvents(100); game.paused = mapOpen = game.managerMode = false;`);
+    assert.equal(run('game.worldEvents.timer'), run('savedTimer'));
+    assert.equal(run('event.delay'), 1.5);
+  }
+  run(`
+    exportCurrentRun();
+    const beforeLoad = event.queue.length;
+  `);
+  const backup = await downloads[0].blob.text();
+  run(`start(parseSaveBackup(${JSON.stringify(backup)}).entries[0].save.state); updateWorldEvents(2);`);
+  assert.equal(run('activeWorldEvent().queue.length'), 0);
+  assert.equal(run('worldEventEnemies(activeWorldEvent()).length'), run('beforeLoad'));
+  run(`
+    const damaged = game.enemies.find(enemy => enemy.worldEventAnchor);
+    damaged.hp -= 1;
+    const damagedHealth = damaged.hp;
+    game.campaign.completed = campaignMissions.map(mission => mission.id);
+    game.epilogue.guardianCleared = true;
+    const frozenTimer = game.worldEvents.timer;
+    enterDungeon();
+    updateWorldEvents(100);
+    start(serializeGame());
+  `);
+  assert.equal(run('game.worldEvents.timer'), run('frozenTimer'));
+  assert.equal(run('game.epilogue.dungeon.world.enemies.find(enemy => enemy.worldEventAnchor).hp'), run('damagedHealth'));
+  assert.equal(run('activeWorldEvent().wave'), 0);
+  run('leaveDungeon(); updateWorldEvents(.01);');
+  assert.equal(run('game.worldEvents.events.length'), 0);
+  assert.equal(run('game.salvage'), 0);
+});
+
+test('legacy saves gain an event grace period and malformed event state is rejected', () => {
+  const { run } = loadWorldEvent('distress');
+  run('const validSave = serializeGame();');
+  for (const corrupt of [
+    'game.worldEvents = null',
+    'game.worldEvents.timer = -1',
+    "game.worldEvents.events[0].type = 'unknown'",
+    'game.worldEvents.events[0].sector = 8',
+    'game.worldEvents.events[0].queue = [4]',
+    'game.worldEvents.events[0].defenseLeft = 1000',
+    'game.worldEvents.events.push({...game.worldEvents.events[0]})',
+    'game.enemies.push({hp:1,worldEventId:44})',
+    'game.portals.push({x:0,y:0,timer:1,worldEventId:44})',
+    'game.worldEvents.nextId=3; game.worldEvents.events[0].active=game.worldEvents.events[0].discovered=true; game.worldEvents.events.push({...game.worldEvents.events[0],id:2})'
+  ]) {
+    run(`start(validSave); ${corrupt};`);
+    assert.throws(() => run('restoreGame(serializeGame());'), /world event/i);
+  }
+  run('start(); delete game.worldEvents; start(serializeGame());');
+  assert.equal(run('game.worldEvents.timer'), 300);
+  assert.equal(run('game.worldEvents.events.length'), 0);
+});
+
+test('journal encounters reveal only visible enemies and unlock research per variant with player defeats', () => {
+  const { run } = loadGame();
+  run(`
+    teleportPlayer(1500, 100);
+    game.sanctuaryTurrets = [];
+    game.enemies = [];
+    const biome = getBiome(1500, 100);
+    const seen = createBiomeEnemy(1600, 100, biome, enemyVariants[0]);
+    createBiomeEnemy(9000, 100, biome, enemyVariants[3]);
+    update(.01);
+    journalView = 'enemies';
+    renderJournal();
+  `);
+  assert.deepEqual(JSON.parse(run('JSON.stringify(Object.keys(game.journal.enemies))')), ['family-0-0']);
+  assert.match(run('journalContent.innerHTML'), /Defeat this enemy to unlock combat advice/);
+  assert.doesNotMatch(run('journalContent.innerHTML'), /VOID STALKER|THE FOREMAN|ELITE/);
+  run('seen.hp = 0; defeatEnemy(seen); defeatEnemy(seen); renderJournal();');
+  assert.equal(run("game.journal.enemies['family-0-0'].kills"), 1);
+  assert.match(run('journalContent.innerHTML'), /COMBAT NOTES UNLOCKED/);
+  assert.doesNotMatch(run('journalContent.innerHTML'), /RESEARCH COMPLETE/);
+  run(`
+    for (let i = 0; i < 4; i++) {
+      const enemy = createBiomeEnemy(1600, 100, biome, enemyVariants[0]);
+      enemy.hp = 0; defeatEnemy(enemy);
+    }
+    const elite = createBiomeEnemy(1600, 100, biome, enemyVariants[3]);
+    recordJournalEnemy(elite);
+    renderJournal();
+  `);
+  assert.equal(run("game.journal.enemies['family-0-0'].kills"), 5);
+  assert.equal(run("game.journal.enemies['family-0-3'].kills"), 0);
+  assert.match(run('journalContent.innerHTML'), /RESEARCH COMPLETE/);
+  assert.match(run('journalContent.innerHTML'), /Further field notes remain locked/);
+});
+
+test('journal excludes automated kills and self-destructs, but counts player damage over time and boss victories', () => {
+  const { run } = loadGame();
+  run(`
+    teleportPlayer(1500, 100);
+    game.sanctuaryTurrets = [];
+    game.enemies = [];
+    const biome = getBiome(1500, 100);
+    for (const source of ['beacon-turret', 'beacon-drain']) {
+      const enemy = createBiomeEnemy(1600, 100, biome, enemyVariants[0]);
+      enemy.hp = 0; defeatEnemy(enemy, 0, source);
+    }
+    const burning = createBiomeEnemy(1600, 100, biome, enemyVariants[0]);
+    burning.burnTimer = 1; burning.burnDamage = 10; burning.burnInterval = .2; burning.burnTickTimer = 0;
+    update(.01);
+  `);
+  assert.equal(run("game.journal.enemies['family-0-0'].kills"), 1);
+  run(`
+    game.enemies = [{
+      x: 1800, y: 100, hp: 1, r: 10, speed: 0, family: 'NEBULA MISSILE', variant: 'MISSILE',
+      familyIndex: 18, nebulaMissile: true, damageOverTimeTimer: .5
+    }];
+    update(.01);
+  `);
+  assert.equal(run("game.journal.enemies['nebula-missile'].kills"), 0);
+  run(`
+    game.enemies = [];
+    const starBiome = {...sectorRegions[5][2], key:'sector-5-2', sector:6};
+    const star = createBiomeEnemy(1600, 100, starBiome, enemyVariants[0]);
+    createBiomeEnemy(1610, 100, starBiome, enemyVariants[0]);
+    star.hp = 0; defeatEnemy(star, 0, 'beacon-turret');
+  `);
+  assert.equal(run('game.enemies.every(enemy => enemy.defeated)'), true);
+  assert.equal(run("game.journal.enemies['family-22-0'].kills"), 0);
+  run(`
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    const boss = createVoidStalker();
+    boss.hp = 0; defeatEnemy(boss); defeatEnemy(boss);
+    journalView = 'enemies'; renderJournal();
+  `);
+  assert.equal(run("game.journal.enemies['void-stalker'].kills"), 1);
+  assert.match(run('journalContent.innerHTML'), /VOID STALKER[\s\S]*RESEARCH COMPLETE/);
+});
+
+test('journal discoveries and story records hide unseen content and survive facility checkpoint loads', () => {
+  const { run } = loadGame();
+  run("journalView = 'records'; renderJournal();");
+  assert.doesNotMatch(run('journalContent.innerHTML'), /Continuity|workforce|Foreman/i);
+  run(`
+    game.campaign.completed = ['provisions'];
+    journalView = 'records'; renderJournal();
+  `);
+  assert.match(run('journalContent.innerHTML'), /Packing for the Frontier/);
+  assert.doesNotMatch(run('journalContent.innerHTML'), /workforce|CONTINUITY KEY/);
+  run(`
+    game.discovered.add('sector-0-0');
+    teleportPlayer(voidPortal.x, voidPortal.y);
+    game.voidDangers.strikes = [{x:game.player.x,y:game.player.y,timer:1}];
+    updateJournalEncounters();
+    game.campaign.completed = campaignMissions.map(mission => mission.id);
+    game.epilogue.guardianCleared = true;
+    game.epilogue.portalFound = true;
+    enterDungeon();
+    switchDungeonRoom('works', 'entry');
+    leaveDungeon();
+    start(serializeGame());
+    journalView = 'discoveries'; renderJournal();
+  `);
+  assert.match(run('journalContent.innerHTML'), /TOXIC MARSH/);
+  assert.match(run('journalContent.innerHTML'), /VOID STRIKES/);
+  assert.match(run('journalContent.innerHTML'), /FOUNDRY FLOOR/);
+  assert.doesNotMatch(run('journalContent.innerHTML'), /CONTINUITY CRUCIBLE|UNSTABLE RIFTS/);
+  run("journalView = 'records'; renderJournal();");
+  assert.match(run('journalContent.innerHTML'), /self-repairing workforce/);
+  assert.doesNotMatch(run('journalContent.innerHTML'), /THE LAST SHIFT/);
+});
+
+test('journal migrates proven old victories without invented kills and rejects corrupt progress', () => {
+  const { run } = loadGame();
+  run(`
+    game.campaign.completed = campaignMissions.map(mission => mission.id);
+    game.epilogue.guardianCleared = true;
+    game.epilogue.firstClear = true;
+    delete game.journal;
+    const legacy = serializeGame();
+    start(legacy);
+    journalView = 'enemies'; renderJournal();
+  `);
+  assert.equal(run("game.journal.enemies['void-stalker'].kills"), 0);
+  assert.equal(run('game.journal.enemies.foreman.kills'), 0);
+  assert.equal(run('Object.keys(game.journal.enemies).length'), 2);
+  assert.match(run('journalContent.innerHTML'), /Earlier victory confirmed/);
+  assert.match(run('journalContent.innerHTML'), /RESEARCH COMPLETE/);
+  run("game.journal.enemies['family-0-0'] = {kills:3}; start(serializeGame());");
+  assert.equal(run("game.journal.enemies['family-0-0'].kills"), 3);
+  run('start();');
+  assert.equal(run('Object.keys(game.journal.enemies).length'), 0);
+  for (const invalid of [
+    'null',
+    '{version:2,enemies:{},discoveries:[]}',
+    '{version:1,enemies:new Set(),discoveries:[]}',
+    '{version:1,enemies:{"family-0-0":{kills:-1}},discoveries:[]}',
+    '{version:1,enemies:{"unknown":{kills:1}},discoveries:[]}',
+    '{version:1,enemies:{},discoveries:["room-missing"]}'
+  ]) {
+    run(`game.journal = ${invalid};`);
+    assert.throws(() => run('restoreGame(serializeGame());'), /Invalid discovery journal data/);
+  }
+});
+
+test('journal buttons and remapped shortcut pause safely, block combat, and restore focus and pause state', () => {
+  const { run } = loadGame();
+  run(`
+    const press = (key, extra = {}) => window.listeners.get('keydown')[0]({key, preventDefault() {}, ...extra});
+    keys.d = pointer.down = true;
+    journalButton.click();
+    const elapsed = game.elapsedTime;
+    loop(1040);
+    press(' ');
+  `);
+  assert.equal(run('journalPanel.hidden'), false);
+  assert.equal(run('game.paused'), true);
+  assert.equal(run('game.elapsedTime'), run('elapsed'));
+  assert.equal(run('keys.d || keys.fire || pointer.down'), false);
+  assert.equal(run("document.activeElement === document.querySelector('#journal-close')"), true);
+  run(`
+    journalPanel.listeners.get('click')[0]({target:{closest:() => ({dataset:{journalView:'discoveries'}})}});
+  `);
+  assert.match(run('journalContent.innerHTML'), /BEACON SANCTUARY/);
+  run(`
+    journalPanel.listeners.get('click')[0]({target:{closest:() => ({dataset:{journalView:'records'}})}});
+  `);
+  assert.match(run('journalContent.innerHTML'), /No records recovered/);
+  run(`
+    const journalClose = document.querySelector('#journal-close');
+    const oldQuery = journalPanel.querySelectorAll;
+    journalPanel.querySelectorAll = () => [journalContent, journalClose];
+    journalClose.focus(); press('Tab');
+  `);
+  assert.equal(run('document.activeElement === journalContent'), true);
+  run("press('Tab', {shiftKey:true}); journalPanel.querySelectorAll = oldQuery;");
+  assert.equal(run('document.activeElement === journalClose'), true);
+  run("press('Escape');");
+  assert.equal(run('game.paused'), false);
+  assert.equal(run('document.activeElement === journalButton'), true);
+  run("togglePause(); pauseJournalButton.click(); press('Escape');");
+  assert.equal(run('game.paused'), true);
+  assert.equal(run('ui.pause.inert'), false);
+  assert.equal(run('document.activeElement === pauseJournalButton'), true);
+  run("togglePause(); settings.bindings.journal = 'n'; press('n');");
+  assert.equal(run('journalPanel.hidden'), false);
+  run("press('n', {repeat:true});");
+  assert.equal(run('journalPanel.hidden'), false);
+  run("press('n');");
+  assert.equal(run('journalPanel.hidden'), true);
+  run('journalButton.click(); start();');
+  assert.equal(run('journalPanel.hidden'), true);
+  assert.equal(run('game.paused'), false);
+});
+
+test('legacy control settings keep a custom B binding when the journal shortcut is added', () => {
+  const storage = new Map([['horde-settings', JSON.stringify({
+    bindings: {quests:'b'}, reducedEffects:true, crosshairColor:'#123456', crosshairSize:32
+  })]]);
+  const { run } = loadGame({storage});
+  assert.equal(run('settings.bindings.quests'), 'b');
+  assert.notEqual(run('settings.bindings.journal'), 'b');
+  assert.equal(run('settings.reducedEffects'), true);
+  assert.equal(run('settingsLoadError'), false);
+  run('updateSettings(settings);');
+  const restored = loadGame({storage});
+  assert.equal(restored.run('settings.bindings.journal'), run('settings.bindings.journal'));
+  assert.equal(restored.run('settings.bindings.quests'), 'b');
 });
 
 test('main-menu help reflects remapped controls and both info screens return focus to their openers', async () => {

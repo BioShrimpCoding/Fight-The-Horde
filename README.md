@@ -24,15 +24,89 @@ For balancing in [game.js](./game.js), edit `blueprintTierCosts` for reputation 
 
 Saves retain existing equipment, reputation, and blueprints; owning a weapon does not automatically grant its blueprint. Legacy timed quests without a saved gameplay timer restart their time allowance on migration. Legacy saves that omitted Void enemy health restore those enemies at maximum health because their previous HP cannot be recovered.
 
+## Discovery journal
+
+Open **Journal** beside the quest log, from Pause, or with **B** (remappable in Settings). Reading pauses gameplay; closing returns to your previous play or pause state. If an older control setup already uses B, the journal receives an unused letter without changing existing bindings.
+
+The **Enemies** tab reveals only encountered enemies and variants. Seeing a living enemy on screen records its identity, habitat, and abilities. Your first player defeat unlocks combat advice; five defeats complete a standard variant's field notes, while bosses require one victory. Beacon turret and Drain kills, and self-destructing missiles, do not advance player defeat counts.
+
+**Discoveries** collects explored regions, observed deep Void hazards, visited facility rooms, Sanctuary reconstruction, and the first-clear trophy record. **Records** lets you reread completed campaign debriefs, recovered mod research, and epilogue information without revealing unfinished story content. Journal entries themselves give no passive damage bonus and occupy no quest slot.
+
+Journal progress belongs to its save slot and is included in `.hordesave` backups. Older saves retain discoveries supported by their map, campaign, and dungeon progress. Proven guardian and Foreman victories unlock their entries without inventing historical kill counts.
+
+## Optional world events
+
+Five minutes of active overworld play makes the first opportunity eligible; later opportunities appear roughly every 6–9 active minutes when there is room. At most two opportunities exist, including any active encounter. Sites avoid Sanctuary, beacon stations, campaign locations, and the centers of environmental hazards. Void breaches require sector 3 or higher. These events occur within the mapped frontier, not in the deep Void or inside the facility.
+
+Approach within 65 displayed meters to discover a site and its amber map marker. Use your interact binding at its marked control to start; only one event can be active, and it does not occupy a quest slot. Undiscovered sites do not reveal exact locations on the map; Scout Station I can add approximate search circles in explored regions. Moving horde trails can be followed before you choose to intercept.
+
+- **Distress Signal:** Defend a survivor's transmitter for at least 90 seconds and clear three waves.
+- **Supply Wreck:** Open three cargo locks, clearing each ambush before the next lock.
+- **Roaming Horde:** Defeat its marked elite leader and escort.
+- **Disabled Convoy:** Repair two components using parts already on site, then defend extraction for at least 60 seconds and clear three waves.
+- **Void Breach:** Shoot three stationary anchors and clear their defenders, then defeat the marked guardian and its escort.
+
+Waves warn before spawning, avoid appearing on top of the player, and queue when the normal overworld population budget is full. Event enemies scale to the site's sector and retain their biome abilities. Completion pays **35 / 65 / 100 salvage** in sectors **1–2 / 3–4 / 5–6**, plus a fixed supply bundle. Wrecks emphasize steel and fuel, breaches crystals, and convoys fuel plus **2 / 3 / 4 reloads** for the weapon equipped when the event started (pistol ammo if using melee). Material rewards go to the vault, as with quest rewards; normal combat drops are separate. Events never directly unlock weapons or blueprints.
+
+Unstarted opportunities expire after eight active overworld minutes. Event timers freeze during pauses, maps, the journal, Manager mode, live campaign scans/defenses, and dungeon visits. Starting a live story encounter abandons an active world event so their fights cannot overlap. Leaving the event's marked 90-meter area or using its **Abandon Event** button also withdraws without a completion payout. Remaining event enemies and pending event portals are removed; already-fired attacks and temporary hazards expire normally. Ignoring or abandoning an event never damages world upgrades or campaign progress.
+
+Event timers, queued waves, enemies, and completed-type records are retained in saves and `.hordesave` exports. Older saves receive a five-minute grace period before their first opportunity. Discovered event types and completion counts appear in the journal's **Discoveries** tab.
+
+## Sanctuary rebuilding and weapon modifications
+
+Talk to the responsible NPC in Sanctuary to build projects with materials from the vault (relic costs use your relic inventory). Each project has two visible stages; stage II also requires discovering a region in sector 3 or beyond. NPC quests and existing crafting remain available without rebuilding. Projects, research plans, crafted mods, and the resupply list belong only to their save slot and travel in `.hordesave` backups. Old saves start with no rebuilt projects or fabricated research.
+
+| Project / NPC | Stage I | Stage II |
+| --- | --- | --- |
+| Medical Wing / Medic | Medkit crafting beside the Medic | All medkit recipes cost 15% fewer materials, rounded down, minimum one of each |
+| Workshop / Mechanic | Handling mod crafting and installation | Specialization crafting and installation |
+| Scout Station / Scout | Approximate event leads in discovered regions | Facility intelligence using recovered campaign clues |
+| Archive / Archivist | Research plans and recovered records | Gallery of earned event and boss trophies |
+| Supply Depot / Quartermaster | One-click ammo order for the equipped weapon | Saved multi-weapon shopping list with a combined cost/output preview |
+
+Medical, Scout, and Archive stages cost **12 wood + 8 iron + 4 fiber**, then **10 steel + 6 crystal + 4 fuel**. Workshop and Depot stages cost **12 iron + 6 steel + 4 fuel**, then **16 steel + 8 crystal + 1 relic**. There is no new currency, recurring free supply generation, or passive global damage stacking.
+
+Scout leads are dashed search circles, not discoveries or event activation. They disappear when an opportunity expires. Stage II facility intelligence currently uses the existing Continuity expedition clue once its key and the Void are discovered. The four optional mini-facilities will extend these leads in the next stage; named-rival dossiers will extend the Archive later. Neither of those encounters is added by this update.
+
+Each crafted weapon has one **Handling** and one **Specialization** slot. At the Mechanic, select a crafted weapon, inspect the trade-offs, craft its mods, and install or remove them free. A mod is owned **per weapon**, not once for the whole arsenal. Crafting or researching a mod never grants its weapon or weapon blueprint. Swapping recalculates stats from the original weapon and cannot repeatedly multiply bonuses.
+
+| Slot | Mod | Compatibility and trade-off |
+| --- | --- | --- |
+| Handling | Stabilizer | Projectile weapons with spread: -25% spread, -10% firing rate |
+| Handling | Quick Loader | Conventional multi-round magazines: -20% empty-magazine recovery, -15% magazine capacity, rounded down |
+| Handling | Balanced Grip | Melee: -15% attack cooldown, -10% damage |
+| Handling | Focus Assembly | Energy weapons, Railgun, and gauntlets: +20% reach, -10% direct damage |
+| Specialization | Penetrator | Conventional single-projectile, non-beam/non-explosive guns: hit one additional enemy, -20% damage |
+| Specialization | Scatter Choke | Shotgun: -30% spread, two fewer pellets |
+| Specialization | Concussive Payload | Grenade Launcher / Pulse Carbine: +25% blast radius, -20% damage |
+| Specialization | Lingering Flame | Flamethrower: +50% burn duration, -20% burn tick damage |
+| Specialization | Heavy Edge | Melee: +25% damage, +20% attack cooldown |
+| Specialization | Focused Discharge | Laser / Combat Pistol / Railgun: +20% direct damage, +25% firing cooldown |
+| Specialization | Sustained Exposure | Rad Beam: +25% radiation duration, -20% direct beam damage |
+| Specialization | Focused Orbit | Magic / Cosmos Gauntlets: -25% projectile cone, -15% reach |
+| Specialization | Short Chain | Void Batar: +20% firing rate, -30% projectile lifetime |
+
+Handling mods cost **4 steel + 2 crystal**. Specializations cost **8 steel + 4 crystal**, or **12 steel + 8 crystal + 1 relic** for weapons whose original crafting recipe uses relics. Advanced plans are claimed free at Archive I after deterministic milestones: **12 encountered enemy variants** for Focus Assembly, **3 completed world events** for Concussive Payload, **25 recorded player defeats** for Lingering Flame, and **20 encountered variants** for Focused Orbit. These are permanent plans in that save, not random drops; the Workshop stage and per-weapon crafting cost still apply.
+
+Unmodified weapons retain their existing timing. The game has no separate timed reload animation: Quick Loader shortens the final-shot cooldown before the automatic reload by 20%, not every shot. It is unavailable on single-shot weapons. Reduced capacity never creates ammo: removed rounds become shared **loose rounds** for that ammo type, displayed as **R** beside full-reload reserves and consumed first on reload. Removing the mod does not refill the larger magazine.
+
+Supply Depot orders use normal ammo recipe costs and outputs. List quantities are **crafting batches** (1–5 per weapon), and shared ammo costs/outputs are summed. All materials are checked and paid together, then the order completes after three active crafting seconds per batch. A paid order keeps its own snapshot if you edit the saved list. Saving during crafting retains paid costs and pending output; loading cannot duplicate it. Melee and self-recharging gauntlets cannot place ammo orders.
+
 ## Void epilogue
 
-After turning in **What the Signal Woke**, open the quest log for the Archivist's Continuity Key clue. The tactical map marks a search area, not the exact portal. The Void Stalker guards the entrance: dodge its telegraphed lunge and counter while it recovers. It won't pursue you outside its territory.
+After turning in **What the Signal Woke**, open the quest log for the Archivist's Continuity Key clue. The portal lies northeast, **10,000 meters beyond the map edge** (11,800 meters from Sanctuary). The tactical map marks a search area, not the exact portal, and the Void HUD shows the signal bearing and distance. Bring ample ammo and medkits for the long journey.
+
+Deep Void storms mark strike zones before dealing a single blast of damage. Unstable rifts show their trigger radius; approaching one starts a warning before Void enemies emerge. Both dangers become more frequent farther out. They pause while you are inside the dungeon.
+
+The portal's Void Stalker is a near-final-boss challenge with **1,400 HP**, heavy lunges, and three phases with increasing pursuit speed and shorter recovery windows. Phase two chains two attacks before recovering; phase three chains three. Every follow-up still has its own full, locked-aim warning: keep dodging until the chain ends, then counter during recovery. Its attacks include marked rift blasts, radial volleys, aimed spread shots, crossing rift lanes, and a close-range shockwave. Sidestep the spread, move diagonally out of the crossing lanes, and retreat beyond the marked shockwave circle. The portal guardian won't pursue you outside its territory. The rare Stalker summoned by the Foreman has the same full strength and phases; the Foreman's escalating hordes remain the final challenge.
 
 The portal leads into the Continuity facility. Clear the combat rooms, read the maintenance panel to align the relays, and look for two optional supply caches. You can turn back through the pressure lock until you enter the Foreman's arena. Saving or exporting inside the facility preserves your equipment, health, supplies, room clears, and puzzle progress; loading starts at the latest visited safe checkpoint, with the arena fight reset. Death still ends the run normally.
 
 Defeat the Foreman to unlock the **Continuity Weave** armour blueprint at the Arsenal. You can return for rematches; the blueprint and side-room caches are one-time rewards per save. Existing saves that finished the campaign already qualify for the Continuity Key.
 
 The Foreman is an endgame boss and horde fight. Watch for marked slams, sweeping floor lanes, projectile volleys, charges, and relay hazards. Reinforcement waves grow larger and arrive faster in later phases. They can draw from all 24 biome families and Void enemies: mini-bosses are rare, and a summoned Void Stalker is the rarest roll (at most one per fight). Purple gate outlines warn you before a wave arrives. Defeating the Foreman shuts down the remaining reinforcements.
+
+Older saves retain guardian clears and dungeon rewards. An uncleared legacy guardian moves to the new portal location with its remaining health percentage preserved; the key's old portal marker resets to the new search area.
 
 ## Settings
 

@@ -16,6 +16,36 @@ canvas { display: block; width: 100%; height: 100%; cursor: none; }.crosshair { 
 .quest-hud { position: absolute; z-index: 3; left: 18px; top: 210px; width: 250px; display: grid; gap: 6px; padding: 10px 13px; background: #100d13dd; border-left: 2px solid #d58ee0; font: 8px 'Space Mono', monospace; }.quest-hud > strong { color: #d58ee0; }.quest-hud-item { display: flex; justify-content: space-between; gap: 8px; color: var(--ink); }.quest-hud-item b { color: var(--orange); }
 .quest-dialog, .quest-panel { position: absolute; z-index: 7; inset: 12% 18%; padding: 18px; overflow-y: auto; background: #100d13f5; border: 1px solid #d58ee0; box-shadow: 0 0 34px #d58ee044; font: 9px/1.45 'Space Mono', monospace; }.quest-dialog[hidden], .quest-panel[hidden] { display: none; }.quest-dialog-inner, .quest-panel-inner { display: grid; gap: 10px; max-width: 720px; margin: auto; }.quest-dialog strong, .quest-panel strong { color: #d58ee0; font-size: 14px; letter-spacing: .12em; }.quest-dialog p, .quest-panel p { color: #c9c0ba; margin: 0; }.quest-close { justify-self: end; border: 1px solid #754047; background: #2a171e; color: var(--ink); padding: 3px 8px; font: inherit; cursor: pointer; }.quest-card, .quest-row { display: grid; gap: 5px; padding: 10px; border: 1px solid #5b3438; background: #171016; }.quest-card b, .quest-row b { color: var(--orange); }.quest-card span, .quest-row span { color: #c9c0ba; }.quest-card small, .quest-row small { color: #8fe0ad; }.quest-card button, .quest-row button { justify-self: end; border: 1px solid #754047; background: #2a171e; color: var(--ink); padding: 5px 8px; font: inherit; cursor: pointer; }.quest-card button:hover, .quest-row button:hover { background: var(--orange); color: #170e12; }
 .quest-shop { display: grid; gap: 6px; padding: 10px; border: 1px solid #5b3438; background: #171016; }
+.field-tools { position: absolute; z-index: 3; left: 18px; top: 210px; display: flex; gap: 6px; }
+.field-tools .menu-button { padding: 6px 10px; font: 9px 'Space Mono', monospace; }
+.quest-hud { top: 246px; }
+.journal-panel { z-index: 19; padding: 12px; background: #100d13ef; }
+.journal-panel[hidden] { display: none; }
+.journal-card { width: min(860px, 100%); text-align: left; }
+.journal-card h2 { font-size: clamp(28px, 5vw, 48px); }
+.journal-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.journal-tabs button { flex: 1; }
+.journal-tabs button[aria-pressed="true"] { border-color: var(--orange); color: var(--orange); }
+.journal-content { display: grid; gap: 10px; min-height: 100px; max-height: 45vh; overflow-y: auto; font: 11px/1.6 'Space Mono', monospace; }
+.journal-content h3 { margin: 0; color: var(--orange); font: inherit; font-weight: bold; }
+.journal-content p { margin: 0; }
+.journal-content:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+.journal-marker { display: inline-block; width: 12px; height: 12px; margin-right: 10px; background: var(--entry-color); border: 1px solid var(--ink); transform: rotate(45deg); }
+.world-event-hud { position: absolute; z-index: 3; right: 18px; bottom: 250px; width: min(250px, calc(100% - 36px)); display: grid; gap: 7px; padding: 10px 13px; border-right: 2px solid var(--orange); background: #100d13ee; font: 9px/1.5 'Space Mono', monospace; }
+.world-event-hud[hidden], .world-event-hud button[hidden] { display: none; }
+.world-event-hud strong { color: var(--orange); }
+.world-event-hud p { margin: 0; }
+.world-event-hud button { padding: 6px; font: inherit; text-align: center; }
+.sanctuary-service { display: grid; gap: 12px; max-width: 720px; margin: 18px auto 0; padding-top: 16px; border-top: 1px solid #8fe0ad; }
+.sanctuary-service h4 { color: #8fe0ad; margin: 0; font-size: 12px; }
+.sanctuary-service button { padding: 8px; border: 1px solid #754047; background: #2a171e; color: var(--ink); font: inherit; cursor: pointer; }
+.sanctuary-service button:disabled { opacity: .5; cursor: not-allowed; }
+.sanctuary-service button:not(:disabled):hover, .sanctuary-service button[aria-pressed="true"] { border-color: var(--orange); color: var(--orange); }
+.sanctuary-service button:focus-visible { outline: 2px solid #8fe0ad; outline-offset: 2px; }
+.sanctuary-weapon-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.sanctuary-mod-option { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid #5b3438; }
+.quest-dialog .sanctuary-mod-option strong { font-size: 11px; }
+.sanctuary-resupply-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; }
 .campaign-tracker { display: grid; gap: 4px; padding-bottom: 5px; border-bottom: 1px solid #b9f4ff55; color: var(--ink); }
 .campaign-tracker strong, .campaign-card b { color: #b9f4ff; }
 .campaign-card { border-color: #b9f4ff66; background: #112026; }
@@ -142,6 +172,8 @@ canvas { display: block; width: 100%; height: 100%; cursor: none; }.crosshair { 
 .game-shell.menu-state .map-panel,
 .game-shell.menu-state .expedition-hud,
 .game-shell.menu-state .quest-hud,
+.game-shell.menu-state .field-tools,
+.game-shell.menu-state .world-event-hud,
 .game-shell.menu-state .biome-effects,
 .game-shell.menu-state .region-key,
 .game-shell.menu-state .vitals-hud,
